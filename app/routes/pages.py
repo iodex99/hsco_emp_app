@@ -160,12 +160,44 @@ def recon_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     return render(c, "reconciliation.html", period=p, r=MX.reconciliation(c.db, p))
 
 
+AUDIT_CATEGORIES = {
+    "login": "Sign-in & 2FA", "logout": "Sign-in & 2FA", "mfa": "Sign-in & 2FA", "password": "Sign-in & 2FA",
+    "import": "Imports", "override": "Corrections", "leave": "Corrections", "employee": "Employees",
+    "period": "Months (finalise / recompute)", "flag": "Review queue", "settings": "Settings", "calendar": "Settings",
+    "holiday": "Settings", "geofence": "Settings", "user": "Users", "export": "Downloads", "update": "Updates",
+}
+AUDIT_PAGE = 200
+
+
 @router.get("/audit", response_class=HTMLResponse)
-def audit_page(q: str = "", c: Ctx = Depends(hr)):
-    stmt = select(AuditLog).order_by(AuditLog.ts.desc()).limit(500)
+def audit_page(q: str = "", user: str = "", cat: str = "", date_from: str = "", date_to: str = "", page: int = 1,
+               c: Ctx = Depends(hr)):
+    """Server-side filters (the log can be large) + paging; the table toolkit handles sorting within a page."""
+    from datetime import datetime as _dt, timedelta
+    from sqlalchemy import func, or_
+
+    stmt = select(AuditLog)
     if q:
         like = f"%{q}%"
-        stmt = select(AuditLog).where((AuditLog.action.like(like)) | (AuditLog.username.like(like)) |
-                                      (AuditLog.entity_id.like(like)) | (AuditLog.entity.like(like))
-                                      ).order_by(AuditLog.ts.desc()).limit(500)
-    return render(c, "audit.html", rows=c.db.scalars(stmt).all(), q=q)
+        stmt = stmt.where(or_(AuditLog.action.like(like), AuditLog.username.like(like), AuditLog.entity_id.like(like),
+                              AuditLog.entity.like(like), AuditLog.ip.like(like)))
+    if user:
+        stmt = stmt.where(AuditLog.username == user)
+    if cat:
+        prefixes = [k for k, v in AUDIT_CATEGORIES.items() if v == cat]
+        stmt = stmt.where(or_(*[AuditLog.action.like(f"{k}%") for k in prefixes])) if prefixes else stmt
+    try:
+        if date_from:
+            stmt = stmt.where(AuditLog.ts >= _dt.fromisoformat(date_from))
+        if date_to:
+            stmt = stmt.where(AuditLog.ts < _dt.fromisoformat(date_to) + timedelta(days=1))
+    except ValueError:
+        pass
+    total = c.db.scalar(select(func.count()).select_from(stmt.subquery()))
+    page = max(1, page)
+    rows = c.db.scalars(stmt.order_by(AuditLog.ts.desc()).offset((page - 1) * AUDIT_PAGE).limit(AUDIT_PAGE)).all()
+    users = [u for u in c.db.scalars(select(AuditLog.username).distinct().order_by(AuditLog.username)) if u]
+    cats = sorted(set(AUDIT_CATEGORIES.values()))
+    pages = max(1, (total + AUDIT_PAGE - 1) // AUDIT_PAGE)
+    return render(c, "audit.html", rows=rows, q=q, user=user, cat=cat, date_from=date_from, date_to=date_to,
+                  page=page, pages=pages, total=total, users=users, cats=cats, cat_of=AUDIT_CATEGORIES)

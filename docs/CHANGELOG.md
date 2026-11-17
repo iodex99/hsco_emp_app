@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.0 — 2026-11-17 — sorting & filtering everywhere
+- New table toolkit (`app/static/table.js`) on every data table (payroll sheet, employees, review queue, import
+  history, audit log, reconciliation, groups, an employee's day-by-day):
+  search · typed **filters** shown as removable chips (text: contains / not / is / empty; numbers: ≥ ≤ > < = ≠ between;
+  dates: on / before / after / between; lists: tick-boxes with counts) · **multi-level sort** (click a header; Shift-click
+  adds a level; or the Sort menu) with natural ID order · **group by** with collapsible groups, counts and subtotals ·
+  **columns** show/hide (remembered per page) · **saved views** (reusable across months) · **shareable link** (state in
+  the URL) · **CSV export** of exactly what is shown · "Showing X of Y" and totals that follow the filters.
+- Quick-filter chips kept and combined with the toolkit; new day chips on the employee page (Working days, Late,
+  Missing punch, Regularised, WFH, Absent/LOP, Leave/comp-off, Worked off-day, Corrected) and a Late (min) column.
+- Review queue: separate Group / Severity / Exception / Status columns; severity sorts Critical → High → Medium → Info.
+- Reconciliation: one row per difference with a Difference column (no merged cells, so it filters and sorts).
+- Audit log: server-side filters (search, person, type, date range) with paging of 200.
+
 ## 1.2.1 — 2026-11-17
 - Sidebar shows the running version and build (e.g. "v1.2.1 · build 2") so anyone can tell which version a server runs.
 - Release notes in the update dialog no longer include commit trailers.

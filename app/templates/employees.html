@@ -17,15 +17,15 @@
       <button class="chip" data-chip="exempt" type="button">Exempt</button>
       {% if nogroup %}<button class="chip" data-chip="nogroup" type="button">No group <span class="n">{{ nogroup|length }}</span></button>{% endif %}
     </div>
-    <div class="tools"><select data-colfilter="#emps" data-col="1" aria-label="Group"><option value="">All groups</option>{% for g in emps|map(attribute='group')|unique|sort if g %}<option>{{ g }}</option>{% endfor %}</select>
-      <input type="search" placeholder="Search…" data-filter="#emps" style="width:200px"></div>
+    <span class="small muted" style="margin-left:auto">Quick filters</span>
   </div>
-  <div class="bd"><div class="tw"><table id="emps" data-sortable class="compact">
-  <thead><tr><th class="sticky">Employee</th><th>Group</th><th>Location</th><th>Joined</th><th>Working pattern</th><th>Exemption</th><th class="num">Last month +/− h</th><th class="num">Flags</th></tr></thead><tbody>
+  <div data-table-for="#emps"></div>
+  <div class="bd"><div class="tw"><table id="emps" data-table data-csv="employees" class="compact">
+  <thead><tr><th class="sticky" data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="loc" data-type="enum">Location</th><th data-key="doj" data-type="date">Joined</th><th data-key="pattern" data-type="text">Working pattern</th><th data-key="exempt" data-type="enum">Exemption</th><th class="num" data-key="balance" data-type="num">Last month +/− h</th><th class="num" data-key="flags" data-type="num">Flags</th></tr></thead><tbody>
   {% for e in emps %}{% set r = last.get(e.emp_no) %}{% set left = e.dol or not e.is_active %}
   <tr class="click" data-href="{{ '/periods/' ~ latest.key ~ '/employee/' ~ e.emp_no if r and latest else '/employees/' ~ e.emp_no }}"
       data-tags="{{ 'left' if left else 'active' }} {{ 'custom' if e.weekly_off != 'MUSTER' or e.hours_per_day or e.holiday_calendar_id }} {{ 'exempt' if e.exempt }} {{ 'nogroup' if not e.group }}">
-    <td class="sticky" data-v="{{ e.name }}">{{ ui.person(e.name, e.emp_no ~ (' · left ' ~ (e.dol|dmy) if e.dol else '')) }}</td>
+    <td class="sticky" data-v="{{ e.name }}" data-csv="{{ e.name }} ({{ e.emp_no }})">{{ ui.person(e.name, e.emp_no ~ (' · left ' ~ (e.dol|dmy) if e.dol else '')) }}</td>
     <td>{% if e.group %}{{ e.group }}{% else %}<span class="badge b-warn">not set</span>{% endif %}</td><td>{{ e.location }}</td>
     <td data-v="{{ e.doj or '' }}" class="small">{{ e.doj|dmy }}</td>
     <td class="small">{% if e.weekly_off == 'MUSTER' and not e.hours_per_day and not e.holiday_calendar_id %}<span class="muted">Standard</span>{% else %}

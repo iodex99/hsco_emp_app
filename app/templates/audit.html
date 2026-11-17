@@ -2,18 +2,33 @@
 {% import "_ui.html" as ui with context %}
 {% block title %}Audit log{% endblock %}
 {% block content %}
-<div class="ph"><div><h1>Audit log</h1><div class="sub">Every sign-in, import, correction and setting change. Latest 500 shown.</div></div>
-  <div class="actions"><form method="get" class="row" style="gap:8px"><input type="search" name="q" value="{{ q }}" placeholder="Search action, user, employee…" style="width:280px"><button class="btn sec">Search</button></form></div></div>
+<div class="ph"><div><h1>Audit log</h1><div class="sub">Every sign-in, import, correction, review and setting change.</div></div></div>
+<form method="get" class="card"><div class="bd server-filters">
+  <div class="field"><label>Search</label><input type="search" name="q" value="{{ q }}" placeholder="employee, action, IP…"></div>
+  <div class="field"><label>Person</label><select name="user"><option value="">Everyone</option>{% for u in users %}<option {{ 'selected' if u == user }}>{{ u }}</option>{% endfor %}</select></div>
+  <div class="field"><label>Type</label><select name="cat"><option value="">All types</option>{% for x in cats %}<option {{ 'selected' if x == cat }}>{{ x }}</option>{% endfor %}</select></div>
+  <div class="field"><label>From</label><input type="date" name="date_from" value="{{ date_from }}"></div>
+  <div class="field"><label>To</label><input type="date" name="date_to" value="{{ date_to }}"></div>
+  <button class="btn">{{ ui.icon('filter','sm') }} Apply</button>
+  {% if q or user or cat or date_from or date_to %}<a class="btn ghost" href="/audit">Reset</a>{% endif %}
+  <span class="spacer"></span><span class="muted small" id="audit-total">{{ total }} entr{{ 'y' if total == 1 else 'ies' }}{% if pages > 1 %} · page {{ page }} of {{ pages }}{% endif %}</span>
+</div></form>
 {% set labels = {'login.password_ok':'Signed in (password)','login.mfa_ok':'Two-step verified','login.failed':'Failed sign-in','login.mfa_failed':'Wrong 2FA code','login.locked':'Account locked','logout':'Signed out',
   'import':'Imported file','override.day':'Corrected a day','override.month':'Adjusted a month figure','override.day_removed':'Removed day correction','override.month_removed':'Removed adjustment',
   'leave.opening':'Set opening balance','employee.update':'Edited employee','employee.create':'Added employee','period.finalise':'Finalised month','period.reopen':'Re-opened month','period.recompute':'Recomputed',
   'settings.policy':'Changed rules','settings.general':'Changed system settings','flag.review':'Reviewed exception','flag.reopen':'Re-opened exception','export.xlsx':'Downloaded Excel','export.html':'Downloaded board pack',
   'user.create':'Created user','user.update':'Edited user','user.reset_password':'Reset password','user.reset_mfa':'Reset 2FA','user.unlock':'Unlocked user','mfa.add':'Added 2FA method','mfa.remove':'Removed 2FA method',
   'password.change':'Changed password','mfa.recovery_regenerated':'New recovery codes'} %}
-<div class="card flush"><div class="bd"><div class="tw"><table class="compact" data-sortable>
-<thead><tr><th>When</th><th>Who</th><th>What</th><th>About</th><th>Details</th></tr></thead><tbody>
+<div class="card flush"><div data-table-for="#aud"></div><div class="bd"><div class="tw"><table id="aud" class="compact" data-table data-csv="audit-log">
+<thead><tr><th data-key="when" data-type="date">When</th><th data-key="who" data-type="enum">Who</th><th data-key="what" data-type="enum">What</th><th data-key="type" data-type="enum">Type</th><th data-key="about" data-type="text">About</th><th data-key="details" data-type="text">Details</th></tr></thead><tbody>
 {% for a in rows %}<tr><td class="small" style="white-space:nowrap" data-v="{{ a.ts.isoformat() }}">{{ a.ts.strftime('%d %b %Y, %H:%M:%S') }}</td><td>{{ a.username or '—' }}</td>
-<td><span title="{{ a.action }}" class="{{ 'neg' if 'fail' in a.action or 'locked' in a.action else 'strong' }}">{{ labels.get(a.action, a.action) }}</span></td><td class="small">{{ a.entity }} {{ a.entity_id }}</td>
+<td data-f="{{ labels.get(a.action, a.action) }}"><span title="{{ a.action }}" class="{{ 'neg' if 'fail' in a.action or 'locked' in a.action else 'strong' }}">{{ labels.get(a.action, a.action) }}</span></td><td class="small">{{ cat_of.get(a.action.split('.')[0], 'Other') }}</td><td class="small">{{ a.entity }} {{ a.entity_id }}</td>
 <td class="small muted" style="max-width:520px">{% for k, v in (a.details or {}).items() %}<span class="tag">{{ k }}: {{ v if v is string or v is number else v|tojson }}</span>{% endfor %}</td></tr>
-{% else %}<tr><td colspan="5">{% call ui.empty('No entries', 'Nothing matches that search.', 'scroll-text') %}{% endcall %}</td></tr>{% endfor %}</tbody></table></div></div></div>
+{% else %}<tr><td colspan="6">{% call ui.empty('No entries', 'Nothing matches that search.', 'scroll-text') %}{% endcall %}</td></tr>{% endfor %}</tbody></table></div></div></div>
+{% if pages > 1 %}{% set qs = 'q=' ~ (q|urlencode) ~ '&user=' ~ (user|urlencode) ~ '&cat=' ~ (cat|urlencode) ~ '&date_from=' ~ date_from ~ '&date_to=' ~ date_to %}
+<div class="row" style="justify-content:center;gap:8px">
+  {% if page > 1 %}<a class="btn sec" href="/audit?{{ qs }}&page={{ page - 1 }}">{{ ui.icon('chevron-left','sm') }} Newer</a>{% endif %}
+  <span class="muted small" style="align-self:center">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn sec" href="/audit?{{ qs }}&page={{ page + 1 }}">Older {{ ui.icon('chevron-right','sm') }}</a>{% endif %}
+</div>{% endif %}
 {% endblock %}

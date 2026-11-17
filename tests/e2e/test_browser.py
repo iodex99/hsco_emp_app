@@ -134,7 +134,8 @@ def test_full_browser_journey(server):
         shown = page.evaluate("Array.from(document.querySelectorAll('#res tbody tr')).filter(r=>r.style.display!=='none').length")
         assert shown == page.evaluate("document.querySelectorAll('#res tbody tr[data-tags*=deduction]').length")
         page.click("[data-chips] .chip[data-chip='']")
-        page.fill("input[data-filter='#res']", emp_name)
+        page.fill("[data-table-for='#res'] .tt-search input", emp_name)
+        page.wait_for_timeout(300)
         visible = page.evaluate("Array.from(document.querySelectorAll('#res tbody tr')).filter(r=>r.style.display!=='none').length")
         assert visible == 1
         page.click("#res tbody tr:visible")

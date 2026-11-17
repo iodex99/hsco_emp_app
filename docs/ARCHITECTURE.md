@@ -40,7 +40,11 @@ Regression tests: `tests/e2e/test_disconnect.py`.
 Server-rendered Jinja pages; shared macros in `templates/_ui.html` (icon, person, badges, KPI with delta, toplist,
 empty state). `static/app.css` is the design system (tokens in `:root`); `static/app.js` provides tabs, filter chips
 (rows carry `data-tags`), sortable tables, footer totals that follow filters, quick search (`/api/employees`),
-drawers, toasts, the month switcher, Chart.js defaults and WebAuthn helpers. Icons: Lucide sprite
+drawers, toasts, the month switcher, Chart.js defaults and WebAuthn helpers. `static/table.js` is the table
+toolkit: any `<table data-table>` with `<th data-key data-type="text|num|date|enum|none">` gets search, typed filters,
+multi-sort, group-by, columns, saved views, URL state and CSV. Cells use `data-v` (raw value), `data-f` (filter
+label), `data-s` (sort key), `data-csv`; rows `data-tags` for quick chips (`data-chips="#id"`); footer cells
+`data-sum`. Options: `data-toolbar="none"`, `data-default-hidden`, `data-csv`. Icons: Lucide sprite
 `static/icons.svg` (`<use href="/static/icons.svg#i-name">`); font: Inter (`static/fonts`). All vendored.
 
 ## Update system (v1.2)

@@ -87,71 +87,7 @@
     if (g) { showTab(g.closest("[data-tabs]"), name); g.scrollIntoView({ behavior: "smooth", block: "start" }); }
   }));
 
-  // ---------- sortable tables ----------
-  function cellVal(td) {
-    if (!td) return "";
-    const v = td.getAttribute("data-v"); const t = v !== null ? v : td.textContent.trim();
-    const n = parseFloat(t.replace(/[,−]/g, (c) => (c === "−" ? "-" : "")));
-    return v !== null && !isNaN(parseFloat(v)) ? parseFloat(v) : (/^-?[\d.,−]+$/.test(t.replace(/\s/g, "")) && !isNaN(n) ? n : t.toLowerCase());
-  }
-  $$("table[data-sortable]").forEach((tbl) => {
-    $$("thead th", tbl).forEach((th, idx) => {
-      if (th.hasAttribute("data-nosort")) return;
-      th.classList.add("sortable");
-      th.addEventListener("click", () => {
-        const body = tbl.tBodies[0], rows = $$(":scope > tr", body);
-        const dir = th.dataset.dir === "asc" ? "desc" : "asc";
-        $$("thead th", tbl).forEach((x) => delete x.dataset.dir); th.dataset.dir = dir;
-        rows.sort((a, b) => { const x = cellVal(a.cells[idx]), y = cellVal(b.cells[idx]); return x === y ? 0 : (x > y ? 1 : -1) * (dir === "asc" ? 1 : -1); });
-        rows.forEach((r) => body.appendChild(r));
-      });
-    });
-  });
-
-  // ---------- filtering: search input [data-filter=#table], chips [data-chips=#table] (rows carry data-tags) ----------
-  function applyFilters(tbl) {
-    const inp = $(`input[data-filter="#${tbl.id}"]`);
-    const q = inp ? inp.value.toLowerCase().trim() : "";
-    const chip = $(`[data-chips="#${tbl.id}"] .chip.on`);
-    const tag = chip ? chip.dataset.chip : "";
-    const sel = $$(`select[data-colfilter="#${tbl.id}"]`);
-    let n = 0;
-    $$(":scope > tr", tbl.tBodies[0]).forEach((r) => {
-      let show = (!q || r.textContent.toLowerCase().includes(q)) && (!tag || (" " + (r.dataset.tags || "") + " ").includes(" " + tag + " "));
-      sel.forEach((s) => { if (show && s.value) { const c = r.cells[+s.dataset.col]; show = c && c.textContent.trim() === s.value; } });
-      r.style.display = show ? "" : "none"; if (show) n++;
-    });
-    const cnt = $(`[data-count="#${tbl.id}"]`); if (cnt) cnt.textContent = n;
-    // footer totals follow the filter
-    const foot = tbl.tFoot && tbl.tFoot.rows[0];
-    if (foot) Array.from(foot.cells).forEach((td, i) => {
-      if (!td.hasAttribute("data-sum")) return;
-      let sum = 0;
-      $$(":scope > tr", tbl.tBodies[0]).forEach((r) => {
-        const c = r.cells[i];
-        if (r.style.display === "none" || !c) return;
-        const raw = c.hasAttribute("data-v") ? c.getAttribute("data-v") : c.textContent.replace("\u2212", "-").replace(/[^0-9.\-]/g, "");
-        const v = parseFloat(raw);
-        if (!isNaN(v)) sum += v;
-      });
-      const dec = td.dataset.dec !== undefined ? +td.dataset.dec : 2;
-      td.textContent = (Number.isInteger(sum) ? sum : sum.toFixed(dec)) + (td.dataset.unit || "");
-    });
-  }
-  H.applyFilters = applyFilters;
-  $$("input[data-filter]").forEach((inp) => { const t = $(inp.dataset.filter); inp.addEventListener("input", () => applyFilters(t)); });
-  $$("select[data-colfilter]").forEach((s) => { const t = $(s.dataset.colfilter); s.addEventListener("change", () => applyFilters(t)); });
-  $$("[data-chips]").forEach((box) => {
-    const t = $(box.dataset.chips);
-    $$(".chip", box).forEach((c) => c.addEventListener("click", () => {
-      $$(".chip", box).forEach((x) => x.classList.toggle("on", x === c)); applyFilters(t);
-      const u = new URL(location.href); if (c.dataset.chip) u.searchParams.set("f", c.dataset.chip); else u.searchParams.delete("f");
-      try { history.replaceState(null, "", u); } catch (e) {}
-    }));
-    const f = new URL(location.href).searchParams.get("f");
-    const pre = f && $(`.chip[data-chip="${f}"]`, box);
-    if (pre) { $$(".chip", box).forEach((x) => x.classList.toggle("on", x === pre)); applyFilters(t); }
-  });
+  // ---------- tables: search / filters / sort / group / columns / views / CSV live in table.js ----------
   // whole-row links
   document.addEventListener("click", (e) => {
     const tr = e.target.closest("tr[data-href]");

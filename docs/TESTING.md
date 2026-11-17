@@ -20,10 +20,11 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `test_updater.py` (5) | release package contents, release parsing, zip validation (zip-slip, data/, incomplete, wrong build), download with progress, checksum mismatch rejected, staging, source checkouts never self-update, supervisor apply + DB backup + rollback |
 | `e2e/test_update_flow.py` (1) | **installed release copy under the supervisor + mock GitHub + Chromium:** banner → What's new → Update now → progress bar moves → restart → build 2 running, toast, data & session intact, DB backup + rollback copy present; then a broken build 3 is rolled back automatically and the dialog explains it |
 | `e2e/test_supervisor.py` (1) | killing the supervisor stops the web server (no orphan holding the port) |
+| `e2e/test_tables.py` (2) | table toolkit on a live server: search, enum facets with counts, numeric/date filters, chip removal, URL state survives reload, saved view, header sort cycle (num high→low → low→high → off), Shift multi-sort, group-by with collapse, columns + presets, CSV equals visible rows, filter-aware totals; review-queue severity filter/sort; employees date filter; day chips + late sort; audit server filters |
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, board pack offline (file://) drill-down modal, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`77 passed` (Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real reference data present.
+`79 passed` (Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real reference data present.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
 
 ## Live verification against GitHub (2026-11-17)
@@ -47,4 +48,6 @@ Screenshots of the e2e run: `test-results/*.png` (git-ignored).
 - **1.1.0:** the real cause of the 500s was an event-loop deadlock (async auth dependency doing blocking SQLite
   writes), reproduced with a live-server test before fixing. Screenshot review with real data found layout bugs the
   tests could not (clipped columns, totals ignoring filters, wrong logo initials, squeezed mobile search).
+- **1.3.0:** toolkit tests caught a header sort cycle that skipped ascending for numbers, and a Columns button
+  shadowed by the `cols` property; a shell-escaped `\n` had broken a regex (now `node --check` before testing).
 - Fixture/time arithmetic and test expectations corrected (auto-attendance semantics).

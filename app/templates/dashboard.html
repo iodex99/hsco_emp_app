@@ -128,7 +128,7 @@
   </div>
 </section>
 
-<section class="pane" data-pane="groups"><div class="card flush"><div class="bd"><div class="tw"><table data-sortable>
+<section class="pane" data-pane="groups"><div class="card flush"><div class="bd"><div class="tw"><table id="grp" data-table data-csv="groups-{{ key }}">
   <thead><tr><th>Group</th><th class="num">People</th><th class="num">Present days</th><th class="num">Paid leave</th><th class="num">Comp-off</th><th class="num">Absent</th><th class="num">LOP</th><th class="num">WFH</th><th class="num">Late days</th><th class="num">Regularised</th><th class="num">Deduction days</th><th class="num">Hours vs required</th></tr></thead><tbody>
   {% for g in m.groups %}<tr><td class="strong">{{ g.group }}</td><td class="num">{{ g.headcount|n }}</td><td class="num">{{ g.days_present|n }}</td><td class="num">{{ g.pl_days|n }}</td><td class="num">{{ g.cof_days|n }}</td><td class="num">{{ g.unauth_absent_days|n }}</td><td class="num">{{ g.lop_days|n }}</td><td class="num">{{ g.wfh_days|n }}</td><td class="num">{{ g.late_days|n }}</td><td class="num">{{ g.regularised_days|n }}</td><td class="num {{ 'neg' if g.deduction_days }}">{{ g.deduction_days|n }}</td>
   <td class="num">{% if g.hours_vs_required_pct is not none %}<span class="{{ 'neg' if g.hours_vs_required_pct < 100 else 'pos' }}">{{ g.hours_vs_required_pct|n(1) }}%</span>{% endif %}</td></tr>{% endfor %}

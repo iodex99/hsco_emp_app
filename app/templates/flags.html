@@ -32,19 +32,22 @@
         <a href="/flags?period={{ period.key }}&code={{ code }}&show=all" class="{{ 'on' if show == 'all' }}">All</a>
       </div>
       <div class="tools">
-        <input type="search" placeholder="Filter…" data-filter="#fl" style="width:200px">
         {% if can_hr and code and show != 'reviewed' %}<button class="btn sm sec" type="button" id="review-all" data-code="{{ code }}">{{ ui.icon('check','sm') }} Mark all reviewed</button>{% endif %}
       </div>
     </div>
-    <div class="bd"><div class="tw" style="max-height:none"><table id="fl">
-      <thead><tr><th>Employee</th><th>Exception</th><th>Detail</th><th style="width:1%"></th></tr></thead><tbody>
+    <div data-table-for="#fl"></div>
+    <div class="bd"><div class="tw" style="max-height:none"><table id="fl" data-table data-csv="review-queue-{{ period.key }}" data-default-hidden="group,status">
+      <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="sev" data-type="enum">Severity</th><th data-key="exc" data-type="enum">Exception</th><th data-key="detail" data-type="text">Detail</th><th data-key="status" data-type="enum">Status</th><th data-type="none" style="width:1%"></th></tr></thead><tbody>
       {% set ns = namespace(n=0) %}
       {% for f in rows if (not code or f.code == code) and (f.actionable or code) and (show == 'all' or (show == 'open' and not f.reviewed) or (show == 'reviewed' and f.reviewed)) %}
       {% set ns.n = ns.n + 1 %}
       <tr data-emp="{{ f.emp_no }}" data-code="{{ f.code }}" class="{{ 'is-rev' if f.reviewed }}">
-        <td>{{ ui.person(f.name, f.emp_no ~ ' · ' ~ f.group, '/periods/' ~ period.key ~ '/employee/' ~ f.emp_no) }}</td>
-        <td style="min-width:170px">{{ ui.sev(f.severity) }}<div class="strong small mt-s">{{ labels.get(f.code, f.code) }}</div></td>
+        <td data-v="{{ f.name }}" data-csv="{{ f.name }} ({{ f.emp_no }})">{{ ui.person(f.name, f.emp_no ~ ' · ' ~ f.group, '/periods/' ~ period.key ~ '/employee/' ~ f.emp_no) }}</td>
+        <td>{{ f.group }}</td>
+        <td data-f="{{ f.severity|capitalize }}" data-s="{{ {'critical':0,'high':1,'medium':2,'info':3}[f.severity] }}">{{ ui.sev(f.severity) }}</td>
+        <td class="strong small" style="min-width:150px">{{ labels.get(f.code, f.code) }}</td>
         <td class="small" style="min-width:180px">{{ f.message }}{% if f.reviewed %}<div class="muted mt-s">{{ ui.icon('circle-check','sm') }} Reviewed by {{ f.reviewed_by }}{% if f.review_note %} — “{{ f.review_note }}”{% endif %}</div>{% endif %}</td>
+        <td data-f="{{ 'Reviewed' if f.reviewed else 'Open' }}"><span class="badge {{ 'b-ok' if f.reviewed else 'b-grey' }}">{{ 'Reviewed' if f.reviewed else 'Open' }}</span></td>
         <td style="white-space:nowrap" class="right">
           <a class="btn sm ghost icon" title="Open employee" href="/periods/{{ period.key }}/employee/{{ f.emp_no }}">{{ ui.icon('arrow-up-right','sm') }}</a>
           {% if can_hr and f.actionable %}
@@ -81,8 +84,8 @@ document.querySelectorAll('#fl [data-act]').forEach(b=>b.addEventListener('click
   if(b.dataset.act==='reopen'){try{const j=await HSCO.post('/flags/review',{period:PERIOD,emp_no:tr.dataset.emp,code:tr.dataset.code,action:'reopen'});progress(j);fade(tr);HSCO.toast('Re-opened');}catch(e){alert(e.message);}return;}
   target={emp:tr.dataset.emp,code:tr.dataset.code,tr};
   document.getElementById('rv-title').textContent=tr.querySelector('.person b').textContent;
-  document.getElementById('rv-sub').textContent=tr.cells[1].textContent.trim();
-  document.getElementById('rv-msg').textContent=tr.cells[2].childNodes[0].textContent.trim();
+  document.getElementById('rv-sub').textContent=tr.cells[3].textContent.trim();
+  document.getElementById('rv-msg').textContent=tr.cells[4].childNodes[0].textContent.trim();
   document.getElementById('rv-note').value=''; HSCO.openDrawer('rev');}));
 const ra=document.getElementById('review-all'); if(ra) ra.onclick=()=>{target={emp:'*',code:ra.dataset.code};
   document.getElementById('rv-title').textContent='Mark all open items reviewed';document.getElementById('rv-sub').textContent='';

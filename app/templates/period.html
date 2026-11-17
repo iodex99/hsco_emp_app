@@ -38,45 +38,42 @@
       <button class="chip" data-chip="override" type="button">Corrected <span class="n">{{ D|selectattr('overrides')|list|length }}</span></button>
       <button class="chip" data-chip="exempt" type="button">Exempt <span class="n">{{ D|selectattr('exempt')|list|length }}</span></button>
     </div>
-    <div class="tools">
-      <select data-colfilter="#res" data-col="1" data-allcols aria-label="Group"><option value="">All groups</option>{% for g in rows|map(attribute='group')|unique|sort %}<option>{{ g }}</option>{% endfor %}</select>
-      <input type="search" placeholder="Search…" data-filter="#res" style="width:190px" aria-label="Search">
-      <div class="seg" id="density"><button class="on" type="button" data-d="key">Key columns</button><button type="button" data-d="all">All MIS columns</button></div>
-    </div>
+    <span class="small muted" style="margin-left:auto">Quick filters</span>
   </div>
-  <div class="bd"><div class="tw" style="max-height:68vh"><table id="res" data-sortable class="compact density-key">
+  <div data-table-for="#res"></div>
+  <div class="bd"><div class="tw" style="max-height:68vh"><table id="res" data-table data-csv="payroll-leave-sheet-{{ period.key }}" data-default-hidden="group,week,hol,hours,offh,bal" class="compact">
 <thead><tr>
-  <th class="sticky">Employee</th><th class="x">Group</th>
-  <th class="num x" title="Total week days (E)">Week days</th><th class="num x" title="Holidays (F)">Holidays</th>
-  <th class="num" title="Leaves taken (G)">Leave</th><th class="num" title="Absent (H)">Absent</th><th class="num" title="Days present (I)">Present</th>
-  <th class="num">WFH</th><th class="num x" title="Total hours present">Hours</th><th class="num x" title="Hours on weekly-off/holiday, excluded">Off-day h</th>
-  <th class="num" title="Actual hours">Actual h</th><th class="num" title="Required hours">Required h</th><th class="num">+/− h</th>
-  <th class="num">Deduction</th><th class="num x" title="Leave balance after this month">Leave bal.</th><th class="num" title="Payroll loss-of-pay days">LOP</th>
-  <th>Remark</th><th class="num" title="High/medium flags">Flags</th>
+  <th class="sticky" data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th>
+  <th class="num" data-key="week" data-type="num" title="Total week days (E)">Week days</th><th class="num" data-key="hol" data-type="num" title="Holidays (F)">Holidays</th>
+  <th class="num" data-key="leave" data-type="num" title="Leaves taken (G)">Leave</th><th class="num" data-key="absent" data-type="num" title="Absent (H)">Absent</th><th class="num" data-key="present" data-type="num" title="Days present (I)">Present</th>
+  <th class="num" data-key="wfh" data-type="num">WFH</th><th class="num" data-key="hours" data-type="num" title="Total hours present">Hours</th><th class="num" data-key="offh" data-type="num" title="Hours on weekly-off/holiday, excluded">Off-day h</th>
+  <th class="num" data-key="actual" data-type="num" title="Actual hours">Actual h</th><th class="num" data-key="required" data-type="num" title="Required hours">Required h</th><th class="num" data-key="balance" data-type="num" data-label="Hours +/−">+/− h</th>
+  <th class="num" data-key="deduction" data-type="num" data-label="Deduction days">Deduction</th><th class="num" data-key="bal" data-type="num" data-label="Leave balance" title="Leave balance after this month">Leave bal.</th><th class="num" data-key="lop" data-type="num" data-label="LOP days" title="Payroll loss-of-pay days">LOP</th>
+  <th data-key="remark" data-type="text">Remark</th><th class="num" data-key="flags" data-type="num" title="High/medium flags">Flags</th>
 </tr></thead>
 <tbody>
 {% for r in rows %}{% set d = r.data %}
 <tr class="click" data-href="/periods/{{ period.key }}/employee/{{ r.emp_no }}"
     data-tags="{{ 'deduction' if d.deduction_days }} {{ 'lop' if d.payroll_lop_days }} {{ 'wfh' if d.wfh_days > policy.wfh_limit_days }} {{ 'flags' if r.flag_count }} {{ 'override' if d.overrides }} {{ 'exempt' if d.exempt }}">
-  <td class="sticky" data-v="{{ r.name }}">{{ ui.person(r.name, r.emp_no ~ ' · ' ~ (r.group or '—')) }}</td><td class="x">{{ r.group }}</td>
-  <td class="num x">{{ d.total_week_days|n }}</td><td class="num x">{{ d.holidays|n }}</td><td class="num">{{ d.leave_days|n }}</td>
+  <td class="sticky" data-v="{{ r.name }}" data-csv="{{ r.name }} ({{ r.emp_no }})">{{ ui.person(r.name, r.emp_no ~ ' · ' ~ (r.group or '—')) }}</td><td>{{ r.group }}</td>
+  <td class="num">{{ d.total_week_days|n }}</td><td class="num">{{ d.holidays|n }}</td><td class="num">{{ d.leave_days|n }}</td>
   <td class="num {{ 'neg' if d.absent_days }}">{{ d.absent_days|n }}</td><td class="num">{{ d.days_present|n }}</td>
   <td class="num">{% if d.wfh_days > policy.wfh_limit_days %}<span class="badge b-warn">{{ d.wfh_days|n }}</span>{% else %}{{ d.wfh_days|n }}{% endif %}</td>
-  <td class="num x" data-v="{{ d.total_hours }}">{{ (d.total_hours*60)|hm }}</td><td class="num x">{{ d.extra_hours|n }}</td>
+  <td class="num" data-v="{{ d.total_hours }}">{{ (d.total_hours*60)|hm }}</td><td class="num">{{ d.extra_hours|n }}</td>
   <td class="num" data-v="{{ d.actual_hours }}">{{ d.actual_hours|n(1) }}</td><td class="num" data-v="{{ d.required_hours }}">{{ d.required_hours|n(1) }}</td>
   <td class="num {{ 'neg' if d.balance_hours < 0 else 'pos' }}" data-v="{{ d.balance_hours }}">{{ '+' if d.balance_hours > 0 }}{{ d.balance_hours|n(1) }}</td>
   <td class="num" data-v="{{ d.deduction_days }}">{% if d.deduction_days %}<span class="badge b-bad">{{ d.deduction_days|n }} d</span>{% elif d.exempt and d.balance_hours < 0 %}<span class="badge b-grey" title="{{ d.remark }}">exempt</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-  <td class="num x" data-v="{{ d.leave_closing if d.leave_closing is not none else -999 }}">{{ d.leave_closing|n if d.leave_closing is not none else '—' }}</td>
-  <td class="num {{ 'neg' if d.payroll_lop_days }}">{{ d.payroll_lop_days|n if d.payroll_lop_days else '' }}</td>
+  <td class="num" data-v="{{ d.leave_closing if d.leave_closing is not none else '' }}">{{ d.leave_closing|n if d.leave_closing is not none else '—' }}</td>
+  <td class="num {{ 'neg' if d.payroll_lop_days }}" data-v="{{ d.payroll_lop_days or 0 }}">{{ d.payroll_lop_days|n if d.payroll_lop_days else '' }}</td>
   <td class="small remark">{{ d.remark }}{% if d.overrides %} <span class="badge b-violet" title="{{ d.overrides|tojson }}">corrected</span>{% endif %}</td>
-  <td class="num">{% if r.flag_count %}<span class="badge b-warn">{{ r.flag_count }}</span>{% endif %}</td>
+  <td class="num" data-v="{{ r.flag_count }}">{% if r.flag_count %}<span class="badge b-warn">{{ r.flag_count }}</span>{% endif %}</td>
 </tr>{% endfor %}
 </tbody>
-<tfoot><tr class="tfoot"><td class="sticky">Total · <span data-count="#res">{{ rows|length }}</span> shown</td><td class="x"></td>
-  <td class="num x"></td><td class="num x"></td><td data-sum class="num">{{ D|sum(attribute='leave_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='absent_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='days_present')|n }}</td>
-  <td data-sum class="num">{{ D|sum(attribute='wfh_days')|n }}</td><td class="num x"></td><td data-sum data-dec="0" class="num x">{{ D|sum(attribute='extra_hours')|n(0) }}</td>
+<tfoot><tr class="tfoot"><td class="sticky">Total · <span data-count="#res">{{ rows|length }}</span> shown</td><td></td>
+  <td class="num"></td><td class="num"></td><td data-sum class="num">{{ D|sum(attribute='leave_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='absent_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='days_present')|n }}</td>
+  <td data-sum class="num">{{ D|sum(attribute='wfh_days')|n }}</td><td class="num"></td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='extra_hours')|n(0) }}</td>
   <td data-sum data-dec="0" class="num">{{ D|sum(attribute='actual_hours')|n(0) }}</td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='required_hours')|n(0) }}</td><td class="num"></td>
-  <td data-sum data-unit=" d" class="num">{{ D|sum(attribute='deduction_days')|n }} d</td><td class="num x"></td><td data-sum class="num">{{ D|sum(attribute='payroll_lop_days')|n }}</td><td></td><td></td></tr></tfoot>
+  <td data-sum data-unit=" d" class="num">{{ D|sum(attribute='deduction_days')|n }} d</td><td class="num"></td><td data-sum class="num">{{ D|sum(attribute='payroll_lop_days')|n }}</td><td></td><td></td></tr></tfoot>
 </table></div></div>
 </div>
 <p class="help">Required hours = days present × {{ policy.hours_per_day|n }} h. Shortfall is deducted at ½ day per {{ policy.shortfall_block_hours|n }} h (rounded up). Exempt: {{ policy.exempt_groups|join(', ') }}. Click any row for the day-by-day record and to make corrections. Press <kbd>/</kbd> to find someone.</p>
@@ -88,10 +85,5 @@
 <div class="field"><label>Reason</label><textarea name="reason" rows="3" required placeholder="e.g. Late regularisation approved by partner"></textarea></div></div>
 <div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn danger">Re-open month</button></div></form></aside><div class="scrim"></div>
 {% endif %}
-<style>#res.density-key .x{display:none}</style>
 {% endblock %}
-{% block scripts %}<script>
-document.querySelectorAll('#density button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#density button').forEach(x=>x.classList.toggle('on',x===b));
- const t=document.getElementById('res');t.classList.toggle('density-key',b.dataset.d==='key');try{localStorage.setItem('density',b.dataset.d)}catch(e){}});
-try{if(localStorage.getItem('density')==='all')document.querySelector('#density [data-d=all]').click()}catch(e){}
-</script>{% endblock %}
+{% block scripts %}{% endblock %}

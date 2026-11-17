@@ -19,6 +19,17 @@ Add more methods under **My security** (several phones, keys).
 - On an employee's page, **click a calendar day** to see its punches and correct it; the left/right arrow keys move
   to the previous/next employee.
 
+## Working with tables (every list in the app)
+- **Search** box filters as you type. **Filter** → pick a column → choose values (lists show counts) or a condition
+  (e.g. *Hours +/− < 0*, *Joined on or after 01-Jul-2026*). Filters appear as chips; click a chip to change it, × to
+  remove, *Clear all* to reset. Quick-filter chips above the table combine with these.
+- **Sort**: click a column header (again to reverse, a third time to clear); **Shift-click** another header to sort by
+  a second column; or use the **Sort** menu for several levels.
+- **Group** by a column (e.g. Group or Location) to see counts and subtotals per group; ▾ collapses a group.
+- **Columns**: hide or show columns (the payroll sheet has *Key columns* / *All columns* presets).
+- **Views**: save the current setup (e.g. "BSS with deductions") and reuse it next month; *Copy link* shares it.
+- **CSV** downloads exactly what you see.
+
 ## Month end (≈ 10 minutes)
 1. In greytHR export for the month: **Attendance Muster Report**, **Employee Swipe Details**,
    **Date Of Joining Report** (and optionally **Attendance Summary Report**). No need to remove filters or extra sheets.
