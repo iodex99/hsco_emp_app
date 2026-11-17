@@ -30,7 +30,8 @@
       {% endif %}
       {% if can_admin %}<a href="/users" class="{{ 'on' if path.startswith('/users') }}">{{ ui.icon('user-cog') }}Users</a>{% endif %}
     </nav>
-    <div class="foot">{{ ui.icon('shield-check','sm') }} Data stays on this server</div>
+    <div class="foot">{{ ui.icon('shield-check','sm') }} Data stays on this server
+      {% if upd %}<div class="small" style="margin-top:4px;color:var(--text-4)" id="app-version">v{{ upd.current.version }}{% if upd.current.build %} · build {{ upd.current.build }}{% else %} · source{% endif %}</div>{% endif %}</div>
   </aside>
   <div class="main">
     <header class="topbar" id="topbar">

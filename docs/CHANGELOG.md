@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 — 2026-11-17
+- Sidebar shows the running version and build (e.g. "v1.2.1 · build 2") so anyone can tell which version a server runs.
+- Release notes in the update dialog no longer include commit trailers.
+- First release delivered to an installed server through the full GitHub Actions → in-app update path.
+
 ## 1.2.0 — 2026-11-17 — automatic updates (GitHub Actions → in-app update with progress)
 - **CI/CD** (`.github/workflows/release.yml`): every push to `main` runs the full test suite on Windows; when green
   it builds `hsco_emp_app-v<version>-build<n>.zip` + `.sha256` (`scripts/build_release.py`) and publishes GitHub

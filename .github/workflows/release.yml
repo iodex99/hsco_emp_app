@@ -59,7 +59,7 @@ jobs:
           VERSION=$(python -c "import sys; sys.path.insert(0,'scripts'); import build_release as b; print(b.product_version())")
           TAG="build-${{ github.run_number }}"
           {
-            git log -1 --pretty=%B
+            git log -1 --pretty=%B | grep -v "^Co-Authored-By:" || true
             echo
             echo "Commit ${GITHUB_SHA::7} · built by GitHub Actions run ${{ github.run_number }}"
           } > notes.md
