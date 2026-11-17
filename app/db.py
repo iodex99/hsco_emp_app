@@ -20,7 +20,7 @@ def get_engine():
     global _engine, _Session
     if _engine is None:
         url = get_config().db_url
-        _engine = create_engine(url, future=True, connect_args={"check_same_thread": False} if url.startswith("sqlite") else {})
+        _engine = create_engine(url, future=True, connect_args={"check_same_thread": False, "timeout": 30} if url.startswith("sqlite") else {})
         if url.startswith("sqlite"):
             @event.listens_for(_engine, "connect")
             def _pragmas(dbapi_conn, _):  # noqa: ANN001
@@ -28,6 +28,7 @@ def get_engine():
                 cur.execute("PRAGMA journal_mode=WAL")
                 cur.execute("PRAGMA foreign_keys=ON")
                 cur.execute("PRAGMA synchronous=NORMAL")
+                cur.execute("PRAGMA busy_timeout=30000")
                 cur.close()
         _Session = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
     return _engine

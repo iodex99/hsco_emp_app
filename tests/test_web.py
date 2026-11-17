@@ -331,3 +331,30 @@ def test_bad_upload_reported(loaded):
     csrf = csrf_of(c, "/imports")
     r = c.post("/imports", data={"csrf": csrf}, files=[("files", ("notes.xlsx", b"not an excel file", "application/octet-stream"))])
     assert r.status_code == 200 and "Could not read" in r.text
+
+
+def test_enrol_without_pending_secret_and_unicode_flash(client):
+    """Regression: 'Enrolment expired — …' (em dash) crashed the latin-1 cookie header with HTTP 500."""
+    make_user()
+    r = client.post("/login", data={"username": "admin", "password": ADMIN_PW}, follow_redirects=True)
+    csrf = _csrf(r.text)
+    from app.db import session_scope
+    from app.models import UserSession
+    from sqlalchemy import select
+    with session_scope() as db:                      # simulate a lost/expired enrolment secret
+        for s in db.scalars(select(UserSession)):
+            s.pending = {}
+    r = client.post("/security/totp/confirm", data={"code": "123456", "csrf": csrf}, follow_redirects=False)
+    assert r.status_code == 303
+    page = client.get(r.headers["location"])
+    assert page.status_code == 200 and "Enrolment expired — scan the new QR code." in page.text
+
+
+def test_db_dependency_commits_before_response():
+    """Regression: a request's write transaction must be committed before its response is sent, otherwise the
+    browser's next request hits 'database is locked'."""
+    import inspect
+    from app import web
+    from app.routes import auth
+    src = inspect.getsource(web) + inspect.getsource(auth)
+    assert "Depends(get_db)" not in src and src.count('Depends(get_db, scope="function")') >= 4

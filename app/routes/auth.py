@@ -31,7 +31,7 @@ def _methods(user: User) -> list[MfaMethod]:
 
 
 @router.get("/login", response_class=HTMLResponse)
-def login_page(request: Request, next: str = "/", db: Session = Depends(get_db)):
+def login_page(request: Request, next: str = "/", db: Session = Depends(get_db, scope="function")):
     g = get_general(db)
     first_run = db.scalar(select(User.id).limit(1)) is None
     return templates.TemplateResponse(request, "login.html", {"org": g["org_name"], "next": next, "error": "",
@@ -40,7 +40,7 @@ def login_page(request: Request, next: str = "/", db: Session = Depends(get_db))
 
 @router.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...), next: str = Form("/"),
-          db: Session = Depends(get_db)):
+          db: Session = Depends(get_db, scope="function")):
     g = get_general(db)
     ip = request.client.host if request.client else ""
     user = db.scalar(select(User).where(User.username == username.strip().lower()))

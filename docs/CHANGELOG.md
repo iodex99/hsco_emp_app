@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 — 2026-11-17 — fix: HTTP 500 when entering the first 2FA code
+- **Cause 1:** the DB session dependency committed *after* the response was sent, so the enrolment page still held
+  SQLite's write lock when the browser posted the code → `database is locked`. Now `Depends(get_db, scope="function")`
+  commits before responding; SQLite `busy_timeout` 30 s added as a backstop.
+- **Cause 2:** flash messages are stored in a cookie; one contained an em dash, which is not Latin-1 → crash on the
+  retry. Flash cookies are now URL-encoded.
+- Regression tests added (66 total). Verified live in Chromium against the running server.
+
 ## 1.0.0 — 2026-11-17 — first complete version
 **Analysis**
 - All 5 reference workbooks (every sheet, formula, pivot) and the HR policy PDF analysed → `docs/DATA_ANALYSIS.md`.

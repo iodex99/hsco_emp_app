@@ -19,11 +19,14 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, board pack offline (file://) drill-down modal, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`64 passed` (Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real reference data present.
+`66 passed` (Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real reference data present.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
 
 ## Bugs found by testing (fixed)
 - openpyxl read-only mode trusted greytHR's wrong `<dimension>` → DOJ report read as 1 column → `reset_dimensions()`.
 - Jinja autoescaped embedded JSON → dashboard charts did not render → `Markup` with `</` neutralised.
 - Board pack: search box `change` on blur re-rendered rows mid-click → click lost → listen to `input` only.
+- **Found in manual use (1.0.1):** first 2FA code → HTTP 500 (`database is locked` because commits happened after
+  the response; then a non-Latin-1 flash cookie). Fixed + regression tests; the in-process TestClient could not
+  reproduce the timing, so the live server is now also checked with a real browser.
 - Fixture/time arithmetic and test expectations corrected (auto-attendance semantics).

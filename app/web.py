@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import quote, unquote
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Optional
@@ -91,7 +92,7 @@ def _load(request: Request, db: Session) -> Ctx:
     return Ctx(request, db, s, user)
 
 
-async def partial_ctx(request: Request, db: Session = Depends(get_db)) -> Ctx:
+async def partial_ctx(request: Request, db: Session = Depends(get_db, scope="function")) -> Ctx:
     """Password verified, MFA may still be pending. Unsafe methods are CSRF-checked."""
     c = _load(request, db)
     if c.user is None:
@@ -102,7 +103,7 @@ async def partial_ctx(request: Request, db: Session = Depends(get_db)) -> Ctx:
 
 
 def _require(role: str):
-    async def dep(request: Request, db: Session = Depends(get_db)) -> Ctx:
+    async def dep(request: Request, db: Session = Depends(get_db, scope="function")) -> Ctx:
         c = _load(request, db)
         if c.user is None:
             nxt = request.url.path if request.method == "GET" else "/"
@@ -139,7 +140,7 @@ def periods(db: Session) -> list[Period]:
 
 def render(c: Ctx, name: str, **kw) -> HTMLResponse:
     g = get_general(c.db)
-    flash = c.request.cookies.get("flash")
+    flash = unquote(c.request.cookies.get("flash", ""))
     resp = templates.TemplateResponse(c.request, name, {
         "user": c.user, "csrf": c.session.csrf_token if c.session else "", "org": g.get("org_name"),
         "general": g, "can_hr": c.can("hr"), "can_admin": c.can("admin"), "all_periods": periods(c.db),
@@ -153,5 +154,5 @@ def render(c: Ctx, name: str, **kw) -> HTMLResponse:
 def redirect(url: str, flash: str = "") -> RedirectResponse:
     r = RedirectResponse(url, status_code=303)
     if flash:
-        r.set_cookie("flash", flash[:300], max_age=30, httponly=True, samesite="strict", secure=get_config().secure_cookies)
+        r.set_cookie("flash", quote(flash[:300]), max_age=30, httponly=True, samesite="strict", secure=get_config().secure_cookies)
     return r

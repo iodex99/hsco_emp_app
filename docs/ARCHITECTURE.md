@@ -26,6 +26,8 @@ tests/                      unit, parser, real-data reconciliation, HTTP integra
 ```
 
 ## Data flow
+0. Every request gets one DB session via `Depends(get_db, scope="function")`: committed **before** the response is
+   sent (required with SQLite — otherwise the next browser request can hit a held write lock).
 1. Upload → `readers.read_workbook` → `parsers.detect` (header signatures, any sheet, any header row ≤ 15) →
    parser per kind → stored rows (muster/swipes/summary/manual MIS replace the month; master/DOJ/holidays/openings upsert).
 2. `services.compute.compute_period` builds engine inputs (employees + holiday calendars + overrides), runs
