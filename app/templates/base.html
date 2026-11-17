@@ -57,10 +57,38 @@
       </div>{% endif %}
     </header>
     <main class="content">
+      {% if upd and upd.available and upd.phase not in ('restarting',) %}
+      <div class="upd" id="upd-banner" role="status">{{ ui.icon('sparkles') }}
+        <span><b>Version {{ upd.latest.version or ('build ' ~ upd.latest.build) }} is available</b> · you have {{ upd.current.version }}{% if upd.current.build %} (build {{ upd.current.build }}){% endif %}</span>
+        <span class="spacer"></span>
+        {% if can_admin %}<button class="btn sm ghost" type="button" onclick="HSCO.updateDialog(false)">What's new</button>
+        <button class="btn sm" type="button" id="upd-now" onclick="HSCO.updateDialog(true)">{{ ui.icon('download','sm') }} Update now</button>
+        {% else %}<span class="small">An administrator can install it.</span>{% endif %}
+      </div>{% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>
 </div>
+{% if upd and can_admin %}
+<div class="modal-bg" id="upd-modal" aria-modal="true" role="dialog"><div class="modal">
+  <div class="split"><h2 id="um-title">Update available</h2><button class="btn ghost icon" type="button" id="um-close" onclick="HSCO.closeUpdate()" aria-label="Close">{{ ui.icon('x') }}</button></div>
+  <div class="muted small" id="um-sub"></div>
+  <div id="um-notes-wrap" class="mt"><div class="small strong" style="margin-bottom:6px">What's new</div><div class="notes" id="um-notes"></div></div>
+  <div id="um-progress" class="hidden">
+    <div class="pbar" id="um-bar"><i></i></div>
+    <div class="split small"><span id="um-msg" class="strong">Starting…</span><span id="um-pct" class="muted tnum">0%</span></div>
+    <div class="mt">{% for k, t in [('downloading','Download'),('verifying','Verify checksum'),('staging','Prepare'),('restarting','Back up, install & restart'),('done','Done')] %}
+      <div class="ustep" data-step="{{ k }}"><span class="d"></span>{{ t }}</div>{% endfor %}</div>
+  </div>
+  <div class="alert bad hidden mt" id="um-err"></div>
+  <div class="row mt" style="justify-content:flex-end" id="um-actions">
+    <button class="btn sec" type="button" onclick="HSCO.closeUpdate()">Later</button>
+    <button class="btn" type="button" id="um-go">{{ ui.icon('download','sm') }} Update now</button>
+  </div>
+  <p class="help" id="um-help">The database is backed up first. If the new version doesn't start, the previous one is restored automatically. Users may be signed out briefly.</p>
+</div></div>
+<script>window.HSCO_UPD = {{ upd|tojson_safe }};</script>
+{% endif %}
 <div class="toasts" id="toasts">{% if flash %}<div class="toast" role="status">{{ ui.icon('circle-check') }}<span>{{ flash }}</span><button type="button" aria-label="Dismiss" onclick="this.parentNode.remove()">{{ ui.icon('x','sm') }}</button></div>{% endif %}</div>
 <script src="/static/app.js"></script>
 {% block scripts %}{% endblock %}

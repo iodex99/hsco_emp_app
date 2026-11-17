@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.0 — 2026-11-17 — automatic updates (GitHub Actions → in-app update with progress)
+- **CI/CD** (`.github/workflows/release.yml`): every push to `main` runs the full test suite on Windows; when green
+  it builds `hsco_emp_app-v<version>-build<n>.zip` + `.sha256` (`scripts/build_release.py`) and publishes GitHub
+  Release `build-<n>`. A red build never reaches servers.
+- **In-app updates** (`app/updater.py`): installed servers check the releases API on start and every 10 minutes
+  (Settings → Updates; can be switched off). Admins see a banner → *What's new* / *Update now* → dialog with a live
+  download progress bar and steps (Download, Verify checksum, Prepare, Back up / install / restart, Done). Other
+  roles see that an update is available.
+- **Supervisor** (`run_server.py`, stdlib only) runs the web server (`app/serve.py`) as a child, applies staged
+  updates (DB backup, code swap, `pip install` if requirements changed), health-checks the new build and **rolls
+  back automatically** if it does not start. Results in `DATA_DIR/updates/last_result.json`, shown in the app.
+  The child exits if the supervisor is stopped, so no orphaned server keeps the port.
+- Safety: SHA-256 verification, package validation (no `..`/absolute paths, no `data/`, required files, matching
+  build), only admins can install, every check/install audit-logged, source checkouts (`.git`) never self-update.
+- `/healthz` now reports version, build and commit. Version lives in `app/__init__.py`.
+- Tests: 77 (new: updater unit tests, supervisor apply/rollback, live supervisor watchdog, and a full browser test of
+  banner → progress → restart → new build → broken build rolled back).
+
 ## 1.1.0 — 2026-11-17 — UI/UX redesign + root-cause fix for "database is locked"
 **Redesign** (owner: "the UI and UX can be much better, look better and be easier to use")
 - New design system: Inter typeface and Lucide icons (both vendored, offline), calm neutral palette with one accent,

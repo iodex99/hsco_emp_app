@@ -243,6 +243,25 @@ fieldset{border:0;padding:0;margin:0;min-width:0}
 .drawer .dh{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--border)}
 .drawer .dh h2{font-size:16px}.drawer .db{padding:20px;overflow:auto;flex:1}.drawer .df{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
 
+/* update banner & modal */
+.upd{display:flex;gap:12px;align-items:center;background:linear-gradient(90deg,var(--brand-50),#f5f8ff);border:1px solid var(--brand-100);
+  color:var(--brand-700);border-radius:12px;padding:10px 14px;margin:6px 0 4px;font-size:13.5px}
+.upd .ic{color:var(--brand)}.upd .spacer{flex:1}
+.modal-bg{position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:90;display:none;place-items:center;padding:16px}
+.modal-bg.open{display:grid}
+.modal{background:var(--surface);border-radius:16px;box-shadow:var(--sh-lg);width:min(520px,100%);padding:24px}
+.modal h2{font-size:18px;margin-bottom:4px}
+.pbar{height:10px;border-radius:999px;background:var(--surface-3);overflow:hidden;margin:18px 0 8px}
+.pbar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brand),#6a8cff);border-radius:999px;transition:width .3s}
+.pbar.done>i{background:var(--ok)}.pbar.err>i{background:var(--bad)}
+.ustep{display:flex;gap:10px;align-items:center;padding:6px 0;color:var(--text-3);font-size:13.5px}
+.ustep .d{width:20px;height:20px;border-radius:50%;border:2px solid var(--border-strong);display:grid;place-items:center;flex-shrink:0}
+.ustep.on{color:var(--text);font-weight:600}.ustep.on .d{border-color:var(--brand);border-top-color:transparent;animation:spin .8s linear infinite}
+.ustep.ok{color:var(--text-2)}.ustep.ok .d{background:var(--ok);border-color:var(--ok);color:#fff}
+.ustep.bad .d{background:var(--bad);border-color:var(--bad)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.notes{white-space:pre-wrap;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12.5px;max-height:180px;overflow:auto;color:var(--text-2)}
+
 /* empty state */
 .empty{text-align:center;padding:48px 20px;color:var(--text-3)}
 .empty .ring{width:52px;height:52px;border-radius:50%;background:var(--brand-50);color:var(--brand);display:grid;place-items:center;margin:0 auto 14px}

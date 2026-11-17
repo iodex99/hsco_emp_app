@@ -2,7 +2,12 @@
 
 ## Requirements
 Windows Server 2016+ (or Windows 10/11), Python 3.11+ installed **for all users** with "Add to PATH",
-~1 GB disk, port 8443 reachable on the LAN. No internet needed after installation.
+~1 GB disk, port 8443 reachable on the LAN. Internet is only needed for automatic updates (HTTPS to GitHub; optional).
+
+## Get the software
+Download the latest **release zip** from GitHub → Releases (`hsco_emp_app-v<version>-build<n>.zip`) and extract it,
+e.g. to `C:\HSCO\app`. Installs made from a release zip update themselves (below). A `git clone` also works but
+never self-updates (use `git pull` there).
 
 ## Install (first time)
 ```powershell
@@ -24,8 +29,31 @@ Then:
 4. Rules & calendars: confirm policy defaults, add the 2026/2027 holiday calendar(s), office/client geofences.
 5. Import the employee master (or last month's manual MIS to seed groups) and opening leave balances.
 
-## Upgrade
-Stop the task, replace the code (git pull), re-run the installer (idempotent), it restarts the task.
+## Updates (automatic)
+**Publishing (developer):** bump `__version__` in `app/__init__.py`, add a CHANGELOG entry, push to `main`.
+GitHub Actions runs all tests on Windows; if green it publishes release `build-<n>` with the zip + SHA-256.
+
+**Installing (admin):** the server checks GitHub every 10 minutes (Settings → Updates → *Check now* for
+immediately). A banner appears for admins → **Update now** → progress dialog:
+1. download (progress bar) → 2. verify SHA-256 → 3. unpack to `DATA_DIR\updates\staged` →
+4. the web server exits with code 75; the supervisor (`run_server.py`) backs up the database to
+   `DATA_DIR\backups\pre-update-build<n>-*.db`, moves the current code to `DATA_DIR\updates\rollback\build<old>-*`,
+   moves the new code in, runs `pip install -r requirements.txt` if it changed, starts the new build →
+5. if `/healthz` reports the new build within 90 s: done (the page reloads and says *Updated to v…*);
+   otherwise the previous code is restored and started again, and the dialog says so.
+
+Users may be signed out for a few seconds while it restarts. Data (`DATA_DIR`) is never part of an update.
+Requirements: outbound HTTPS to `api.github.com` and `github.com` (only GETs; nothing is sent). If an update adds a
+Python package the server also needs PyPI access, otherwise it rolls back.
+
+**Manual rollback:** stop the task, copy the folders from `DATA_DIR\updates\rollback\build<n>-…` back over the app
+folder (or restore a `pre-update` DB backup), start the task.
+
+**Offline servers:** switch off checks in Settings → Updates and install by extracting a newer release zip over the
+app folder (keep `data`), then restart the task.
+
+## Upgrade (manual)
+Stop the task, extract the new release zip over the app folder (or `git pull`), re-run the installer (idempotent).
 Data in `DATA_DIR` is untouched. Check `docs/CHANGELOG.md` for notes.
 
 ## Backup & restore
@@ -40,6 +68,8 @@ Data in `DATA_DIR` is untouched. Check `docs/CHANGELOG.md` for notes.
 | User lost all 2FA methods & recovery codes | admin → Users → Reset 2FA, or on server `python -m app.cli reset-mfa <user>` |
 | Import from command line | `python -m app.cli import file1.xlsx file2.xlsx` |
 | Dev / local test (HTTP) | `python run_server.py --dev` → http://localhost:8443 |
+| Run without supervisor (debug) | `python run_server.py --dev --no-supervisor` |
+| Last update result | `DATA_DIR\updates\last_result.json`; supervisor messages are prefixed `[supervisor]` in the console/log |
 | Logs | Task Scheduler history; run `run_server.py` in a console to see live logs |
 
 ## Email codes (optional)

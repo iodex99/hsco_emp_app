@@ -1,0 +1,68 @@
+# Every push to main: run the full test suite on Windows (the production OS); if green, publish a release that
+# installed servers pick up via Settings → Updates (they check every 10 minutes by default).
+# Release tag: build-<run number> (monotonic); asset: hsco_emp_app-v<version>-build<n>.zip + .sha256.
+name: Test & release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      HSCO_DISABLE_UPDATE_THREAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Install Chromium for browser tests
+        run: python -m playwright install chromium
+      - name: Run tests (real-data tests skip; synthetic fixtures cover them)
+        run: python -m pytest -q -p no:cacheprovider
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          if-no-files-found: ignore
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build package
+        run: python scripts/build_release.py --build ${{ github.run_number }} --commit ${{ github.sha }} --out dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(python -c "import sys; sys.path.insert(0,'scripts'); import build_release as b; print(b.product_version())")
+          TAG="build-${{ github.run_number }}"
+          {
+            git log -1 --pretty=%B
+            echo
+            echo "Commit ${GITHUB_SHA::7} · built by GitHub Actions run ${{ github.run_number }}"
+          } > notes.md
+          gh release create "$TAG" dist/*.zip dist/*.sha256 \
+            --title "v$VERSION (build ${{ github.run_number }})" \
+            --notes-file notes.md --target "$GITHUB_SHA" --latest

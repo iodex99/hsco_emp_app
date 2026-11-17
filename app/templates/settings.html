@@ -11,6 +11,7 @@
   <button data-tab="holidays">{{ ui.icon('calendar','sm') }} Holiday calendars</button>
   <button data-tab="locations">{{ ui.icon('map-pin','sm') }} Locations</button>
   <button data-tab="general">{{ ui.icon('shield-check','sm') }} Security &amp; system</button>
+  <button data-tab="updates">{{ ui.icon('refresh-cw','sm') }} Updates{% if upd and upd.available %} <span class="n" style="background:var(--brand-100);color:var(--brand-700)">new</span>{% endif %}</button>
 </div>
 
 <section class="pane on" data-pane="policy">
@@ -137,4 +138,45 @@
 {% if can_admin %}<div class="hd" style="border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end"><button class="btn">Save</button></div>{% endif %}
 </form>
 </section>
+
+<section class="pane" data-pane="updates">
+{% set u = upd %}
+<div class="grid g-2-1" style="align-items:start">
+  <div class="card"><div class="hd"><h2>Version</h2>
+    <div class="tools">{% if can_admin and u and not u.source_checkout %}<button class="btn sm sec" type="button" id="chk-now">{{ ui.icon('refresh-cw','sm') }} Check now</button>{% endif %}</div></div>
+    <div class="bd">
+    {% if u %}
+      <dl class="kv">
+        <dt>Running</dt><dd>v{{ u.current.version }}{% if u.current.build %} · build {{ u.current.build }}{% endif %}{% if u.current.commit %} · <code>{{ u.current.commit[:7] }}</code>{% endif %}</dd>
+        <dt>Latest release</dt><dd id="latest-line">{% if u.latest %}v{{ u.latest.version }} · build {{ u.latest.build }}{% if u.latest.published_at %} · {{ u.latest.published_at[:10] }}{% endif %}{% else %}<span class="muted">not checked yet</span>{% endif %}</dd>
+        <dt>Last checked</dt><dd>{{ u.latest.checked_at.replace('T', ' ') if u.latest and u.latest.checked_at else '—' }}</dd>
+        {% if u.last_result %}<dt>Last update</dt><dd>{% if u.last_result.status == 'applied' %}<span class="badge b-ok">installed</span>{% else %}<span class="badge b-bad">{{ u.last_result.status|replace('_',' ') }}</span>{% endif %}
+          build {{ u.last_result.from_build }} → {{ u.last_result.to_build }} · {{ u.last_result.at.replace('T',' ') }}{% if u.last_result.error %}<div class="small muted">{{ u.last_result.error }}</div>{% endif %}</dd>{% endif %}
+      </dl>
+      {% if u.source_checkout %}<div class="alert mt">{{ ui.icon('info') }}<span>This copy runs from a source checkout (git), so it doesn't update itself — use <code>git pull</code>. Servers installed from a release zip update from here.</span></div>
+      {% elif u.available %}<div class="alert ok mt">{{ ui.icon('sparkles') }}<span><b>v{{ u.latest.version }} (build {{ u.latest.build }}) is available.</b>
+        {% if can_admin %}<button class="btn sm" type="button" onclick="HSCO.updateDialog(false)" style="margin-left:8px">Review &amp; update</button>{% endif %}</span></div>
+      {% elif u.latest %}<div class="alert ok mt">{{ ui.icon('circle-check') }}<span>You're on the latest version.</span></div>{% endif %}
+      {% if u.error %}<div class="alert warn mt">{{ ui.icon('triangle-alert') }}<span>{{ u.error }}</span></div>{% endif %}
+      {% if not u.supervised and not u.source_checkout %}<div class="alert warn mt">{{ ui.icon('triangle-alert') }}<span>The server isn't running under the supervisor (<code>run_server.py</code>), so updates download but need a manual restart to install.</span></div>{% endif %}
+      {% if u.latest and u.latest.notes %}<h3 class="mt" style="font-size:13.5px">Release notes</h3><div class="notes">{{ u.latest.notes }}</div>{% endif %}
+    {% endif %}
+  </div></div>
+  <form class="card" method="post" action="/settings/updates">{{ ui.csrf_field() }}
+    <div class="hd"><h2>Automatic checks</h2></div>
+    <div class="bd"><fieldset {{ 'disabled' if not can_admin }}>
+      <label class="check mb"><input type="checkbox" name="update_check" value="1" {{ 'checked' if general.update_check }}> <span>Check for new versions <span class="help" style="display:block">Downloads release information from GitHub. No data from this server is sent.</span></span></label>
+      <div class="field"><label>Check every (minutes)</label><input name="update_interval_min" value="{{ general.update_interval_min }}" inputmode="numeric"></div>
+      <details><summary class="small strong" style="cursor:pointer">Advanced</summary>
+        <div class="field mt-s"><label>Release source</label><input name="update_url" value="{{ general.update_url }}" placeholder="GitHub releases API (default)"><div class="help">Leave empty for the default repository.</div></div></details>
+      <p class="help">Only administrators can install updates. The database is backed up before every update and a failed update is rolled back automatically.</p>
+    </fieldset></div>
+    {% if can_admin %}<div class="hd" style="border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end"><button class="btn">Save</button></div>{% endif %}
+  </form>
+</div>
+</section>
 {% endblock %}
+{% block scripts %}<script>
+const cb=document.getElementById('chk-now'); if(cb) cb.onclick=async()=>{cb.disabled=true;cb.textContent='Checking…';
+  try{const s=await HSCO.post('/api/update/check'); if(s.check_error){alert('Could not check: '+s.check_error);} location.hash='updates'; location.reload();}catch(e){alert(e.message);cb.disabled=false;}};
+</script>{% endblock %}

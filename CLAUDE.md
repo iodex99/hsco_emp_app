@@ -23,7 +23,8 @@ fix) update the relevant docs in the same change:
 ## Non‑negotiables
 - **Data stays on the server.** No CDNs, no telemetry, no cloud APIs by default. All JS/CSS is vendored
   under `app/static/vendor`. The only optional outbound calls are SMTP (email OTP) and online reverse
-  geocoding — both **off by default** and admin‑controlled.
+  geocoding — both **off by default** and admin‑controlled — plus the **update check** (GET to the GitHub releases
+  API; sends no data; on by default, can be switched off in Settings → Updates).
 - **Real employee data never goes to git.** `reference/`, `data/`, `exports/`, `*.db`, certs are git‑ignored.
   The GitHub repo (`iodex99/hsco_emp_app`) is **public**. Tests that need real data skip when `reference/` is absent;
   synthetic fixtures (`tests/fixtures/make_fixtures.py`) cover CI.
@@ -33,6 +34,12 @@ fix) update the relevant docs in the same change:
   `BaseHTTPMiddleware`. Violating this caused the v1.0 "database is locked" 500s (ARCHITECTURE, Concurrency rule).
 - UI: reuse `templates/_ui.html` macros and the tokens in `static/app.css`; check pages with real data in a
   browser (screenshots). Tests alone missed real layout and interaction bugs.
+
+## Releasing (every push to main ships)
+1. Bump `__version__` in `app/__init__.py` and add a `docs/CHANGELOG.md` entry in the same commit.
+2. `git push` → GitHub Actions runs all tests on Windows → publishes release `build-<run number>`.
+3. Installed servers show the update banner within ~10 minutes; an admin clicks *Update now* (auto-rollback on failure).
+Keep `run_server.py` stdlib-only and backwards compatible. Never put data in the release (`scripts/build_release.py`).
 
 ## Quick commands (Windows, from repo root)
 ```powershell

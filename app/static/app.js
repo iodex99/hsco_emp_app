@@ -202,6 +202,88 @@
       clientExtensionResults: a.getClientExtensionResults ? a.getClientExtensionResults() : {} } });
   };
 
+  // ---------- self-update (admin) ----------
+  const fmtMB = (b) => (b / 1048576).toFixed(1) + " MB";
+  const ORDER = ["downloading", "verifying", "staging", "restarting", "done"];
+  function setStep(phase, bad) {
+    const i = ORDER.indexOf(phase);
+    $$("#upd-modal .ustep").forEach((el) => {
+      const j = ORDER.indexOf(el.dataset.step);
+      el.classList.toggle("ok", j < i || phase === "done");
+      el.classList.toggle("on", j === i && phase !== "done" && !bad);
+      el.classList.toggle("bad", j === i && !!bad);
+    });
+  }
+  function upErr(msg) {
+    $$("#upd-modal .ustep.on").forEach((s) => { s.classList.toggle("on", false); s.classList.toggle("bad", true); });
+    const e = $("#um-err"); e.textContent = msg; e.classList.toggle("hidden", false);
+    $("#um-bar").classList.add("err"); $("#um-close").disabled = false;
+    $("#um-actions").classList.toggle("hidden", false); $("#um-go").textContent = "Try again";
+  }
+  H.closeUpdate = () => { const m = $("#upd-modal"); if (m && !$("#um-close").disabled) m.classList.toggle("open", false); };
+  H.updateDialog = (start) => {
+    const u = window.HSCO_UPD; const m = $("#upd-modal"); if (!u || !m || !u.latest) return;
+    const L = u.latest;
+    $("#um-title").textContent = `Update to ${L.version ? "v" + L.version : "build " + L.build}`;
+    $("#um-sub").textContent = `You have v${u.current.version}${u.current.build ? " (build " + u.current.build + ")" : ""} · new build ${L.build}` +
+      (L.published_at ? ` · released ${new Date(L.published_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}` : "") + (L.size ? ` · ${fmtMB(L.size)}` : "");
+    $("#um-notes").textContent = L.notes || "No release notes.";
+    $("#um-go").onclick = () => H.startUpdate();
+    m.classList.add("open");
+    if (start) H.startUpdate();
+  };
+  H.startUpdate = async () => {
+    const u = window.HSCO_UPD, target = u.latest.build;
+    $("#um-err").classList.toggle("hidden", true); $("#um-bar").classList.toggle("err", false); $("#um-bar").classList.toggle("done", false);
+    $("#um-progress").classList.toggle("hidden", false); $("#um-actions").classList.toggle("hidden", true);
+    $("#um-notes-wrap").classList.toggle("hidden", true); $("#um-help").classList.toggle("hidden", true);
+    $("#um-close").disabled = true;
+    try { await H.post("/api/update/install"); } catch (e) { upErr(e.message); return; }
+    const bar = $("#um-bar > i"), msg = $("#um-msg"), pct = $("#um-pct");
+    const t0 = Date.now(); let wentDown = false;
+    const waitBack = async () => {
+      if (Date.now() - t0 > 240000) return upErr("The server did not come back. Check the service on the server, then reload.");
+      try {
+        const h = await (await fetch("/healthz", { cache: "no-store" })).json();
+        if (h.build === target) {
+          setStep("done"); bar.style.width = "100%"; $("#um-bar").classList.add("done");
+          msg.textContent = `Updated to v${h.version} (build ${h.build})`; pct.textContent = "100%";
+          return setTimeout(() => location.reload(), 1500);
+        }
+        if (wentDown) {
+          const st = await (await fetch("/api/update/status", { credentials: "same-origin" })).json();
+          const lr = st.last_result;
+          if (lr && lr.to_build === target && (lr.status === "rolled_back" || lr.status === "failed")) return upErr(lr.error || "The update failed and was rolled back.");
+        }
+      } catch (e) { wentDown = true; }
+      setTimeout(waitBack, 1000);
+    };
+    const poll = async () => {
+      let st;
+      try { st = await (await fetch("/api/update/status", { credentials: "same-origin" })).json(); } catch (e) { return setTimeout(poll, 600); }
+      setStep(st.phase === "staged" ? "restarting" : st.phase, st.phase === "error");
+      if (st.phase === "downloading") {
+        bar.style.width = (st.percent * 0.85) + "%";
+        msg.textContent = st.total ? `Downloading… ${fmtMB(st.bytes)} of ${fmtMB(st.total)}` : `Downloading… ${fmtMB(st.bytes)}`;
+        pct.textContent = Math.round(st.percent) + "%";
+        return setTimeout(poll, 300);
+      }
+      if (st.phase === "verifying" || st.phase === "staging") { bar.style.width = (st.phase === "verifying" ? 88 : 92) + "%"; msg.textContent = st.message; pct.textContent = ""; return setTimeout(poll, 300); }
+      if (st.phase === "error") return upErr(st.error || "Update failed");
+      if (st.phase === "staged") { bar.style.width = "95%"; msg.textContent = st.message; $("#um-close").disabled = false; return; }
+      if (st.phase === "restarting") { bar.style.width = "95%"; msg.textContent = "Backing up, installing and restarting…"; pct.textContent = ""; return waitBack(); }
+      setTimeout(poll, 500);
+    };
+    poll();
+  };
+  (function updatedToast() {
+    const u = window.HSCO_UPD; if (!u || !u.last_result) return;
+    const lr = u.last_result, key = "upd-seen-" + lr.at;
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch (e) { return; }
+    if (lr.status === "applied" && lr.to_build === u.current.build) H.toast(`Updated to v${lr.version || u.current.version} (build ${lr.to_build})`);
+    else if (lr.status === "rolled_back" || lr.status === "failed") H.toast(`Update to build ${lr.to_build} did not install and was rolled back: ${lr.error || ""}`);
+  })();
+
   // ---------- charts ----------
   H.colors = { brand: "#2e5bdb", brand2: "#7b9cff", ok: "#17b26a", warn: "#f79009", bad: "#f04438", violet: "#7a5af8", teal: "#15b79e", grey: "#98a2b3" };
   H.palette = ["#2e5bdb", "#15b79e", "#7b9cff", "#f79009", "#7a5af8", "#f04438", "#98a2b3", "#ee46bc", "#0ba5ec", "#669f2a"];

@@ -1,5 +1,8 @@
 import os
 import sys
+
+# tests must never call GitHub: no background update checks
+os.environ.setdefault("HSCO_DISABLE_UPDATE_THREAD", "1")
 from pathlib import Path
 
 import pyotp

@@ -11,7 +11,7 @@ from app.config import APP_DIR, get_config
 from app.db import init_db
 from app.web import templates
 
-VERSION = "1.1.0"
+from app import __version__ as VERSION  # noqa: E402
 
 CSP = ("default-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; "
        "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; form-action 'self'")
@@ -58,10 +58,14 @@ def create_app() -> FastAPI:
                   openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
-    from app.routes import auth, employees, pages, periods, reports, settings, users
+    from app.routes import auth, employees, pages, periods, reports, settings, updates, users
 
-    for r in (auth.router, pages.router, periods.router, employees.router, reports.router, settings.router, users.router):
+    for r in (auth.router, pages.router, periods.router, employees.router, reports.router, settings.router, users.router,
+              updates.router):
         app.include_router(r)
+
+    from app import updater
+    updater.start_background_checker()
 
     app.add_middleware(SecurityHeaders)
 
@@ -77,6 +81,7 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz")
     def healthz():
-        return {"ok": True, "version": VERSION}
+        from app.version import current
+        return {"ok": True, **current()}
 
     return app

@@ -161,6 +161,16 @@ def current_period(c: Ctx, all_periods: list[Period], explicit=None) -> Period |
     return next((p for p in all_periods if p.computed_at), all_periods[0] if all_periods else None)
 
 
+def _update_status(c: Ctx):
+    if c.user is None or not (c.session and c.session.mfa_passed):
+        return None
+    from app import updater
+    try:
+        return updater.status()
+    except Exception:  # noqa: BLE001 - never break a page over update info
+        return None
+
+
 def render(c: Ctx, name: str, **kw) -> HTMLResponse:
     g = get_general(c.db)
     flash = unquote(c.request.cookies.get("flash", ""))
@@ -173,7 +183,7 @@ def render(c: Ctx, name: str, **kw) -> HTMLResponse:
     resp = templates.TemplateResponse(c.request, name, {
         "user": c.user, "csrf": c.session.csrf_token if c.session else "", "org": g.get("org_name"),
         "general": g, "can_hr": c.can("hr"), "can_admin": c.can("admin"), "all_periods": all_p,
-        "cur_period": cur, "nav_open": nav_open,
+        "cur_period": cur, "nav_open": nav_open, "upd": _update_status(c),
         "flash": flash, "path": c.request.url.path, **kw,
     })
     if flash:

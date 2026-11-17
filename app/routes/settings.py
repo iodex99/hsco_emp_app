@@ -236,3 +236,19 @@ def _rename_swipes(c: Ctx):
         s.place = namer.name(s.lat, s.lon)
     for p in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))):
         compute_period(c.db, p, cascade=False)
+
+
+@router.post("/settings/updates")
+def save_updates(update_check: str = Form(""), update_interval_min: str = Form("10"), update_url: str = Form(""),
+                 c: Ctx = Depends(admin)):
+    url = update_url.strip()
+    if url and not url.startswith("https://"):
+        return redirect("/settings#updates", "The release source must be an https:// URL.")
+    try:
+        interval = max(1, min(1440, int(update_interval_min or 10)))
+    except ValueError:
+        interval = 10
+    data = {"update_check": bool(update_check), "update_interval_min": interval, "update_url": url}
+    save_general(c.db, data)
+    audit(c.db, c.user, "settings.updates", details=data, ip=c.ip)
+    return redirect("/settings#updates", "Update settings saved.")

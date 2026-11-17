@@ -1,42 +1,195 @@
-"""Start the web server.
+"""Start the app under a small supervisor that also installs updates.
 
-  python run_server.py                 HTTPS on 0.0.0.0:8443 using data/certs/server.crt|key
-  python run_server.py --dev           HTTP on 127.0.0.1:8443 (local testing only; cookies not 'Secure')
-  python run_server.py --port 9443 --host 0.0.0.0
+  python run_server.py                  HTTPS on 0.0.0.0:8443 (certificate in DATA_DIR/certs)
+  python run_server.py --dev            HTTP on 127.0.0.1:8443 (local testing only)
+  python run_server.py --no-supervisor  run the web server directly (debugging; updates are not applied)
+
+The supervisor (this file) uses only the standard library so that a broken update can never break it. Loop:
+  1. if DATA_DIR/updates/staged/READY exists: back up the DB, move the current code to DATA_DIR/updates/rollback,
+     move the new code in, `pip install -r requirements.txt` if it changed;
+  2. start `python -m app.serve …` (the web server);
+  3. after an update, wait until /healthz reports the new build — otherwise roll back and start the old code;
+  4. exit code 75 = restart requested (update staged) → loop; 0 = stop; anything else = crash → restart with backoff.
+Results are written to DATA_DIR/updates/last_result.json (shown in the app).
 """
 from __future__ import annotations
 
-import argparse
+import json
 import os
+import shutil
+import sqlite3
+import ssl
+import subprocess
 import sys
+import time
+import urllib.request
+from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+ROOT = Path(__file__).resolve().parent
+RESTART = 75
+CORE = ("app", "run_server.py", "BUILD.json")       # always replaced/rolled back as a unit
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default=None)
-    ap.add_argument("--port", type=int, default=int(os.environ.get("HSCO_PORT", "8443")))
-    ap.add_argument("--dev", action="store_true", help="plain HTTP on localhost")
-    a = ap.parse_args()
-    if a.dev:
-        os.environ.setdefault("HSCO_INSECURE_COOKIES", "1")
-        os.environ.setdefault("HSCO_ORIGIN", f"http://localhost:{a.port}")
-    import uvicorn
-    from app.config import get_config
-    from app.main import create_app
+def data_dir() -> Path:
+    return Path(os.environ.get("HSCO_DATA_DIR", ROOT / "data")).resolve()
 
-    cfg = get_config()
-    kw = {}
-    if not a.dev:
-        crt, key = cfg.data_dir / "certs" / "server.crt", cfg.data_dir / "certs" / "server.key"
-        if not crt.exists():
-            sys.exit("No TLS certificate. Run: python -m app.cli make-cert <server-hostname>  (or start with --dev)")
-        kw = {"ssl_certfile": str(crt), "ssl_keyfile": str(key)}
-    uvicorn.run(create_app(), host=a.host or ("127.0.0.1" if a.dev else "0.0.0.0"), port=a.port, proxy_headers=False,
-                server_header=False, log_level="info", **kw)
+
+def log(msg: str) -> None:
+    print(f"[supervisor {datetime.now():%H:%M:%S}] {msg}", flush=True)
+
+
+def current_build(root: Path = ROOT) -> int:
+    try:
+        return int(json.loads((root / "BUILD.json").read_text(encoding="utf-8")).get("build", 0))
+    except (OSError, ValueError):
+        return 0
+
+
+def write_result(dd: Path, **kw) -> None:
+    p = dd / "updates" / "last_result.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({**kw, "at": datetime.now().isoformat(timespec="seconds")}, indent=1), encoding="utf-8")
+
+
+def backup_db(dd: Path, label: str) -> Path | None:
+    src = dd / "hsco.db"
+    if not src.exists():
+        return None
+    dst = dd / "backups" / f"pre-update-{label}-{datetime.now():%Y%m%d_%H%M%S}.db"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(src) as a, sqlite3.connect(dst) as b:
+        a.backup(b)
+    return dst
+
+
+def apply_staged(dd: Path, root: Path = ROOT, pip: bool = True) -> dict | None:
+    """Swap in the staged release. Returns {"rollback": dir, "info": {...}} or None if nothing staged.
+    On failure the previous code is restored and {"error": ...} is returned."""
+    staged = dd / "updates" / "staged"
+    ready = staged / "READY"
+    if not ready.exists():
+        return None
+    info = json.loads(ready.read_text(encoding="utf-8"))
+    frm = current_build(root)
+    rb = dd / "updates" / "rollback" / f"build{frm}-{datetime.now():%Y%m%d_%H%M%S}"
+    rb.mkdir(parents=True, exist_ok=True)
+    log(f"applying update build {frm} → {info.get('build')} (v{info.get('version')})")
+    backup_db(dd, f"build{info.get('build')}")
+    new_items = sorted(p.name for p in staged.iterdir() if p.name != "READY")
+    moved, added = [], []
+    try:
+        for name in sorted(set(new_items) | set(CORE)):
+            src = root / name
+            if src.exists():
+                shutil.move(str(src), str(rb / name))
+                moved.append(name)
+        for name in new_items:
+            shutil.move(str(staged / name), str(root / name))
+            added.append(name)
+        (rb / "MANIFEST.json").write_text(json.dumps({"moved": moved, "added": added, "info": info, "from": frm}),
+                                          encoding="utf-8")
+        old_req, new_req = rb / "requirements.txt", root / "requirements.txt"
+        if pip and new_req.exists() and (not old_req.exists() or old_req.read_bytes() != new_req.read_bytes()):
+            log("requirements changed → pip install")
+            r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", str(new_req)], cwd=root)
+            if r.returncode != 0:
+                raise RuntimeError("pip install failed (does the server have internet access?)")
+        shutil.rmtree(staged, ignore_errors=True)
+        return {"rollback": rb, "info": info, "from": frm}
+    except Exception as ex:  # noqa: BLE001
+        log(f"apply failed: {ex} → restoring previous version")
+        _restore(root, rb, added, moved)
+        shutil.rmtree(staged, ignore_errors=True)
+        write_result(dd, status="failed", from_build=frm, to_build=info.get("build"), version=info.get("version"),
+                     error=str(ex))
+        return {"error": str(ex)}
+
+
+def _restore(root: Path, rb: Path, added: list, moved: list) -> None:
+    for name in added:
+        p = root / name
+        if p.is_dir():
+            shutil.rmtree(p, ignore_errors=True)
+        elif p.exists():
+            p.unlink()
+    for name in moved:
+        if (rb / name).exists():
+            shutil.move(str(rb / name), str(root / name))
+
+
+def rollback(root: Path, rb: Path) -> None:
+    m = json.loads((rb / "MANIFEST.json").read_text(encoding="utf-8"))
+    _restore(root, rb, m["added"], m["moved"])
+
+
+def wait_healthy(child: subprocess.Popen, url: str, build: int, timeout: float = 90) -> bool:
+    ctx = ssl._create_unverified_context()  # local self-signed certificate
+    end = time.time() + timeout
+    while time.time() < end:
+        if child.poll() is not None:
+            return False
+        try:
+            with urllib.request.urlopen(url, timeout=3, context=ctx) as r:  # noqa: S310 - localhost
+                if int(json.loads(r.read().decode()).get("build", -1)) == int(build):
+                    return True
+        except Exception:  # noqa: BLE001 - not up yet
+            pass
+        time.sleep(1)
+    return False
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if "--no-supervisor" in argv or os.environ.get("HSCO_SUPERVISED") == "1":
+        sys.path.insert(0, str(ROOT))
+        from app.serve import main as serve_main
+        return serve_main([a for a in argv if a != "--no-supervisor"])
+    dev = "--dev" in argv
+    port = int(argv[argv.index("--port") + 1]) if "--port" in argv else int(os.environ.get("HSCO_PORT", "8443"))
+    health = f"{'http' if dev else 'https'}://127.0.0.1:{port}/healthz"
+    dd = data_dir()
+    env = {**os.environ, "HSCO_SUPERVISED": "1", "HSCO_SUPERVISOR_PID": str(os.getpid())}
+    backoff = 2
+    while True:
+        applied = apply_staged(dd)
+        started = time.time()
+        child = subprocess.Popen([sys.executable, "-m", "app.serve", *argv], cwd=str(ROOT), env=env)
+        if applied and "rollback" in applied:
+            to = int(applied["info"].get("build", 0))
+            if wait_healthy(child, health, to):
+                log(f"build {to} is running")
+                write_result(dd, status="applied", from_build=applied["from"], to_build=to,
+                             version=applied["info"].get("version"))
+            else:
+                log("new build did not start → rolling back")
+                child.terminate()
+                try:
+                    child.wait(15)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                rollback(ROOT, applied["rollback"])
+                write_result(dd, status="rolled_back", from_build=applied["from"], to_build=to,
+                             version=applied["info"].get("version"),
+                             error="The new version did not start; the previous version was restored.")
+                continue
+        try:
+            code = child.wait()
+        except KeyboardInterrupt:
+            child.terminate()
+            child.wait()
+            return 0
+        if code == RESTART:
+            log("restart requested")
+            continue
+        if code == 0:
+            return 0
+        if time.time() - started > 120:
+            backoff = 2
+        log(f"server exited with code {code}; restarting in {backoff}s")
+        time.sleep(backoff)
+        backoff = min(backoff * 2, 60)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

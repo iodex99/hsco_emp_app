@@ -7,7 +7,11 @@ No CDN, no external calls by default.
 
 ## Module map
 ```
-run_server.py              start server (HTTPS, or --dev HTTP on localhost)
+run_server.py              supervisor: starts app/serve.py, applies updates, health-check + rollback
+app/serve.py               uvicorn server (HTTPS, or --dev HTTP); exit 75 = restart for update
+app/updater.py, app/version.py   update check/download/stage; running version + build
+scripts/build_release.py   release zip + sha256 (CI and tests)
+.github/workflows/release.yml   CI: test on Windows → publish release build-<n>
 app/main.py                app factory, security headers, error pages, router registration
 app/config.py              env config: HSCO_DATA_DIR, HSCO_RP_ID, HSCO_ORIGIN, session timeouts …
 app/db.py, app/models.py   engine/session, ORM schema
@@ -38,6 +42,23 @@ empty state). `static/app.css` is the design system (tokens in `:root`); `static
 (rows carry `data-tags`), sortable tables, footer totals that follow filters, quick search (`/api/employees`),
 drawers, toasts, the month switcher, Chart.js defaults and WebAuthn helpers. Icons: Lucide sprite
 `static/icons.svg` (`<use href="/static/icons.svg#i-name">`); font: Inter (`static/fonts`). All vendored.
+
+## Update system (v1.2)
+```
+push to main ──► GitHub Actions: tests (windows) ──► build_release.py ──► GitHub Release build-<n> (zip + sha256)
+                                                                                 │  GET releases/latest (every 10 min)
+run_server.py (supervisor, stdlib) ──spawns──► app/serve.py (uvicorn) ◄──────────┘ app/updater.py
+      ▲  exit 75 = restart          │ admin "Update now": download → sha256 → validate → DATA_DIR/updates/staged
+      └──────────────────────────────┘
+supervisor on restart: backup DB → move code to updates/rollback → move staged code in → pip if needed →
+start child → /healthz == new build within 90 s ? done : restore previous code and start it
+```
+- Version: `app/__init__.py` `__version__`; build stamp: `BUILD.json` (only in release zips; source checkout = build 0).
+- Managed files replaced by an update: everything in the zip (`app/`, `run_server.py`, `requirements*.txt`, `deploy/`,
+  `docs/`, `README.md`, `CLAUDE.md`, `BUILD.json`). Never touched: `DATA_DIR`, `.venv`, `reference/`.
+- The supervisor must stay stdlib-only and backwards compatible: a new `run_server.py` only takes effect on the next
+  full service restart (the running supervisor keeps its in-memory code).
+- Endpoints: `GET /api/update/status` (any signed-in user), `POST /api/update/check`, `POST /api/update/install` (admin).
 
 ## Data flow
 0. Every request gets one DB session via `Depends(get_db, scope="function")`: committed **before** the response is
