@@ -96,43 +96,73 @@ def test_full_browser_journey(server):
         page.wait_for_selector("#codes")
         assert len(page.query_selector_all("#codes div")) == 10
         page.click("a:has-text('Continue')")
-        assert "No data yet" in page.content()
+        assert "set up your first month" in page.content()
+        page.screenshot(path=str(OUT / "00_welcome.png"))
 
-        # ---- import
+        # ---- import (drag-and-drop zone with file preview)
         page.goto(base + "/imports")
         page.set_input_files("input[name=files]", files)
-        page.click("button:has-text('Import')")
+        assert len(page.query_selector_all("#filelist li")) == len(files)
+        page.click("#upbtn")
         page.wait_for_selector("text=Import result", timeout=120_000)
         assert "Unexpected" not in page.content()
         page.screenshot(path=str(OUT / "02_import.png"), full_page=True)
 
-        # ---- dashboard with charts
+        # ---- overview: checklist, KPIs, tabbed charts
         page.goto(base + "/")
-        page.wait_for_selector("canvas#cLoc")
+        page.wait_for_selector("canvas#cLoc", state="attached")
         n_charts = page.evaluate("Object.keys(Chart.instances || {}).length")
         assert n_charts >= 5, errors
+        assert page.is_visible("text=Month-end checklist")
         page.screenshot(path=str(OUT / "03_dashboard.png"), full_page=True)
+        page.click("#dash-tabs [data-tab=punct]")
+        page.wait_for_selector("canvas#cIn", state="visible")
+        page.screenshot(path=str(OUT / "03b_dashboard_punctuality.png"), full_page=True)
 
-        # ---- payroll sheet, filter, drill-down
+        # ---- quick search with the "/" shortcut
+        page.keyboard.press("/")
+        page.keyboard.type(emp_name[:6])
+        page.wait_for_selector("#q-results.open a")
+        page.screenshot(path=str(OUT / "03c_search.png"))
+        page.keyboard.press("Enter")
+        page.wait_for_url(re.compile(r".*/employee/"))
+
+        # ---- payroll sheet: search, chips, row click
         page.goto(base + "/periods/2026-10")
-        page.fill("input[type=search]", emp_name)
+        page.screenshot(path=str(OUT / "04_sheet.png"), full_page=True)
+        page.click("[data-chips] .chip[data-chip=deduction]")
+        shown = page.evaluate("Array.from(document.querySelectorAll('#res tbody tr')).filter(r=>r.style.display!=='none').length")
+        assert shown == page.evaluate("document.querySelectorAll('#res tbody tr[data-tags*=deduction]').length")
+        page.click("[data-chips] .chip[data-chip='']")
+        page.fill("input[data-filter='#res']", emp_name)
         visible = page.evaluate("Array.from(document.querySelectorAll('#res tbody tr')).filter(r=>r.style.display!=='none').length")
         assert visible == 1
-        page.screenshot(path=str(OUT / "04_sheet.png"))
-        page.click(f"a:has-text('{emp_name}')")
+        page.click("#res tbody tr:visible")
         page.wait_for_url(re.compile(rf".*/employee/{emp}"))
         assert page.query_selector(".cal .day") is not None
         page.screenshot(path=str(OUT / "05_drilldown.png"), full_page=True)
 
-        # ---- day correction via form
-        page.fill("input[name=day]", "2026-10-05")
-        page.select_option("select[name=s1]", "A")
-        page.select_option("select[name=s2]", "A")
-        page.fill("input[name=work_hm]", "00:00")
-        page.fill("form[action$=day-override] input[name=reason]", "E2E test correction")
+        # ---- correct a day straight from the calendar (side panel)
+        page.click(".cal .day[data-day='2026-10-05']")
+        page.wait_for_selector("#day.open")
+        page.click("#quick [data-q^='A,A']")
+        page.fill("#day-form input[name=reason]", "E2E test correction")
+        page.screenshot(path=str(OUT / "05b_day_drawer.png"))
         page.click("button:has-text('Save day correction')")
         page.wait_for_selector("text=Day override saved")
-        assert "E2E test correction" in page.content()
+        page.click("#emp-tabs [data-tab=corr]")
+        assert page.is_visible("text=E2E test correction")
+
+        # ---- review queue: mark an exception reviewed via the side panel
+        page.goto(base + "/flags?period=2026-10")
+        before = page.inner_text(".ph .split .strong")
+        page.click("#fl button[data-act=review] >> nth=0")
+        page.wait_for_selector("#rev.open")
+        page.click("#rev [data-note='No action needed']")
+        page.screenshot(path=str(OUT / "06a_review.png"))
+        page.click("#rv-save")
+        page.wait_for_selector(".toast:has-text('Marked reviewed')")
+        assert page.inner_text(".ph .split .strong") != before
 
         # ---- downloads
         with page.expect_download() as dl:
@@ -171,7 +201,8 @@ def test_full_browser_journey(server):
         page.click("#addkey")
         page.wait_for_selector("text=Virtual key", timeout=15_000)
         page.screenshot(path=str(OUT / "08_security.png"), full_page=True)
-        page.click("button:has-text('Sign out')")
+        page.click("#um-btn")
+        page.click("#um-menu button:has-text('Sign out')")
         page.fill("#u", "admin")
         page.fill("#p", ADMIN_PW)
         page.click("button:has-text('Continue')")
@@ -179,14 +210,16 @@ def test_full_browser_journey(server):
         page.screenshot(path=str(OUT / "09_mfa_choice.png"))
         page.click("#pk")
         page.wait_for_url(re.compile(rf"^{re.escape(base)}/$"), timeout=15_000)
-        assert "Board dashboard" in page.content()
+        assert "Month-end checklist" in page.content()
 
         # ---- every main page without JS errors
         for path in ("/flags", "/employees", "/reconciliation", "/settings", "/settings#holidays", "/users", "/audit",
                      f"/employees/{emp}"):
             page.goto(base + path)
             page.wait_for_load_state("networkidle")
-        page.goto(base + "/reconciliation")
-        page.screenshot(path=str(OUT / "10_reconciliation.png"), full_page=True)
+        for name, path in (("10_reconciliation", "/reconciliation"), ("11_employees", "/employees"), ("12_settings", "/settings"),
+                           ("13_users", "/users"), ("14_flags", "/flags"), ("15_exports", "/exports")):
+            page.goto(base + path)
+            page.screenshot(path=str(OUT / f"{name}.png"), full_page=True)
         browser.close()
     assert not errors, errors

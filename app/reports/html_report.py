@@ -52,4 +52,15 @@ def build_board_pack(db: Session, period: Period) -> str:
                               "policy": {"wfh_limit": pol.wfh_limit_days, "late_days": pol.persistent_late_days,
                                          "reg_days": pol.persistent_regularisation_days, "hpd": pol.hours_per_day,
                                          "exempt_groups": list(pol.exempt_groups)}}),
-        chart_js=chart_js, css=(APP_DIR / "static" / "app.css").read_text(encoding="utf-8"))
+        chart_js=chart_js, css=_css())
+
+
+def _css() -> str:
+    """App stylesheet with the Inter font embedded, so the standalone file looks identical offline."""
+    import base64
+    css = (APP_DIR / "static" / "app.css").read_text(encoding="utf-8")
+    font = APP_DIR / "static" / "fonts" / "inter-var.woff2"
+    if font.exists():
+        uri = "data:font/woff2;base64," + base64.b64encode(font.read_bytes()).decode()
+        css = css.replace('url("/static/fonts/inter-var.woff2")', f'url("{uri}")')
+    return css

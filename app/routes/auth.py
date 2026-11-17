@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+
+import anyio
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -165,6 +167,10 @@ def mfa_webauthn_options(c: Ctx = Depends(partial_ctx)):
 @router.post("/mfa/webauthn/verify")
 async def mfa_webauthn_verify(request: Request, c: Ctx = Depends(partial_ctx)):
     body = await request.json()
+    return await anyio.to_thread.run_sync(_webauthn_verify, c, body)
+
+
+def _webauthn_verify(c: Ctx, body: dict):
     ok = passkeys.finish_authentication(c.db, c.session, c.user, body.get("credential", {}))
     nxt = body.get("next") or "/"
     if ok:
@@ -281,6 +287,10 @@ def webauthn_reg_options(c: Ctx = Depends(viewer)):
 @router.post("/security/webauthn/register")
 async def webauthn_register(request: Request, c: Ctx = Depends(viewer)):
     body = await request.json()
+    return await anyio.to_thread.run_sync(_webauthn_register, c, body)
+
+
+def _webauthn_register(c: Ctx, body: dict):
     try:
         m = passkeys.finish_registration(c.db, c.session, c.user, body.get("credential", {}),
                                          (body.get("label") or "Security key")[:60])

@@ -52,7 +52,7 @@ place names, notes where the app calendar differs from greytHR.
 | UNAUTHORISED_ABSENCE | high | any `A` half-day |
 | WFH_OVER_LIMIT | high | WFH days > limit |
 | LEAVE_EXHAUSTED | high | leave closing would go negative → salary deduction |
-| PERSISTENT_LATE | medium | see KPI |
+| PERSISTENT_LATE | medium | "Often more than 1 h late" (see KPI) |
 | PERSISTENT_REGULARISATION | medium | regularised days ≥ 3 |
 | MISSING_PUNCHES | medium | ≥ 2 present days with one punch / no out |
 | PRESENT_WITHOUT_PUNCH | medium | present days with times but zero swipes (employee punches on other days) |

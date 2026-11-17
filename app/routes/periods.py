@@ -107,7 +107,12 @@ def drill(key: str, emp_no: str, c: Ctx = Depends(viewer)):
         weeks[-1] += [None] * (7 - len(weeks[-1]))
     raw_status = {m.day.isoformat(): (m.s1, m.s2) for m in c.db.scalars(
         select(MusterRow).where(MusterRow.period_id == p.id, MusterRow.emp_no == emp_no))}
+    order = list(c.db.scalars(select(MonthResult.emp_no).where(MonthResult.period_id == p.id).order_by(MonthResult.emp_no)))
+    i = order.index(emp_no)
+    prev_emp = order[i - 1] if i > 0 else None
+    next_emp = order[i + 1] if i + 1 < len(order) else None
     return render(c, "employee_month.html", period=p, r=r, d=r.data, emp=emp, weeks=weeks, d_ovr=d_ovr, m_ovr=m_ovr,
+                  prev_emp=prev_emp, next_emp=next_emp,
                   opening=opening, history=history, override_labels=OVERRIDE_LABELS, raw_status=raw_status,
                   day_types=[WORKDAY, WEEKLY_OFF, HOLIDAY], policy=get_policy(c.db),
                   status_codes=sorted(get_policy(c.db).status_map.keys()))

@@ -25,6 +25,20 @@ deploy/install_windows.ps1  installer (venv, env vars, cert, admin, scheduled ta
 tests/                      unit, parser, real-data reconciliation, HTTP integration, browser e2e
 ```
 
+## Concurrency rule (important, see CHANGELOG 1.1.0)
+SQLite allows one writer. **Never run a blocking DB call on the event loop.** Route handlers that touch the DB are
+plain `def` (FastAPI runs them in a thread pool); an `async def` handler may only `await` the request body and must
+then hand off with `anyio.to_thread.run_sync(...)`. `get_db` is an async generator with shielded commit/rollback/close
+and `scope="function"` (commits before the response). Middleware must be pure ASGI (no `BaseHTTPMiddleware`).
+Regression tests: `tests/e2e/test_disconnect.py`.
+
+## Front end
+Server-rendered Jinja pages; shared macros in `templates/_ui.html` (icon, person, badges, KPI with delta, toplist,
+empty state). `static/app.css` is the design system (tokens in `:root`); `static/app.js` provides tabs, filter chips
+(rows carry `data-tags`), sortable tables, footer totals that follow filters, quick search (`/api/employees`),
+drawers, toasts, the month switcher, Chart.js defaults and WebAuthn helpers. Icons: Lucide sprite
+`static/icons.svg` (`<use href="/static/icons.svg#i-name">`); font: Inter (`static/fonts`). All vendored.
+
 ## Data flow
 0. Every request gets one DB session via `Depends(get_db, scope="function")`: committed **before** the response is
    sent (required with SQLite — otherwise the next browser request can hit a held write lock).
@@ -43,6 +57,7 @@ tests/                      unit, parser, real-data reconciliation, HTTP integra
 | settings | `policy` and `general` JSON |
 | employees, holiday_calendars, holidays, geofences, geo_cache | master data |
 | periods | month + status DRAFT/FINALISED |
+| flag_reviews | review-queue state per period/employee/flag (note, who, when); survives recomputation |
 | imports | file name, sha256, sheet, rows, warnings, who/when |
 | muster_rows, swipes, summary_rows, manual_mis_rows | imported data per period |
 | day_overrides, month_overrides, leave_openings | manual entries (reason mandatory) |

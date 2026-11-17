@@ -1,0 +1,59 @@
+{# Shared UI macros. Import with: {% import "_ui.html" as ui %} #}
+
+{% macro icon(name, cls="") -%}
+<svg class="ic {{ cls }}" aria-hidden="true"><use href="/static/icons.svg#i-{{ name }}"></use></svg>
+{%- endmacro %}
+
+{% macro initials(name) -%}
+{%- set parts = (name or "?").split() -%}{{ (parts[0][0] ~ (parts[-1][0] if parts|length > 1 else "")) | upper }}
+{%- endmacro %}
+
+{% macro org_initials(name) -%}
+{%- set w = (name or "H S").replace("&", " ").split() | select("ne", "Co.") | list -%}{{ (w[0][0] ~ (w[1][0] if w|length > 1 else "")) | upper }}
+{%- endmacro %}
+
+{% macro person(name, sub="", href=None) -%}
+<div class="person"><span class="av">{{ initials(name) }}</span><div style="min-width:0">
+{% if href %}<a href="{{ href }}"><b>{{ name }}</b></a>{% else %}<b>{{ name }}</b>{% endif %}
+{% if sub %}<span>{{ sub }}</span>{% endif %}</div></div>
+{%- endmacro %}
+
+{% macro sev(s) -%}
+<span class="badge b-{{ s }}"><span class="d"></span>{{ {'critical':'Critical','high':'High','medium':'Medium','info':'Info'}.get(s, s) }}</span>
+{%- endmacro %}
+
+{% macro status_badge(p) -%}
+{% if p.status == 'FINALISED' %}<span class="badge b-ok">{{ icon('lock','sm') }} Finalised</span>
+{% else %}<span class="badge b-info"><span class="d"></span>Draft</span>{% endif %}
+{%- endmacro %}
+
+{# delta: positive change is good when good_up, bad otherwise #}
+{% macro delta(cur, prev, good_up=False, unit="") -%}
+{%- if prev is not none and cur is not none -%}
+{%- set d = (cur - prev) -%}
+{%- if d|abs < 0.005 -%}<span class="delta flat">— same as last month</span>
+{%- else -%}
+{%- set up = d > 0 -%}
+<span class="delta {{ ('up' if up else 'down') ~ ('-good' if (up == good_up) else '-bad') }}">{{ '▲' if up else '▼' }} {{ d|abs|n }}{{ unit }}</span><span>vs last month</span>
+{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro kpi(label, value, ic="", tone="", href=None, foot="", sub="") -%}
+{% if href %}<a class="kpi {{ tone }}" href="{{ href }}">{% else %}<div class="kpi {{ tone }}">{% endif %}
+  <div class="l">{% if ic %}{{ icon(ic, 'sm') }}{% endif %}{{ label }}</div>
+  <div class="v">{{ value }}{% if sub %} <small>{{ sub }}</small>{% endif %}</div>
+  {% if foot %}<div class="f">{{ foot }}</div>{% endif %}
+{% if href %}</a>{% else %}</div>{% endif %}
+{%- endmacro %}
+
+{% macro empty(title, text="", ic="sparkles") -%}
+<div class="empty"><div class="ring">{{ icon(ic, 'lg') }}</div><h3>{{ title }}</h3>{% if text %}<p>{{ text }}</p>{% endif %}{{ caller() if caller }}</div>
+{%- endmacro %}
+
+{% macro csrf_field() -%}<input type="hidden" name="csrf" value="{{ csrf }}">{%- endmacro %}
+
+{% macro toplist(rows, unit, pkey, n=8) -%}
+<ul class="list">{% for r in rows[:n] %}<li><span class="rank">{{ loop.index }}</span>{{ person(r.name, r.group, '/periods/' ~ pkey ~ '/employee/' ~ r.emp_no) }}<span class="r">{{ r.value|n }} {{ unit }}</span></li>
+{% else %}<li class="muted">{{ icon('circle-check','sm') }} Nobody this month.</li>{% endfor %}</ul>
+{%- endmacro %}

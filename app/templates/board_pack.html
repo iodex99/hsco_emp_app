@@ -2,6 +2,13 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Board Pack · {{ period.label }} · {{ org.org_name }}</title>
 <style>{{ css|safe }}
+body{background:var(--bg)}.main{max-width:1400px;margin:0 auto;padding:20px 28px 48px}
+.card{padding:16px 20px}.card h2{font-size:15px;font-weight:600;margin:0 0 12px}.grid>.card{margin-bottom:0}
+.badge.p-critical,.badge.b-critical{background:var(--bad-bg);color:var(--bad)}.badge.p-high{background:var(--warn-bg);color:var(--warn)}
+.badge.p-medium{background:#fefbe8;color:#a15c07}.badge.p-info{background:var(--info-bg);color:var(--info)}
+.tabs a{padding:10px 12px;color:var(--text-3);font-weight:600;border-bottom:2px solid transparent;margin-bottom:-1px}.tabs a.on{color:var(--brand-700);border-bottom-color:var(--brand)}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.hdr{background:linear-gradient(160deg,#1d3c96,#122659)!important;padding:22px 28px!important}
 .main{max-width:1400px;margin:0 auto}.hdr{background:var(--navy);color:#fff;padding:18px 28px}
 .hdr h1{margin:0;font-size:20px}.hdr p{margin:4px 0 0;color:#cbd5e1;font-size:12.5px}
 .tabs a{cursor:pointer}.modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;z-index:50;overflow:auto;padding:30px 12px}
@@ -32,20 +39,20 @@
   <select id="gf"><option value="">All groups</option></select>
   <label style="font-weight:400"><input type="checkbox" id="onlyflag"> only with flags</label>
   <span class="muted small" id="cnt"></span></div>
-  <div class="tablewrap"><table id="tbl"><thead><tr></tr></thead><tbody></tbody></table></div>
+  <div class="tw"><table id="tbl"><thead><tr></tr></thead><tbody></tbody></table></div>
   <p class="small muted">Click a column header to sort; click a row for the employee drill-down.</p></div></section>
 <section id="flags" class="hidden"><div class="card">
   <div class="badge-row" id="flagchips" style="margin-bottom:10px"></div>
-  <div class="tablewrap"><table id="ftbl"><thead><tr><th>Severity</th><th>Employee</th><th>Group</th><th>Flag</th><th>Detail</th></tr></thead><tbody></tbody></table></div></div></section>
+  <div class="tw"><table id="ftbl"><thead><tr><th>Severity</th><th>Employee</th><th>Group</th><th>Flag</th><th>Detail</th></tr></thead><tbody></tbody></table></div></div></section>
 <section id="people" class="hidden"><div class="grid g2" id="peoplebox"></div></section>
-<section id="groups" class="hidden"><div class="card"><div class="tablewrap"><table id="gtbl"><thead></thead><tbody></tbody></table></div></div></section>
+<section id="groups" class="hidden"><div class="card"><div class="tw"><table id="gtbl"><thead></thead><tbody></tbody></table></div></div></section>
 </div>
 <div class="modal" id="modal"><div class="box" id="mbox"></div></div>
 <script>{{ chart_js|safe }}</script>
 <script>
 const D = {{ data_json|safe }};
-const M = D.m, E = D.emps, P = ["#1f3a5f","#2b6cb0","#38a169","#d69e2e","#c53030","#6b46c1","#319795","#dd6b20","#718096","#b83280"];
-Chart.defaults.font.family='"Segoe UI",system-ui,Arial,sans-serif';Chart.defaults.font.size=11.5;Chart.defaults.maintainAspectRatio=false;
+const M = D.m, E = D.emps, P0 = ["#1f3a5f","#2b6cb0","#38a169","#d69e2e","#c53030","#6b46c1","#319795","#dd6b20","#718096","#b83280"];
+Chart.defaults.font.family='"Inter","Segoe UI",system-ui,sans-serif';Chart.defaults.color="#667085";Chart.defaults.elements.bar.borderRadius=5;Chart.defaults.scale.grid.color="#eef0f3";Chart.defaults.plugins.legend.position="bottom";Chart.defaults.plugins.legend.labels.usePointStyle=true;const P=["#2e5bdb","#15b79e","#7b9cff","#f79009","#7a5af8","#f04438","#98a2b3","#ee46bc","#0ba5ec","#669f2a"];Chart.defaults.font.size=11.5;Chart.defaults.maintainAspectRatio=false;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=(v,d=2)=>v==null||v===''?'':(Number.isInteger(+v)?String(+v):(+v).toFixed(d));
 const hm=m=>m==null?'':String(Math.floor(Math.round(m)/60)).padStart(2,'0')+':'+String(Math.round(m)%60).padStart(2,'0');
@@ -84,14 +91,14 @@ function drawSheet(){const q=document.getElementById('q').value.toLowerCase(),g=
  tbl.tBodies[0].innerHTML=rows.map(e=>`<tr class="clickable" onclick="openEmp('${esc(e.id)}')">${cols.map(c=>{let v=val(e,c[0]);
   if(c[0]==='total_hours')v=hm(v*60);else if(c[2])v=n(v);
   const cls=(c[2]?'num ':'')+(c[0]==='balance_hours'&&e.m.balance_hours<0?'neg':'')+(c[0]==='wfh_days'&&e.m.wfh_days>D.policy.wfh_limit?'neg':'');
-  if(c[0]==='deduction_days'&&e.m.deduction_days)v=`<span class="pill critical">${v}</span>`;else v=esc(v);
+  if(c[0]==='deduction_days'&&e.m.deduction_days)v=`<span class="badge critical">${v}</span>`;else v=esc(v);
   return `<td class="${cls}">${v}</td>`;}).join('')}</tr>`).join('');
  cnt.textContent=rows.length+' employees';}
 q.addEventListener('input',drawSheet);gf.addEventListener('change',drawSheet);onlyflag.addEventListener('change',drawSheet);drawSheet();
 // flags
 let fcode='';
-function drawFlags(){flagchips.innerHTML=`<a class="pill ${!fcode?'p-final':'info'}" onclick="fcode='';drawFlags()">All</a>`+M.flag_summary.map(f=>`<a class="pill p-${f.severity}" style="cursor:pointer;${fcode===f.code?'outline:2px solid #1f3a5f':''}" onclick="fcode='${f.code}';drawFlags()">${esc(f.label)} · ${f.count}</a>`).join('');
- ftbl.tBodies[0].innerHTML=M.flags.filter(f=>!fcode||f.code===fcode).map(f=>`<tr class="clickable" onclick="openEmp('${esc(f.emp_no)}')"><td><span class="pill p-${f.severity}">${f.severity}</span></td><td>${esc(f.name)}</td><td>${esc(f.group)}</td><td>${esc(D.labels[f.code]||f.code)}</td><td>${esc(f.message)}</td></tr>`).join('');}
+function drawFlags(){flagchips.innerHTML=`<a class="badge ${!fcode?'b-violet':'b-info'}" onclick="fcode='';drawFlags()">All</a>`+M.flag_summary.map(f=>`<a class="badge p-${f.severity}" style="cursor:pointer;${fcode===f.code?'outline:2px solid #1f3a5f':''}" onclick="fcode='${f.code}';drawFlags()">${esc(f.label)} · ${f.count}</a>`).join('');
+ ftbl.tBodies[0].innerHTML=M.flags.filter(f=>!fcode||f.code===fcode).map(f=>`<tr class="clickable" onclick="openEmp('${esc(f.emp_no)}')"><td><span class="badge p-${f.severity}">${f.severity}</span></td><td>${esc(f.name)}</td><td>${esc(f.group)}</td><td>${esc(D.labels[f.code]||f.code)}</td><td>${esc(f.message)}</td></tr>`).join('');}
 drawFlags();
 // people
 const pl=(t,arr,f)=>`<div class="card"><h2>${t} (${arr.length})</h2><table><tbody>${arr.map(f).join('')||'<tr><td class="muted">None</td></tr>'}</tbody></table></div>`;
@@ -117,9 +124,9 @@ function openEmp(id){const e=E.find(x=>x.id===id);if(!e)return;const m=e.m;
  [hm(m.avg_in_min),'Avg in (out '+hm(m.avg_out_min)+')'],[m.regularised_days,'Regularised days'],[m.missing_punch_days,'Missing punches'],[m.leave_closing==null?'—':n(m.leave_closing),'Leave balance']];
  mbox.innerHTML=`<button class="btn ghost close" onclick="modal.style.display='none'">Close ✕</button><h2 style="margin-top:0">${esc(e.name)} <span class="muted" style="font-weight:400">${esc(e.id)} · ${esc(e.group)} · ${esc(e.loc)}</span></h2>
  ${m.remark?`<div class="flash">${esc(m.remark)}</div>`:''}<div class="kpis">${kv.map(x=>`<div class="kpi ${x[2]||''}"><div class="v">${esc(x[0])}</div><div class="l">${esc(x[1])}</div></div>`).join('')}</div>
- <div class="grid g2"><div class="card"><h2>Calendar</h2>${cal}</div><div class="card"><h2>Flags</h2><table><tbody>${e.flags.map(f=>`<tr><td><span class="pill p-${f.severity}">${f.severity}</span></td><td>${esc(f.message)}</td></tr>`).join('')||'<tr><td class="muted">None</td></tr>'}</tbody></table></div></div>
- <div class="card"><h2>Day by day</h2><div class="tablewrap"><table><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Status</th><th>In</th><th>Out</th><th class="num">Hours</th><th class="num">Late</th><th>Where</th><th>Notes</th></tr></thead><tbody>
- ${e.days.map(d=>`<tr><td>${d.d}</td><td>${d.w}</td><td class="small">${d.t}</td><td>${esc(d.s)}${d.wfh?' <span class="pill info">WFH</span>':''}${d.miss?' <span class="pill high">missing punch</span>':''}${d.reg?' <span class="pill info">regularised</span>':''}</td><td>${d.i}</td><td>${d.o}</td><td class="num">${hm(d.h)}</td><td class="num">${d.late||''}</td><td class="small">${esc([...new Set(d.locs)].join(', '))}</td><td class="small">${esc(d.n.join('; '))}</td></tr>`).join('')}
+ <div class="grid g2"><div class="card"><h2>Calendar</h2>${cal}</div><div class="card"><h2>Flags</h2><table><tbody>${e.flags.map(f=>`<tr><td><span class="badge p-${f.severity}">${f.severity}</span></td><td>${esc(f.message)}</td></tr>`).join('')||'<tr><td class="muted">None</td></tr>'}</tbody></table></div></div>
+ <div class="card"><h2>Day by day</h2><div class="tw"><table><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Status</th><th>In</th><th>Out</th><th class="num">Hours</th><th class="num">Late</th><th>Where</th><th>Notes</th></tr></thead><tbody>
+ ${e.days.map(d=>`<tr><td>${d.d}</td><td>${d.w}</td><td class="small">${d.t}</td><td>${esc(d.s)}${d.wfh?' <span class="badge info">WFH</span>':''}${d.miss?' <span class="badge high">missing punch</span>':''}${d.reg?' <span class="badge info">regularised</span>':''}</td><td>${d.i}</td><td>${d.o}</td><td class="num">${hm(d.h)}</td><td class="num">${d.late||''}</td><td class="small">${esc([...new Set(d.locs)].join(', '))}</td><td class="small">${esc(d.n.join('; '))}</td></tr>`).join('')}
  </tbody></table></div></div>`;
  modal.style.display='block';modal.scrollTop=0;}
 modal.onclick=ev=>{if(ev.target===modal)modal.style.display='none';};

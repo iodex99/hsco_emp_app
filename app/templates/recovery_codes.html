@@ -1,10 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Recovery codes{% endblock %}
 {% block content %}
-<div class="top"><h1>Your recovery codes</h1></div>
-<div class="card" style="max-width:560px">
-<p>{% if first %}Two-step verification is on. {% endif %}Store these codes somewhere safe (printed, or in a password manager). Each code works <b>once</b> if you lose your phone or key. They will not be shown again.</p>
+<div class="ph"><div><h1>Save your recovery codes</h1><div class="sub">{% if first %}Two-step verification is now on. {% endif %}Use one of these if you lose your phone or key. Each works once.</div></div></div>
+<div class="card" style="max-width:620px"><div class="bd">
+<div class="alert warn">{{ ui.icon('triangle-alert') }}<span>These codes won't be shown again. Print them or store them in a password manager.</span></div>
 <div class="codes" id="codes">{% for c in codes %}<div>{{ c }}</div>{% endfor %}</div>
-<p style="margin-top:14px"><button class="btn ghost" onclick="window.print()">Print</button> <a class="btn" href="/">Continue</a></p>
-</div>
+<div class="row mt"><button class="btn sec" type="button" onclick="window.print()">{{ ui.icon('printer','sm') }} Print</button>
+<button class="btn sec" type="button" onclick="navigator.clipboard.writeText([...document.querySelectorAll('#codes div')].map(d=>d.textContent).join('\n'));this.textContent='Copied'">Copy</button>
+<span class="spacer"></span><a class="btn" href="/">I've saved them — continue {{ ui.icon('arrow-right','sm') }}</a></div>
+</div></div>
 {% endblock %}

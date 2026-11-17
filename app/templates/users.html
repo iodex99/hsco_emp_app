@@ -1,27 +1,48 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Users{% endblock %}
 {% block content %}
-<div class="top"><h1>Users</h1></div>
-{% if new_password %}<div class="flash">Temporary password for <b>{{ new_password[0] }}</b>: <code id="temp-pw">{{ new_password[1] }}</code> — share it securely. They must change it and set up two-step verification at first sign-in.</div>{% endif %}
-<div class="card"><h2>Add user</h2>
-<form method="post" action="/users" class="row"><input type="hidden" name="csrf" value="{{ csrf }}">
-  <div class="field"><label>Username</label><input name="username" required></div>
-  <div class="field"><label>Full name</label><input name="full_name"></div>
-  <div class="field"><label>Email (for email codes)</label><input type="email" name="email"></div>
-  <div class="field"><label>Role</label><select name="role"><option value="viewer">viewer — board / read only</option><option value="hr">hr — import, correct, finalise</option><option value="admin">admin — everything + users &amp; settings</option></select></div>
-  <button class="btn">Create</button></form></div>
-<div class="card"><div class="tablewrap"><table><thead><tr><th>User</th><th>Role / status</th><th>2FA methods</th><th>Last sign-in</th><th>Actions</th></tr></thead><tbody>
+<div class="ph"><div><h1>Users</h1><div class="sub">{{ rows|length }} accounts · two-step verification {{ 'required' if general.mfa_required else 'optional' }}</div></div>
+  <div class="actions"><button class="btn" type="button" onclick="HSCO.openDrawer('newuser')">{{ ui.icon('user-plus','sm') }} Add user</button></div></div>
+{% if new_password %}<div class="alert ok">{{ ui.icon('key-round') }}<span>Temporary password for <b>{{ new_password[0] }}</b>: <code id="temp-pw" style="font-size:14px">{{ new_password[1] }}</code>
+  <button class="btn sm sec" type="button" onclick="navigator.clipboard.writeText(document.getElementById('temp-pw').textContent);this.textContent='Copied'">Copy</button><br>
+  <span class="small">Share it privately. At first sign-in they set up two-step verification and choose their own password.</span></span></div>{% endif %}
+<div class="card flush"><div class="bd"><div class="tw" style="max-height:none"><table>
+<thead><tr><th>User</th><th>Role</th><th>Two-step methods</th><th>Last sign-in</th><th style="width:1%"></th></tr></thead><tbody>
 {% for u in rows %}<tr>
-<td><b>{{ u.username }}</b><br><span class="small muted">{{ u.full_name }}</span>{% if u.locked_until and u.locked_until > now() %} <span class="pill critical">locked</span>{% endif %}{% if u.must_change_password %} <span class="pill info">temp password</span>{% endif %}</td>
-<td><form method="post" action="/users/{{ u.id }}/update" class="row"><input type="hidden" name="csrf" value="{{ csrf }}">
-  <select name="role">{% for r in roles %}<option {{ 'selected' if u.role == r }}>{{ r }}</option>{% endfor %}</select>
-  <input name="full_name" value="{{ u.full_name }}" placeholder="Full name" style="width:130px"><input name="email" value="{{ u.email }}" placeholder="email" style="width:170px">
-  <label style="font-weight:400"><input type="checkbox" name="is_active" value="1" {{ 'checked' if u.is_active }}> active</label><button class="btn sm ghost">Save</button></form></td>
-<td class="small">{% for m in u.mfa_methods if m.confirmed %}{{ m.kind }} ({{ m.label }}){{ ', ' if not loop.last }}{% else %}<span class="muted">none</span>{% endfor %}</td>
-<td class="small">{{ u.last_login.strftime('%d-%b-%Y %H:%M') if u.last_login else '—' }}</td>
-<td class="badge-row">
-  <form method="post" action="/users/{{ u.id }}/reset-password" data-confirm="Generate a new temporary password for {{ u.username }}?"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost">Reset password</button></form>
-  <form method="post" action="/users/{{ u.id }}/reset-mfa" data-confirm="Remove all 2FA methods for {{ u.username }}? They will re-enrol at next sign-in."><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost">Reset 2FA</button></form>
-  <form method="post" action="/users/{{ u.id }}/unlock"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost">Unlock</button></form>
-</td></tr>{% endfor %}</tbody></table></div></div>
+  <td>{{ ui.person(u.full_name or u.username, u.username ~ (' · ' ~ u.email if u.email else '')) }}
+    <div class="mt-s">{% if not u.is_active %}<span class="badge b-grey">Disabled</span>{% endif %}{% if u.locked_until and u.locked_until > now() %} <span class="badge b-bad">Locked</span>{% endif %}{% if u.must_change_password %} <span class="badge b-info">Temporary password</span>{% endif %}</div></td>
+  <td><span class="badge {{ {'admin':'b-violet','hr':'b-info','viewer':'b-grey'}[u.role] }}">{{ {'admin':'Admin','hr':'HR','viewer':'Viewer'}[u.role] }}</span></td>
+  <td class="small">{% for m in u.mfa_methods if m.confirmed %}<span class="tag">{{ {'totp':'App','webauthn':'Key','email':'Email'}[m.kind] }}: {{ m.label }}</span>{% else %}<span class="muted">Not set up yet</span>{% endfor %}</td>
+  <td class="small">{{ u.last_login.strftime('%d %b %Y, %H:%M') if u.last_login else '—' }}</td>
+  <td><button class="btn sm sec" type="button" onclick="HSCO.openDrawer('u{{ u.id }}')">Manage</button></td></tr>
+{% endfor %}</tbody></table></div></div></div>
+<div class="card"><div class="bd small muted"><b style="color:var(--text)">Roles</b> — <b>Viewer</b>: partners and the board; can see everything, change nothing. <b>HR</b>: imports, corrections, opening balances, calendars, finalising months. <b>Admin</b>: everything, plus calculation rules, users and re-opening finalised months.</div></div>
+
+<aside class="drawer" id="newuser"><div class="dh"><h2>Add user</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<form method="post" action="/users" style="display:contents">{{ ui.csrf_field() }}<div class="db">
+  <div class="field"><label>Username</label><input name="username" required placeholder="e.g. priya.hr"><div class="help">Letters, numbers, dot, dash, underscore.</div></div>
+  <div class="field"><label>Full name</label><input name="full_name"></div>
+  <div class="field"><label>Email</label><input type="email" name="email"><div class="help">Needed only for email sign-in codes.</div></div>
+  <div class="field"><label>Role</label><select name="role"><option value="viewer">Viewer — partners / board, read-only</option><option value="hr">HR — import, correct, finalise</option><option value="admin">Admin — everything</option></select></div>
+  <p class="help">A temporary password is generated and shown once.</p>
+</div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn">Create user</button></div></form></aside><div class="scrim"></div>
+
+{% for u in rows %}
+<aside class="drawer" id="u{{ u.id }}"><div class="dh"><div><h2>{{ u.full_name or u.username }}</h2><div class="small muted">{{ u.username }}</div></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<div class="db">
+  <form method="post" action="/users/{{ u.id }}/update">{{ ui.csrf_field() }}
+    <div class="field"><label>Full name</label><input name="full_name" value="{{ u.full_name }}"></div>
+    <div class="field"><label>Email</label><input name="email" value="{{ u.email }}"></div>
+    <div class="field"><label>Role</label><select name="role">{% for r in roles %}<option value="{{ r }}" {{ 'selected' if u.role == r }}>{{ {'admin':'Admin','hr':'HR','viewer':'Viewer'}[r] }}</option>{% endfor %}</select></div>
+    <label class="check mb"><input type="checkbox" name="is_active" value="1" {{ 'checked' if u.is_active }}> Account enabled</label>
+    <button class="btn block">Save changes</button></form>
+  <h3 class="mt" style="font-size:13.5px;border-top:1px solid var(--border);padding-top:16px">If they're stuck</h3>
+  <div class="stack mt-s">
+    <form method="post" action="/users/{{ u.id }}/reset-password" data-confirm="Create a new temporary password for {{ u.username }}?">{{ ui.csrf_field() }}<button class="btn sec block">{{ ui.icon('key-round','sm') }} Reset password</button></form>
+    <form method="post" action="/users/{{ u.id }}/reset-mfa" data-confirm="Remove all two-step methods for {{ u.username }}? They'll set it up again at next sign-in.">{{ ui.csrf_field() }}<button class="btn sec block">{{ ui.icon('smartphone','sm') }} Reset two-step verification</button></form>
+    {% if u.locked_until and u.locked_until > now() %}<form method="post" action="/users/{{ u.id }}/unlock">{{ ui.csrf_field() }}<button class="btn sec block">{{ ui.icon('lock-open','sm') }} Unlock account</button></form>{% endif %}
+  </div>
+</div></aside><div class="scrim"></div>
+{% endfor %}
 {% endblock %}

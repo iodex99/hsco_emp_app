@@ -1,28 +1,33 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Reconciliation{% endblock %}
 {% block content %}
-<div class="top"><h1>Reconciliation — {{ period.label }}</h1><span class="sp"></span>
-<select data-nav aria-label="Period">{% for p in all_periods %}<option value="/reconciliation?period={{ p.key }}" {{ 'selected' if p.key == period.key }}>{{ p.label }}</option>{% endfor %}</select></div>
-<div class="card"><h2>App vs manual MIS (parallel run)</h2>
-{% if not r.has_manual %}<p class="muted">Upload the month's manual MIS workbook in <a href="/imports">Import</a> to compare it with the app's calculation line by line.</p>
+<div class="ph"><div><h1>Reconciliation</h1><div class="sub">{{ period.label }} · compare the app with your manual MIS sheet and with greytHR's own summary.</div></div></div>
+{% if not r.has_manual %}
+<div class="card"><div class="bd">{% call ui.empty('No manual sheet to compare', 'During the first months, also upload your manual MIS workbook on the Import page — every difference will be listed here.', 'git-compare') %}<a class="btn mt" href="/imports">Import files</a>{% endcall %}</div></div>
 {% else %}
-<p><b>{{ r.matched }}</b> of <b>{{ r.compared }}</b> employees are identical on every column. Differences are listed below — each is usually a manual decision that should become an employee setting or a recorded override in the app.</p>
-<div class="toolbar"><input type="search" placeholder="Search…" data-filter="#rc"><label style="font-weight:400"><input type="checkbox" id="onlyd" checked> Only differences</label></div>
-<div class="tablewrap"><table id="rc"><thead><tr><th>Employee</th><th>Field</th><th class="num">Manual</th><th class="num">App</th><th>Manual remark</th><th>App remark</th></tr></thead><tbody>
+{% set diffrows = r.rows|selectattr('diffs')|list %}
+<div class="kpis">
+  {{ ui.kpi('Identical employees', r.matched ~ ' / ' ~ r.compared, 'circle-check', 'good' if r.matched == r.compared else '', none, ((r.matched / r.compared * 100)|round|int ~ '% match on every column') if r.compared else '') }}
+  {{ ui.kpi('Employees with a difference', diffrows|length, 'git-compare', 'warn' if diffrows else 'good') }}
+  {{ ui.kpi('Only in one source', r.rows|rejectattr('in_app')|list|length + r.rows|rejectattr('in_manual')|list|length, 'users') }}
+  {{ ui.kpi('greytHR week-days wrong', r.summary_diffs|length, 'triangle-alert', 'warn' if r.summary_diffs else '') }}
+</div>
+<div class="alert">{{ ui.icon('info') }}<span>A difference usually means a manual decision in your sheet. Make it permanent on the employee's page (working pattern, hours per day, exemption) or record it as a month adjustment — then it shows here as a match.</span></div>
+<div class="card flush"><div class="hd"><h2>Differences</h2><div class="tools"><input type="search" placeholder="Filter…" data-filter="#rc" style="width:200px"></div></div><div class="bd"><div class="tw"><table id="rc" class="compact">
+<thead><tr><th>Employee</th><th>Column</th><th class="num">Manual sheet</th><th class="num">App</th><th>Manual remark</th><th>App remark</th></tr></thead><tbody>
 {% for x in r.rows %}
- {% if x.diffs %}{% for df in x.diffs %}<tr class="d"><td><a href="/periods/{{ period.key }}/employee/{{ x.emp_no }}">{{ x.name }}</a> <span class="muted small">{{ x.emp_no }}</span></td><td>{{ df.field }}</td><td class="num">{{ df.manual|n }}</td><td class="num">{{ df.app|n }}</td><td class="small">{{ x.manual_remark }}</td><td class="small">{{ x.app_remark }}</td></tr>{% endfor %}
- {% elif not x.in_app or not x.in_manual %}<tr class="d"><td>{{ x.name }} <span class="muted small">{{ x.emp_no }}</span></td><td colspan="5">{{ 'Only in manual sheet' if not x.in_app else 'Only in app' }}</td></tr>
- {% else %}<tr class="m" style="display:none"><td>{{ x.name }} <span class="muted small">{{ x.emp_no }}</span></td><td colspan="3"><span class="pill p-ok">match</span></td><td class="small">{{ x.manual_remark }}</td><td class="small">{{ x.app_remark }}</td></tr>{% endif %}
-{% endfor %}</tbody></table></div>
-{% endif %}</div>
+ {% for df in x.diffs %}<tr class="click" data-href="/periods/{{ period.key }}/employee/{{ x.emp_no }}">{% if loop.first %}<td rowspan="{{ x.diffs|length }}" style="vertical-align:top;background:var(--surface)">{{ ui.person(x.name, x.emp_no) }}</td>{% endif %}
+   <td class="strong">{{ df.field }}</td><td class="num">{{ df.manual|n }}</td><td class="num">{{ df.app|n }}</td><td class="small muted">{{ x.manual_remark }}</td><td class="small muted">{{ x.app_remark }}</td></tr>{% endfor %}
+ {% if not x.in_app or not x.in_manual %}<tr><td>{{ ui.person(x.name, x.emp_no) }}</td><td colspan="5"><span class="badge b-warn">{{ 'Only in the manual sheet' if not x.in_app else 'Only in the app' }}</span></td></tr>{% endif %}
+{% endfor %}
+{% if not diffrows %}<tr><td colspan="6">{% call ui.empty('Everything matches', '', 'circle-check') %}{% endcall %}</td></tr>{% endif %}
+</tbody></table></div></div></div>
+{% endif %}
 {% if r.has_summary %}
-<div class="card"><h2>greytHR Summary report vs app</h2>
-<p class="small muted">greytHR's own "Total Week Days" is often wrong (it ignores worked 1st Saturdays and some weekly-off patterns). These are the rows where it differs from the app's calendar.</p>
-<table data-sortable><thead><tr><th>Employee</th><th>Field</th><th class="num">greytHR</th><th class="num">App</th></tr></thead><tbody>
-{% for x in r.summary_diffs %}<tr><td><a href="/periods/{{ period.key }}/employee/{{ x.emp_no }}">{{ x.name }}</a></td><td>{{ x.field }}</td><td class="num">{{ x.greythr|n }}</td><td class="num">{{ x.app|n }}</td></tr>
-{% else %}<tr><td colspan="4" class="muted">No differences.</td></tr>{% endfor %}</tbody></table></div>
+<div class="card flush"><div class="hd"><h2>greytHR Summary vs app</h2><span class="sub">greytHR's "Total Week Days" ignores worked 1st Saturdays and special patterns</span></div><div class="bd"><div class="tw" style="max-height:420px"><table class="compact" data-sortable>
+<thead><tr><th>Employee</th><th>Column</th><th class="num">greytHR</th><th class="num">App</th></tr></thead><tbody>
+{% for x in r.summary_diffs %}<tr class="click" data-href="/periods/{{ period.key }}/employee/{{ x.emp_no }}"><td>{{ ui.person(x.name, x.emp_no) }}</td><td>{{ x.field }}</td><td class="num">{{ x.greythr|n }}</td><td class="num">{{ x.app|n }}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">No differences.</td></tr>{% endfor %}</tbody></table></div></div></div>
 {% endif %}
 {% endblock %}
-{% block scripts %}<script>
-const cb=document.getElementById('onlyd'); if(cb) cb.onchange=()=>document.querySelectorAll('#rc tr.m').forEach(r=>r.style.display=cb.checked?'none':'');
-</script>{% endblock %}

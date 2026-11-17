@@ -1,9 +1,23 @@
+{% import "_ui.html" as ui with context %}
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="{{ csrf }}">
 <title>{% block title %}Sign in{% endblock %} · {{ org }}</title><link rel="stylesheet" href="/static/app.css"></head>
-<body><div class="authbox">
-{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
-{% block content %}{% endblock %}
-<p class="muted small" style="margin-top:22px">{{ org }} · data stays on this server</p>
-</div><script src="/static/app.js"></script>{% block scripts %}{% endblock %}</body></html>
+<body>
+<div class="auth">
+  <section class="art">
+    <div style="display:flex;gap:10px;align-items:center"><span class="logo" style="background:rgba(255,255,255,.15)">{{ ui.org_initials(org) }}</span><b>{{ org }}</b></div>
+    <h2>Month-end attendance and leave, calculated in minutes.</h2>
+    <p>Import the greytHR exports, review what needs attention, and hand payroll a finalised sheet.</p>
+    <ul>
+      <li>{{ ui.icon('circle-check') }} Policy-accurate leave &amp; shortfall calculation</li>
+      <li>{{ ui.icon('circle-check') }} Board metrics with drill-down to every day</li>
+      <li>{{ ui.icon('shield-check') }} Two-step verification · data stays on this server</li>
+    </ul>
+  </section>
+  <section class="form"><div class="box">
+    {% if flash %}<div class="alert">{{ ui.icon('info') }}<span>{{ flash }}</span></div>{% endif %}
+    {% block content %}{% endblock %}
+  </div></section>
+</div>
+<script src="/static/app.js"></script>{% block scripts %}{% endblock %}</body></html>

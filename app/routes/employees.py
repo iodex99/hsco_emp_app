@@ -60,7 +60,7 @@ def _parse_date(s: str):
 
 
 @router.post("/employees/save")
-async def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Form(""), location: str = Form(""),
+def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Form(""), location: str = Form(""),
                         department: str = Form(""), designation: str = Form(""), email: str = Form(""),
                         weekly_off: str = Form("MUSTER"), off_weekdays: list[str] = Form([]),
                         working_saturdays: str = Form(""), hours_per_day: str = Form(""), exempt: str = Form(""),

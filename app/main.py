@@ -11,7 +11,44 @@ from app.config import APP_DIR, get_config
 from app.db import init_db
 from app.web import templates
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
+
+CSP = ("default-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+       "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; form-action 'self'")
+
+
+class SecurityHeaders:
+    """Pure ASGI middleware (NOT BaseHTTPMiddleware, which cancels the request task when the client disconnects
+    and could leave a DB transaction open). Adds security headers and rejects oversized uploads."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        headers = dict(scope.get("headers") or [])
+        cl = headers.get(b"content-length", b"")
+        if cl.isdigit() and int(cl) > get_config().max_upload_mb * 1024 * 1024:
+            resp = JSONResponse({"detail": "Upload too large"}, status_code=413)
+            return await resp(scope, receive, send)
+        path = scope.get("path", "")
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                h = list(message.get("headers", []))
+                h += [(b"x-content-type-options", b"nosniff"), (b"x-frame-options", b"DENY"),
+                      (b"referrer-policy", b"same-origin"),
+                      (b"permissions-policy", b"geolocation=(), camera=(), microphone=()"),
+                      (b"content-security-policy", CSP.encode())]
+                if get_config().secure_cookies:
+                    h.append((b"strict-transport-security", b"max-age=31536000"))
+                if path.startswith(("/periods", "/employees", "/exports", "/api", "/flags")):
+                    h.append((b"cache-control", b"no-store"))
+                message = {**message, "headers": h}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
 def create_app() -> FastAPI:
@@ -26,24 +63,7 @@ def create_app() -> FastAPI:
     for r in (auth.router, pages.router, periods.router, employees.router, reports.router, settings.router, users.router):
         app.include_router(r)
 
-    @app.middleware("http")
-    async def security_headers(request: Request, call_next):
-        cl = request.headers.get("content-length")
-        if cl and cl.isdigit() and int(cl) > get_config().max_upload_mb * 1024 * 1024:
-            return JSONResponse({"detail": "Upload too large"}, status_code=413)
-        resp = await call_next(request)
-        resp.headers["X-Content-Type-Options"] = "nosniff"
-        resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["Referrer-Policy"] = "same-origin"
-        resp.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
-        resp.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; form-action 'self'")
-        if get_config().secure_cookies:
-            resp.headers["Strict-Transport-Security"] = "max-age=31536000"
-        if request.url.path.startswith(("/periods", "/employees", "/exports", "/api")):
-            resp.headers["Cache-Control"] = "no-store"
-        return resp
+    app.add_middleware(SecurityHeaders)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException):

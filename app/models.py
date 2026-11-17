@@ -318,3 +318,16 @@ class MonthResult(Base):
     data: Mapped[dict] = mapped_column(JSON)      # all EmployeeMonth scalar fields + ledger
     flags: Mapped[list] = mapped_column(JSON, default=list)
     days: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class FlagReview(Base):
+    """HR has looked at a flag for an employee-month (review queue progress). Survives recomputation."""
+    __tablename__ = "flag_reviews"
+    __table_args__ = (UniqueConstraint("period_id", "emp_no", "code"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period_id: Mapped[int] = mapped_column(ForeignKey("periods.id", ondelete="CASCADE"), index=True)
+    emp_no: Mapped[str] = mapped_column(String(32))
+    code: Mapped[str] = mapped_column(String(48))
+    note: Mapped[str] = mapped_column(Text, default="")
+    reviewed_by: Mapped[str] = mapped_column(String(64), default="")
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime, default=now)

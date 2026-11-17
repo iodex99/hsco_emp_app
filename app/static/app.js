@@ -1,110 +1,227 @@
-// Small, dependency-free helpers: sortable/filterable tables, confirms, WebAuthn, chart defaults.
+// HSCO UI helpers (no dependencies besides Chart.js). Keep in sync with docs/ARCHITECTURE.md "Front end".
 (function () {
   "use strict";
-  const csrf = () => (document.querySelector('meta[name="csrf"]') || {}).content || "";
-  window.HSCO = window.HSCO || {};
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const csrf = () => ($('meta[name="csrf"]') || {}).content || "";
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const H = (window.HSCO = window.HSCO || {});
+  H.esc = esc;
 
-  // ---------- tables: <table data-sortable> + <input data-filter="#tableId">
-  function cellVal(td) {
-    const v = td.getAttribute("data-v");
-    const t = v !== null ? v : td.textContent.trim();
-    const n = parseFloat(t.replace(/,/g, ""));
-    return isNaN(n) || !/^-?[\d.,]+$/.test(t.replace(/\s/g, "")) ? t.toLowerCase() : n;
+  // ---------- top bar ----------
+  const tb = $("#topbar");
+  if (tb) addEventListener("scroll", () => tb.classList.toggle("scrolled", scrollY > 4), { passive: true });
+  const umb = $("#um-btn"), umm = $("#um-menu");
+  if (umb) {
+    umb.addEventListener("click", (e) => { e.stopPropagation(); umm.classList.toggle("open"); });
+    document.addEventListener("click", () => umm.classList.remove("open"));
   }
-  document.querySelectorAll("table[data-sortable]").forEach((tbl) => {
-    tbl.querySelectorAll("th").forEach((th, idx) => {
+  const ps = $("#period-switch");
+  if (ps) ps.addEventListener("change", () => {
+    const k = ps.value, p = location.pathname;
+    if (/^\/periods\/\d{4}-\d{2}/.test(p)) location.href = p.replace(/^\/periods\/\d{4}-\d{2}/, "/periods/" + k);
+    else { const u = new URL(location.href); u.searchParams.set("period", k); if (!["/", "/flags", "/reconciliation"].includes(p)) u.pathname = "/"; location.href = u; }
+  });
+
+  // ---------- toasts ----------
+  H.toast = (msg) => {
+    const t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status");
+    t.innerHTML = `<svg class="ic"><use href="/static/icons.svg#i-circle-check"></use></svg><span>${esc(msg)}</span><button type="button" aria-label="Dismiss">✕</button>`;
+    t.querySelector("button").onclick = () => t.remove();
+    $("#toasts").appendChild(t); setTimeout(() => t.remove(), 6000);
+  };
+  $$("#toasts .toast").forEach((t) => setTimeout(() => t.remove(), 7000));
+
+  // ---------- global employee search ----------
+  const qi = $("#q-global"), qr = $("#q-results");
+  let people = null, act = -1;
+  async function loadPeople() {
+    if (people) return people;
+    const r = await fetch("/api/employees", { credentials: "same-origin" });
+    people = r.ok ? await r.json() : [];
+    return people;
+  }
+  function renderResults(list) {
+    act = list.length ? 0 : -1;
+    qr.innerHTML = list.length ? list.map((e, i) => `<a href="${esc(e.href)}" class="${i === 0 ? "act" : ""}"><span class="person"><span class="av">${esc(e.initials)}</span><span><b>${esc(e.name)}</b><span>${esc(e.emp_no)} · ${esc(e.group || "—")}</span></span></span><span class="meta">${e.flags ? `<span class="badge b-warn">${e.flags} flag${e.flags > 1 ? "s" : ""}</span>` : ""}</span></a>`).join("")
+      : `<div class="muted small" style="padding:10px">No match</div>`;
+    qr.classList.add("open");
+  }
+  if (qi) {
+    qi.addEventListener("focus", loadPeople);
+    qi.addEventListener("input", async () => {
+      const q = qi.value.trim().toLowerCase();
+      if (!q) { qr.classList.remove("open"); return; }
+      const all = await loadPeople();
+      renderResults(all.filter((e) => (e.name + " " + e.emp_no + " " + (e.group || "")).toLowerCase().includes(q)).slice(0, 8));
+    });
+    qi.addEventListener("keydown", (e) => {
+      const items = $$("a", qr);
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault(); if (!items.length) return;
+        act = (act + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items.forEach((a, i) => a.classList.toggle("act", i === act));
+      } else if (e.key === "Enter" && items[act]) { e.preventDefault(); location.href = items[act].href; }
+      else if (e.key === "Escape") { qr.classList.remove("open"); qi.blur(); }
+    });
+    document.addEventListener("click", (e) => { if (!e.target.closest(".search")) qr.classList.remove("open"); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); qi.focus(); }
+    });
+  }
+
+  // ---------- tabs (buttons with data-tab inside [data-tabs]; panes [data-pane]) ----------
+  function showTab(group, name) {
+    $$("[data-tab]", group).forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+    const scope = group.parentElement;
+    $$(":scope > [data-pane], :scope [data-pane]", scope).forEach((p) => p.classList.toggle("on", p.dataset.pane === name));
+    if (group.id) try { history.replaceState(null, "", "#" + name); } catch (e) {}
+  }
+  $$("[data-tabs]").forEach((g) => {
+    $$("[data-tab]", g).forEach((b) => b.addEventListener("click", () => showTab(g, b.dataset.tab)));
+    const h = location.hash.slice(1);
+    if (h && $(`[data-tab="${h}"]`, g)) showTab(g, h);
+  });
+  $$("[data-tab-link]").forEach((a) => a.addEventListener("click", (e) => {
+    e.preventDefault(); const name = a.dataset.tabLink; const g = $(`[data-tabs] [data-tab="${name}"]`);
+    if (g) { showTab(g.closest("[data-tabs]"), name); g.scrollIntoView({ behavior: "smooth", block: "start" }); }
+  }));
+
+  // ---------- sortable tables ----------
+  function cellVal(td) {
+    if (!td) return "";
+    const v = td.getAttribute("data-v"); const t = v !== null ? v : td.textContent.trim();
+    const n = parseFloat(t.replace(/[,−]/g, (c) => (c === "−" ? "-" : "")));
+    return v !== null && !isNaN(parseFloat(v)) ? parseFloat(v) : (/^-?[\d.,−]+$/.test(t.replace(/\s/g, "")) && !isNaN(n) ? n : t.toLowerCase());
+  }
+  $$("table[data-sortable]").forEach((tbl) => {
+    $$("thead th", tbl).forEach((th, idx) => {
       if (th.hasAttribute("data-nosort")) return;
       th.classList.add("sortable");
       th.addEventListener("click", () => {
-        const body = tbl.tBodies[0];
-        const rows = Array.from(body.rows);
+        const body = tbl.tBodies[0], rows = $$(":scope > tr", body);
         const dir = th.dataset.dir === "asc" ? "desc" : "asc";
-        tbl.querySelectorAll("th").forEach((x) => delete x.dataset.dir);
-        th.dataset.dir = dir;
-        rows.sort((a, b) => {
-          const x = cellVal(a.cells[idx]), y = cellVal(b.cells[idx]);
-          if (x === y) return 0;
-          return (x > y ? 1 : -1) * (dir === "asc" ? 1 : -1);
-        });
+        $$("thead th", tbl).forEach((x) => delete x.dataset.dir); th.dataset.dir = dir;
+        rows.sort((a, b) => { const x = cellVal(a.cells[idx]), y = cellVal(b.cells[idx]); return x === y ? 0 : (x > y ? 1 : -1) * (dir === "asc" ? 1 : -1); });
         rows.forEach((r) => body.appendChild(r));
       });
     });
   });
-  document.querySelectorAll("input[data-filter]").forEach((inp) => {
-    const tbl = document.querySelector(inp.dataset.filter);
-    const count = document.querySelector(inp.dataset.count || "#nope");
-    const apply = () => {
-      const q = inp.value.toLowerCase().trim();
-      let n = 0;
-      Array.from(tbl.tBodies[0].rows).forEach((r) => {
-        const show = !q || r.textContent.toLowerCase().includes(q);
-        r.style.display = show ? "" : "none";
-        if (show) n++;
-      });
-      if (count) count.textContent = n;
-    };
-    inp.addEventListener("input", apply);
-  });
-  document.querySelectorAll("select[data-colfilter]").forEach((sel) => {
-    const tbl = document.querySelector(sel.dataset.colfilter);
-    const col = parseInt(sel.dataset.col, 10);
-    sel.addEventListener("change", () => {
-      Array.from(tbl.tBodies[0].rows).forEach((r) => {
-        const v = r.cells[col] ? r.cells[col].textContent.trim() : "";
-        r.style.display = !sel.value || v === sel.value ? "" : "none";
-      });
-    });
-  });
-  document.querySelectorAll("form[data-confirm]").forEach((f) =>
-    f.addEventListener("submit", (e) => { if (!confirm(f.dataset.confirm)) e.preventDefault(); }));
-  document.querySelectorAll("select[data-nav]").forEach((s) =>
-    s.addEventListener("change", () => { if (s.value) location.href = s.value; }));
 
-  // ---------- WebAuthn helpers
-  const b64uToBuf = (s) => {
-    s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "=";
-    return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
-  };
-  const bufToB64u = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  async function post(url, body) {
-    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() },
-      body: JSON.stringify(body || {}), credentials: "same-origin" });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || j.detail || ("HTTP " + r.status));
-    return j;
+  // ---------- filtering: search input [data-filter=#table], chips [data-chips=#table] (rows carry data-tags) ----------
+  function applyFilters(tbl) {
+    const inp = $(`input[data-filter="#${tbl.id}"]`);
+    const q = inp ? inp.value.toLowerCase().trim() : "";
+    const chip = $(`[data-chips="#${tbl.id}"] .chip.on`);
+    const tag = chip ? chip.dataset.chip : "";
+    const sel = $$(`select[data-colfilter="#${tbl.id}"]`);
+    let n = 0;
+    $$(":scope > tr", tbl.tBodies[0]).forEach((r) => {
+      let show = (!q || r.textContent.toLowerCase().includes(q)) && (!tag || (" " + (r.dataset.tags || "") + " ").includes(" " + tag + " "));
+      sel.forEach((s) => { if (show && s.value) { const c = r.cells[+s.dataset.col]; show = c && c.textContent.trim() === s.value; } });
+      r.style.display = show ? "" : "none"; if (show) n++;
+    });
+    const cnt = $(`[data-count="#${tbl.id}"]`); if (cnt) cnt.textContent = n;
+    // footer totals follow the filter
+    const foot = tbl.tFoot && tbl.tFoot.rows[0];
+    if (foot) Array.from(foot.cells).forEach((td, i) => {
+      if (!td.hasAttribute("data-sum")) return;
+      let sum = 0;
+      $$(":scope > tr", tbl.tBodies[0]).forEach((r) => {
+        const c = r.cells[i];
+        if (r.style.display === "none" || !c) return;
+        const raw = c.hasAttribute("data-v") ? c.getAttribute("data-v") : c.textContent.replace("\u2212", "-").replace(/[^0-9.\-]/g, "");
+        const v = parseFloat(raw);
+        if (!isNaN(v)) sum += v;
+      });
+      const dec = td.dataset.dec !== undefined ? +td.dataset.dec : 2;
+      td.textContent = (Number.isInteger(sum) ? sum : sum.toFixed(dec)) + (td.dataset.unit || "");
+    });
   }
-  HSCO.registerPasskey = async function (label) {
+  H.applyFilters = applyFilters;
+  $$("input[data-filter]").forEach((inp) => { const t = $(inp.dataset.filter); inp.addEventListener("input", () => applyFilters(t)); });
+  $$("select[data-colfilter]").forEach((s) => { const t = $(s.dataset.colfilter); s.addEventListener("change", () => applyFilters(t)); });
+  $$("[data-chips]").forEach((box) => {
+    const t = $(box.dataset.chips);
+    $$(".chip", box).forEach((c) => c.addEventListener("click", () => {
+      $$(".chip", box).forEach((x) => x.classList.toggle("on", x === c)); applyFilters(t);
+      const u = new URL(location.href); if (c.dataset.chip) u.searchParams.set("f", c.dataset.chip); else u.searchParams.delete("f");
+      try { history.replaceState(null, "", u); } catch (e) {}
+    }));
+    const f = new URL(location.href).searchParams.get("f");
+    const pre = f && $(`.chip[data-chip="${f}"]`, box);
+    if (pre) { $$(".chip", box).forEach((x) => x.classList.toggle("on", x === pre)); applyFilters(t); }
+  });
+  // whole-row links
+  document.addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-href]");
+    if (tr && !e.target.closest("a,button,input,select,form,label")) location.href = tr.dataset.href;
+  });
+
+  // ---------- drawer ----------
+  H.openDrawer = (id) => { const d = $("#" + id); d.classList.add("open"); const f = $("input:not([type=hidden]),select,textarea", d); if (f) setTimeout(() => f.focus(), 120); };
+  H.closeDrawer = () => $$(".drawer.open").forEach((d) => d.classList.remove("open"));
+  $$(".scrim").forEach((s) => s.addEventListener("click", H.closeDrawer));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") H.closeDrawer(); });
+
+  // ---------- confirm & misc ----------
+  $$("form[data-confirm]").forEach((f) => f.addEventListener("submit", (e) => { if (!confirm(f.dataset.confirm)) e.preventDefault(); }));
+  $$("select[data-nav]").forEach((s) => s.addEventListener("change", () => { if (s.value) location.href = s.value; }));
+  // prevent double submit
+  $$("form").forEach((f) => f.addEventListener("submit", () => { if (f.method.toLowerCase() === "post") setTimeout(() => $$("button[type=submit],button:not([type])", f).forEach((b) => (b.disabled = true)), 0); }));
+
+  // ---------- JSON POST ----------
+  H.post = async function (url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf() }, body: JSON.stringify(body || {}), credentials: "same-origin" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || j.detail || "HTTP " + r.status);
+    return j;
+  };
+
+  // ---------- WebAuthn ----------
+  const b64uToBuf = (s) => { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer; };
+  const bufToB64u = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  H.registerPasskey = async function (label) {
     if (!window.PublicKeyCredential) throw new Error("This browser does not support security keys / passkeys (HTTPS required).");
-    const o = await post("/security/webauthn/options");
+    const o = await H.post("/security/webauthn/options");
     o.challenge = b64uToBuf(o.challenge); o.user.id = b64uToBuf(o.user.id);
     (o.excludeCredentials || []).forEach((c) => (c.id = b64uToBuf(c.id)));
     const cred = await navigator.credentials.create({ publicKey: o });
-    const payload = { id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
+    return H.post("/security/webauthn/register", { label, credential: { id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
       response: { clientDataJSON: bufToB64u(cred.response.clientDataJSON), attestationObject: bufToB64u(cred.response.attestationObject),
         transports: cred.response.getTransports ? cred.response.getTransports() : [] },
-      clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {} };
-    return post("/security/webauthn/register", { credential: payload, label: label });
+      clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {} } });
   };
-  HSCO.loginPasskey = async function (next) {
-    const o = await post("/mfa/webauthn/options");
-    o.challenge = b64uToBuf(o.challenge);
-    (o.allowCredentials || []).forEach((c) => (c.id = b64uToBuf(c.id)));
+  H.loginPasskey = async function (next) {
+    const o = await H.post("/mfa/webauthn/options");
+    o.challenge = b64uToBuf(o.challenge); (o.allowCredentials || []).forEach((c) => (c.id = b64uToBuf(c.id)));
     const a = await navigator.credentials.get({ publicKey: o });
-    const payload = { id: a.id, rawId: bufToB64u(a.rawId), type: a.type,
+    return H.post("/mfa/webauthn/verify", { next, credential: { id: a.id, rawId: bufToB64u(a.rawId), type: a.type,
       response: { clientDataJSON: bufToB64u(a.response.clientDataJSON), authenticatorData: bufToB64u(a.response.authenticatorData),
         signature: bufToB64u(a.response.signature), userHandle: a.response.userHandle ? bufToB64u(a.response.userHandle) : null },
-      clientExtensionResults: a.getClientExtensionResults ? a.getClientExtensionResults() : {} };
-    return post("/mfa/webauthn/verify", { credential: payload, next: next });
+      clientExtensionResults: a.getClientExtensionResults ? a.getClientExtensionResults() : {} } });
   };
 
-  // ---------- charts
-  HSCO.palette = ["#1f3a5f", "#2b6cb0", "#38a169", "#d69e2e", "#c53030", "#6b46c1", "#319795", "#dd6b20", "#718096", "#b83280"];
+  // ---------- charts ----------
+  H.colors = { brand: "#2e5bdb", brand2: "#7b9cff", ok: "#17b26a", warn: "#f79009", bad: "#f04438", violet: "#7a5af8", teal: "#15b79e", grey: "#98a2b3" };
+  H.palette = ["#2e5bdb", "#15b79e", "#7b9cff", "#f79009", "#7a5af8", "#f04438", "#98a2b3", "#ee46bc", "#0ba5ec", "#669f2a"];
   if (window.Chart) {
-    Chart.defaults.font.family = '"Segoe UI",system-ui,Arial,sans-serif';
-    Chart.defaults.font.size = 11.5;
-    Chart.defaults.color = "#475569";
-    Chart.defaults.plugins.legend.labels.boxWidth = 12;
-    Chart.defaults.maintainAspectRatio = false;
+    const d = Chart.defaults;
+    d.font.family = '"Inter","Segoe UI",system-ui,sans-serif'; d.font.size = 12; d.color = "#667085"; d.maintainAspectRatio = false;
+    d.plugins.legend.labels.boxWidth = 10; d.plugins.legend.labels.boxHeight = 10; d.plugins.legend.labels.usePointStyle = true;
+    d.plugins.legend.position = "bottom";
+    d.plugins.tooltip.backgroundColor = "#101828"; d.plugins.tooltip.padding = 10; d.plugins.tooltip.cornerRadius = 8;
+    d.elements.bar.borderRadius = 5; d.elements.bar.borderSkipped = false; d.datasets.bar.maxBarThickness = 34;
+    d.elements.line.borderWidth = 2.5; d.elements.point.radius = 3;
+    d.scale.grid.color = "#eef0f3"; d.scale.border.display = false;
   }
-  HSCO.chart = function (id, cfg) { const el = document.getElementById(id); if (el && window.Chart) return new Chart(el, cfg); };
+  H.chart = (id, cfg) => {
+    const el = document.getElementById(id); if (!el || !window.Chart) return;
+    cfg.options = cfg.options || {}; cfg.options.scales = cfg.options.scales || {};
+    if (cfg.type === "bar" || cfg.type === "line") {
+      const ix = cfg.options.indexAxis === "y" ? "y" : "x";
+      cfg.options.scales[ix] = Object.assign({ grid: { display: false } }, cfg.options.scales[ix] || {});
+    }
+    return new Chart(el, cfg);
+  };
 })();

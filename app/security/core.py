@@ -107,7 +107,8 @@ def load_session(db: Session, token: Optional[str]) -> Optional[UserSession]:
         db.delete(s)
         db.flush()
         return None
-    s.last_seen = now
+    if (now - s.last_seen).total_seconds() > 60:   # avoid a write on every request
+        s.last_seen = now
     return s
 
 

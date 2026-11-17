@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+
+import anyio
 from urllib.parse import quote, unquote
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -55,16 +57,24 @@ templates.env.filters["dmy"] = lambda d: d.strftime("%d-%b-%Y") if isinstance(d,
 templates.env.globals["now"] = datetime.now
 
 
-def get_db():
+async def get_db():
+    """One DB session per request, committed before the response is sent (Depends(..., scope="function")).
+
+    Cleanup is shielded from cancellation: if the client disconnects mid-request the task can be cancelled, and an
+    un-ended SQLite write transaction would otherwise keep the database locked for every later request.
+    """
     db = SessionLocal()
     try:
         yield db
-        db.commit()
-    except Exception:
-        db.rollback()
+        with anyio.CancelScope(shield=True):
+            await anyio.to_thread.run_sync(db.commit)
+    except BaseException:
+        with anyio.CancelScope(shield=True):
+            await anyio.to_thread.run_sync(db.rollback)
         raise
     finally:
-        db.close()
+        with anyio.CancelScope(shield=True):
+            await anyio.to_thread.run_sync(db.close)
 
 
 @dataclass
@@ -94,7 +104,7 @@ def _load(request: Request, db: Session) -> Ctx:
 
 async def partial_ctx(request: Request, db: Session = Depends(get_db, scope="function")) -> Ctx:
     """Password verified, MFA may still be pending. Unsafe methods are CSRF-checked."""
-    c = _load(request, db)
+    c = await anyio.to_thread.run_sync(_load, request, db)   # never block the event loop on SQLite
     if c.user is None:
         raise HTTPException(status_code=303, headers={"Location": "/login"})
     if request.method in ("POST", "PUT", "DELETE", "PATCH"):
@@ -104,7 +114,7 @@ async def partial_ctx(request: Request, db: Session = Depends(get_db, scope="fun
 
 def _require(role: str):
     async def dep(request: Request, db: Session = Depends(get_db, scope="function")) -> Ctx:
-        c = _load(request, db)
+        c = await anyio.to_thread.run_sync(_load, request, db)   # never block the event loop on SQLite
         if c.user is None:
             nxt = request.url.path if request.method == "GET" else "/"
             raise HTTPException(status_code=303, headers={"Location": f"/login?next={nxt}"})
@@ -138,12 +148,32 @@ def periods(db: Session) -> list[Period]:
     return list(db.scalars(select(Period).order_by(Period.year.desc(), Period.month.desc())))
 
 
+def current_period(c: Ctx, all_periods: list[Period], explicit=None) -> Period | None:
+    """Period shown in the top bar: explicit page period → ?period= → /periods/<key> → latest computed."""
+    if isinstance(explicit, Period):
+        return explicit
+    key = c.request.query_params.get("period")
+    if not key and c.request.url.path.startswith("/periods/"):
+        key = c.request.url.path.split("/")[2]
+    for p in all_periods:
+        if key and p.key == key:
+            return p
+    return next((p for p in all_periods if p.computed_at), all_periods[0] if all_periods else None)
+
+
 def render(c: Ctx, name: str, **kw) -> HTMLResponse:
     g = get_general(c.db)
     flash = unquote(c.request.cookies.get("flash", ""))
+    all_p = periods(c.db)
+    cur = current_period(c, all_p, kw.get("period"))
+    nav_open = 0
+    if cur is not None and c.user is not None and c.session and c.session.mfa_passed:
+        from app.services.workflow import actionable_flags
+        nav_open = sum(1 for f in actionable_flags(c.db, cur) if f["actionable"] and not f["reviewed"])
     resp = templates.TemplateResponse(c.request, name, {
         "user": c.user, "csrf": c.session.csrf_token if c.session else "", "org": g.get("org_name"),
-        "general": g, "can_hr": c.can("hr"), "can_admin": c.can("admin"), "all_periods": periods(c.db),
+        "general": g, "can_hr": c.can("hr"), "can_admin": c.can("admin"), "all_periods": all_p,
+        "cur_period": cur, "nav_open": nav_open,
         "flash": flash, "path": c.request.url.path, **kw,
     })
     if flash:

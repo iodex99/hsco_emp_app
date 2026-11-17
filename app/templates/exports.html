@@ -1,16 +1,22 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Downloads{% endblock %}
 {% block content %}
-<div class="top"><h1>Downloads</h1></div>
-<div class="card"><h2>Monthly reports</h2>
-<table><thead><tr><th>Month</th><th>Status</th><th>Excel workbook</th><th>Interactive board pack (HTML)</th></tr></thead><tbody>
-{% for p in all_periods if p.computed_at %}<tr><td>{{ p.label }}</td><td><span class="pill {{ 'p-final' if p.status == 'FINALISED' else 'info' }}">{{ p.status }}</span></td>
-<td><a class="btn sm ghost" href="/exports/{{ p.key }}.xlsx">Payroll sheet + board metrics (.xlsx)</a></td>
-<td><a class="btn sm" href="/exports/{{ p.key }}.html">Board pack (.html)</a></td></tr>
-{% else %}<tr><td colspan="4" class="muted">No computed months yet.</td></tr>{% endfor %}</tbody></table>
-<p class="small muted">The Excel workbook keeps live formulas on the payroll sheet (edit E–H, O, P or hours/day and the deduction recalculates) and highlights manual overrides. The board pack is a single self-contained HTML file — open it in any browser, no server or internet needed — with charts, filters and per-employee drill-down.</p></div>
-<div class="card"><h2>Import templates</h2>
-<p class="badge-row"><a class="btn sm ghost" href="/exports/templates/employee_master.xlsx">Employee master (pre-filled)</a>
-<a class="btn sm ghost" href="/exports/templates/holidays.xlsx">Holiday list</a>
-<a class="btn sm ghost" href="/exports/templates/leave_opening.xlsx">Leave opening balances (pre-filled)</a></p></div>
+<div class="ph"><div><h1>Downloads</h1><div class="sub">Reports for payroll and the board. Files contain employee data — share them carefully.</div></div></div>
+<div class="grid g2 mb">
+  <div class="card"><div class="bd"><div class="person" style="gap:14px;align-items:flex-start"><span class="logo" style="background:var(--ok-bg);color:var(--ok)">{{ ui.icon('file-spreadsheet') }}</span>
+    <div><h2 style="font-size:15px">Excel workbook</h2><p class="small muted" style="margin:4px 0 0">The payroll leave sheet in the familiar MIS layout with live formulas, plus board summary, exceptions, punctuality, WFH, regularisation, leave ledger, people movement and day-by-day detail. Corrections are highlighted.</p></div></div></div></div>
+  <div class="card"><div class="bd"><div class="person" style="gap:14px;align-items:flex-start"><span class="logo" style="background:var(--brand-50);color:var(--brand)">{{ ui.icon('layout-dashboard') }}</span>
+    <div><h2 style="font-size:15px">Interactive board pack</h2><p class="small muted" style="margin:4px 0 0">One HTML file with charts, filters and drill-down to every employee. Opens in any browser — no server or internet needed. Ideal to email to partners.</p></div></div></div></div>
+</div>
+<div class="card flush"><div class="hd"><h2>By month</h2></div><div class="bd"><table>
+<thead><tr><th>Month</th><th>Status</th><th class="right">Download</th></tr></thead><tbody>
+{% for p in all_periods if p.computed_at %}<tr><td class="strong">{{ p.label }}</td><td>{{ ui.status_badge(p) }}</td>
+<td class="right"><a class="btn sm sec" href="/exports/{{ p.key }}.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Payroll sheet + board metrics (.xlsx)</a>
+<a class="btn sm" href="/exports/{{ p.key }}.html">{{ ui.icon('download','sm') }} Board pack (.html)</a></td></tr>
+{% else %}<tr><td colspan="3">{% call ui.empty('Nothing to download yet', 'Import a month first.', 'download') %}{% endcall %}</td></tr>{% endfor %}</tbody></table></div></div>
+{% if can_hr %}<div class="card"><div class="hd"><h2>Import templates</h2></div><div class="bd row">
+<a class="btn sec" href="/exports/templates/employee_master.xlsx">Employee master (pre-filled)</a>
+<a class="btn sec" href="/exports/templates/holidays.xlsx">Holiday list</a>
+<a class="btn sec" href="/exports/templates/leave_opening.xlsx">Leave opening balances (pre-filled)</a></div></div>{% endif %}
 {% endblock %}

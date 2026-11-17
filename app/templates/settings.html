@@ -1,113 +1,140 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Rules & calendars{% endblock %}
 {% block content %}
-<div class="top"><h1>Rules, calendars &amp; locations</h1></div>
-<div class="tabs" id="tabs"><a href="#policy">Policy rules</a><a href="#holidays">Holiday calendars</a><a href="#locations">Locations</a><a href="#general">Security &amp; system</a></div>
-
-<section id="t-policy" class="card">
-<h2>Policy rules</h2>
-<p class="small muted">From "HR Policy — Leave and Attendance (Revised)". Changing a rule recomputes all draft months; finalised months are not changed.</p>
-<form method="post" action="/settings/policy"><input type="hidden" name="csrf" value="{{ csrf }}">
-<fieldset {{ 'disabled' if not can_admin }} style="border:0;padding:0;margin:0">
-<div class="grid g3">{% for key, label, d in numbers %}<div class="field"><label>{{ label }}</label><input name="{{ key }}" value="{{ pol[key] }}" inputmode="decimal"></div>{% endfor %}</div>
-<div class="grid g3">
-  <div class="field"><label>Groups exempt from shortfall deduction</label><input name="exempt_groups" value="{{ pol.exempt_groups|join(', ') }}"></div>
-  <div class="field"><label>Groups excluded from behaviour metrics (late, regularisation)</label><input name="metrics_exclude_groups" value="{{ pol.metrics_exclude_groups|join(', ') }}"></div>
-  <div class="field"><label>Location types counted as WFH</label><input name="wfh_location_types" value="{{ pol.wfh_location_types|join(', ') }}"></div>
-  <div class="field"><label>LOP shown under</label><select name="lop_bucket"><option value="leave" {{ 'selected' if pol.lop_bucket=='leave' }}>Leaves taken (G)</option><option value="absent" {{ 'selected' if pol.lop_bucket=='absent' }}>Days absent (H)</option></select></div>
-  <div class="field"><label>WFH counting</label><select name="wfh_method"><option value="distinct_days" {{ 'selected' if pol.wfh_method=='distinct_days' }}>Each date with a WFH punch = 1 day</option><option value="swipes_half" {{ 'selected' if pol.wfh_method=='swipes_half' }}>WFH punches ÷ 2 (old manual method)</option></select></div>
-  <div class="field"><label>Leave credit</label><select name="leave_credit_mode"><option value="annual" {{ 'selected' if pol.leave_credit_mode=='annual' }}>Annual on 1-Apr (pro-rata for joiners)</option><option value="monthly" {{ 'selected' if pol.leave_credit_mode=='monthly' }}>Monthly (annual ÷ 12)</option></select></div>
-  <div class="field"><label>Persistent late counts days that are</label><select name="persistent_late_basis"><option value="very_late" {{ 'selected' if pol.persistent_late_basis=='very_late' }}>more than the very-late threshold late</option><option value="late" {{ 'selected' if pol.persistent_late_basis=='late' }}>more than the late grace late</option></select></div>
-  <div class="field"><label>Late sitting after</label><input type="time" name="late_sitting_after" value="{{ pol.late_sitting_after }}"></div>
-  <div class="field"><label>Default shift start</label><input type="time" name="default_shift_start" value="{{ pol.default_shift_start }}"></div>
-  <div class="field"><label>Default shift end</label><input type="time" name="default_shift_end" value="{{ pol.default_shift_end }}"></div>
+{% macro num(key, help="") -%}
+<div class="field"><label>{% for k, label, d in numbers if k == key %}{{ label }}{% endfor %}</label><input name="{{ key }}" value="{{ pol[key]|n }}" inputmode="decimal">{% if help %}<div class="help">{{ help }}</div>{% endif %}</div>
+{%- endmacro %}
+<div class="ph"><div><h1>Rules &amp; calendars</h1><div class="sub">How the app calculates. Changes recalculate draft months; finalised months never change.</div></div></div>
+<div class="tabs" data-tabs id="set-tabs">
+  <button class="on" data-tab="policy">{{ ui.icon('sliders-horizontal','sm') }} Calculation rules</button>
+  <button data-tab="holidays">{{ ui.icon('calendar','sm') }} Holiday calendars</button>
+  <button data-tab="locations">{{ ui.icon('map-pin','sm') }} Locations</button>
+  <button data-tab="general">{{ ui.icon('shield-check','sm') }} Security &amp; system</button>
 </div>
-<div class="field"><label><input type="checkbox" name="absent_debits_leave" value="1" {{ 'checked' if pol.absent_debits_leave }}> Unauthorised absence is adjusted against leave balance (policy C)</label></div>
-<div class="field"><label><input type="checkbox" name="cof_overdraft_to_leave" value="1" {{ 'checked' if pol.cof_overdraft_to_leave }}> Comp-off taken beyond balance is debited from leave</label></div>
-<div class="grid g2">
-<div class="field"><label>greytHR status codes → meaning (one per line, CODE=present|absent|leave|compoff|lop|off)</label>
-<textarea name="status_map" rows="10" class="mono">{% for k, v in pol.status_map.items() %}{{ k }}={{ v }}
+
+<section class="pane on" data-pane="policy">
+<form class="card" method="post" action="/settings/policy">{{ ui.csrf_field() }}
+<div class="bd"><fieldset {{ 'disabled' if not can_admin }}>
+  {% if not can_admin %}<div class="alert">{{ ui.icon('lock') }}<span>Only administrators can change rules.</span></div>{% endif %}
+  <div class="form-sec"><div><h3>Hours &amp; deduction</h3><p>From the Work Schedules policy: monthly hours = working days × hours per day; shortfall deducted from leave in half-day blocks.</p></div><div>
+    <div class="row">{{ num('hours_per_day') }}{{ num('shortfall_block_hours', 'Each started block = one deduction.') }}{{ num('deduction_per_block_days') }}</div>
+    <div class="row">{{ num('shortfall_grace_hours', 'Shortfall up to this is ignored. Policy: none.') }}
+      <div class="field"><label>Groups never deducted</label><input name="exempt_groups" value="{{ pol.exempt_groups|join(', ') }}"><div class="help">Comma separated, exactly as in the employee group.</div></div></div>
+  </div></div>
+  <div class="form-sec"><div><h3>Leave &amp; comp-off</h3><p>15 paid days per financial year, pro-rata for joiners.</p></div><div>
+    <div class="row">{{ num('annual_leave_days') }}{{ num('fy_start_month', '4 = April') }}
+      <div class="field"><label>Leave credit</label><select name="leave_credit_mode"><option value="annual" {{ 'selected' if pol.leave_credit_mode=='annual' }}>Yearly on FY start (pro-rata for joiners)</option><option value="monthly" {{ 'selected' if pol.leave_credit_mode=='monthly' }}>Monthly (yearly ÷ 12)</option></select></div></div>
+    <div class="row">{{ num('comp_off_min_hours', 'Hours on a weekly-off / holiday to earn one comp-off.') }}
+      <div class="field"><label>Loss of pay (LOP) shows under</label><select name="lop_bucket"><option value="leave" {{ 'selected' if pol.lop_bucket=='leave' }}>Leaves taken (column G)</option><option value="absent" {{ 'selected' if pol.lop_bucket=='absent' }}>Days absent (column H)</option></select></div></div>
+    <label class="check mb"><input type="checkbox" name="absent_debits_leave" value="1" {{ 'checked' if pol.absent_debits_leave }}> <span>Unauthorised absence is taken from the leave balance <span class="help" style="display:block">Policy: leave without approval is adjusted against leave, then salary.</span></span></label>
+    <label class="check"><input type="checkbox" name="cof_overdraft_to_leave" value="1" {{ 'checked' if pol.cof_overdraft_to_leave }}> Comp-off taken beyond the balance is taken from leave</label>
+  </div></div>
+  <div class="form-sec"><div><h3>Work from home</h3><p>Days above the limit are flagged.</p></div><div>
+    <div class="row">{{ num('wfh_limit_days') }}
+      <div class="field"><label>How a WFH day is counted</label><select name="wfh_method"><option value="distinct_days" {{ 'selected' if pol.wfh_method=='distinct_days' }}>Any WFH punch on a date = 1 day</option><option value="swipes_half" {{ 'selected' if pol.wfh_method=='swipes_half' }}>WFH punches ÷ 2 (old manual method)</option></select></div>
+      <div class="field"><label>Location types that mean WFH</label><input name="wfh_location_types" value="{{ pol.wfh_location_types|join(', ') }}"></div></div>
+  </div></div>
+  <div class="form-sec"><div><h3>Punctuality (board metrics only)</h3><p>"Late coming" is not deducted under the policy — these only drive flags and reports.</p></div><div>
+    <div class="row">{{ num('late_grace_min') }}{{ num('very_late_min') }}{{ num('early_exit_grace_min') }}</div>
+    <div class="row">{{ num('persistent_late_days') }}
+      <div class="field"><label>Persistent late counts days that are</label><select name="persistent_late_basis"><option value="very_late" {{ 'selected' if pol.persistent_late_basis=='very_late' }}>later than the very-late threshold</option><option value="late" {{ 'selected' if pol.persistent_late_basis=='late' }}>later than the grace</option></select></div>
+      {{ num('persistent_regularisation_days') }}</div>
+    <div class="row">{{ num('min_daily_hours') }}<div class="field"><label>Late sitting after</label><input type="time" name="late_sitting_after" value="{{ pol.late_sitting_after }}"></div>
+      <div class="field"><label>Groups left out of these metrics</label><input name="metrics_exclude_groups" value="{{ pol.metrics_exclude_groups|join(', ') }}"></div></div>
+  </div></div>
+  <div class="form-sec"><div><h3>Shifts</h3><p>Shift times are read from the greytHR shift name. Override here if one is read wrongly.</p></div><div>
+    <div class="row"><div class="field"><label>Default shift start</label><input type="time" name="default_shift_start" value="{{ pol.default_shift_start }}"></div>
+      <div class="field"><label>Default shift end</label><input type="time" name="default_shift_end" value="{{ pol.default_shift_end }}"></div></div>
+    {% if shift_names %}<table class="compact plain mb"><thead><tr><th>Shift in greytHR</th><th>Read as</th></tr></thead><tbody>{% for s in shift_names %}<tr><td><code>{{ s[0] }}</code></td><td>{{ s[1].strftime('%H:%M') }} – {{ s[2].strftime('%H:%M') }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+    <div class="field"><label>Overrides <span class="muted">(one per line: Shift name=HH:MM-HH:MM)</span></label><textarea name="shift_overrides" rows="2" class="mono">{% for k, v in pol.shift_overrides.items() %}{{ k }}={{ v[0] }}-{{ v[1] }}
 {% endfor %}</textarea></div>
-<div class="field"><label>Shift timings (one per line, Shift name=HH:MM-HH:MM; blank = read from the shift name)</label>
-<textarea name="shift_overrides" rows="4" class="mono">{% for k, v in pol.shift_overrides.items() %}{{ k }}={{ v[0] }}-{{ v[1] }}
-{% endfor %}</textarea>
-<p class="small muted">Shifts seen in data: {% for s in shift_names %}<br><code>{{ s[0] }}</code> → {{ s[1].strftime('%H:%M') }}–{{ s[2].strftime('%H:%M') }}{% else %}none yet{% endfor %}</p></div>
-</div>
-{% if can_admin %}<button class="btn">Save rules</button>{% else %}<p class="muted small">Only admins can change rules.</p>{% endif %}
-</fieldset></form>
+  </div></div>
+  <div class="form-sec"><div><h3>greytHR status codes</h3><p>What each code means. Unknown codes are treated as present if hours were worked.</p></div><div>
+    <div class="field"><textarea name="status_map" rows="8" class="mono">{% for k, v in pol.status_map.items() %}{{ k }}={{ v }}
+{% endfor %}</textarea><div class="help">One per line: CODE=present | absent | leave | compoff | lop | off</div></div>
+  </div></div>
+</fieldset></div>
+{% if can_admin %}<div class="hd" style="border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end"><button class="btn">Save rules</button></div>{% endif %}
+</form>
 </section>
 
-<section id="t-holidays" class="card hidden">
-<h2>Holiday calendars</h2>
-<p class="small muted">If any calendar exists, the app uses it instead of greytHR's "H" marks: the default calendar applies to everyone unless an employee is assigned another one in the employee master. With no calendars, greytHR holidays are used.</p>
-<form method="post" action="/settings/calendars" class="row"><input type="hidden" name="csrf" value="{{ csrf }}">
-<div class="field"><label>New calendar name</label><input name="name" required placeholder="e.g. Mumbai 2026"></div>
-<div class="field" style="flex:0"><label><input type="checkbox" name="is_default" value="1"> default</label></div><button class="btn">Add calendar</button></form>
-{% for c in cals %}
-<div class="card" style="margin-top:12px"><h3>{{ c.name }} {% if c.is_default %}<span class="pill p-ok">default</span>{% endif %} <span class="muted small">{{ c.holidays|length }} holidays</span></h3>
-<div class="badge-row">{% if not c.is_default %}<form method="post" action="/settings/calendars/{{ c.id }}/default"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost">Make default</button></form>{% endif %}
-<form method="post" action="/settings/calendars/{{ c.id }}/delete" data-confirm="Delete calendar {{ c.name }}?"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost">Delete</button></form></div>
-<table><tbody>{% for h in c.holidays %}<tr><td>{{ h.day.strftime('%a %d-%b-%Y') }}</td><td>{{ h.name }}</td><td><form method="post" action="/settings/holidays/{{ h.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost">×</button></form></td></tr>{% endfor %}</tbody></table>
-<form method="post" action="/settings/calendars/{{ c.id }}/holiday" class="row"><input type="hidden" name="csrf" value="{{ csrf }}">
-<div class="field"><input type="date" name="day" required></div><div class="field"><input name="name" placeholder="Holiday name"></div><button class="btn sm">Add</button></form>
-</div>{% endfor %}
-<p class="small muted">Bulk load: import a holiday list (columns Date, Holiday, optional Calendar) on the Import page.</p>
+<section class="pane" data-pane="holidays">
+<div class="grid g-1-2" style="align-items:start">
+  <div class="card"><div class="hd"><h2>How holidays work</h2></div><div class="bd small" style="color:var(--text-2)">
+    <p style="margin-top:0">With <b>no calendars</b>, greytHR's own holiday marks are used.</p>
+    <p>Once a calendar exists, the <b>default calendar</b> applies to everyone, unless an employee is given a different one on their page.</p>
+    <p class="muted">Bulk load: import a holiday list (Date, Holiday, Calendar).</p>
+    <form method="post" action="/settings/calendars" class="mt" style="border-top:1px solid var(--border);padding-top:14px">{{ ui.csrf_field() }}
+      <div class="field"><label>New calendar</label><input name="name" required placeholder="e.g. Mumbai 2027"></div>
+      <label class="check mb"><input type="checkbox" name="is_default" value="1"> Make it the default</label>
+      <button class="btn sec block">{{ ui.icon('plus','sm') }} Add calendar</button></form>
+  </div></div>
+  <div>
+  {% for c in cals %}
+  <div class="card"><div class="hd"><h2>{{ c.name }}</h2>{% if c.is_default %}<span class="badge b-ok">Default</span>{% endif %}<span class="sub">{{ c.holidays|length }} holidays</span>
+    <div class="tools">{% if not c.is_default %}<form method="post" action="/settings/calendars/{{ c.id }}/default" class="inline">{{ ui.csrf_field() }}<button class="btn sm ghost">Make default</button></form>{% endif %}
+      <form method="post" action="/settings/calendars/{{ c.id }}/delete" class="inline" data-confirm="Delete calendar {{ c.name }}?">{{ ui.csrf_field() }}<button class="btn sm ghost" title="Delete">{{ ui.icon('trash-2','sm') }}</button></form></div></div>
+    <div class="bd" style="padding-top:4px"><ul class="list">{% for h in c.holidays %}<li><span class="badge b-violet" style="min-width:86px;justify-content:center">{{ h.day.strftime('%d %b %Y') }}</span><span class="muted small">{{ h.day.strftime('%a') }}</span> {{ h.name }}
+      <span class="r"><form method="post" action="/settings/holidays/{{ h.id }}/delete" class="inline">{{ ui.csrf_field() }}<button class="btn sm ghost" title="Remove">{{ ui.icon('x','sm') }}</button></form></span></li>
+      {% else %}<li class="muted">No holidays yet.</li>{% endfor %}</ul>
+    <form method="post" action="/settings/calendars/{{ c.id }}/holiday" class="row mt-s">{{ ui.csrf_field() }}
+      <div class="field" style="margin:0;flex:0 0 170px"><input type="date" name="day" required></div><div class="field" style="margin:0"><input name="name" placeholder="Holiday name"></div><button class="btn sec">Add</button></form></div></div>
+  {% else %}<div class="card"><div class="bd">{% call ui.empty('No calendars yet', 'greytHR holiday marks are being used.', 'calendar') %}{% endcall %}</div></div>{% endfor %}
+  </div>
+</div>
 </section>
 
-<section id="t-locations" class="card hidden">
-<h2>Named locations (geofences)</h2>
-<p class="small muted">Sign-in coordinates within the radius of a named location are shown with that name (e.g. "ABC Ltd — Andheri (Client)"). Otherwise the nearest place from the offline gazetteer is used{% if general.online_geocoding %}, or OpenStreetMap lookup (enabled){% endif %}.</p>
-<form method="post" action="/settings/geofences" class="row"><input type="hidden" name="csrf" value="{{ csrf }}">
-<div class="field"><label>Name</label><input name="name" required></div>
-<div class="field"><label>Category</label><select name="category"><option>Office</option><option selected>Client</option><option>Home</option><option>Other</option></select></div>
-<div class="field"><label>Latitude</label><input name="lat" required inputmode="decimal"></div><div class="field"><label>Longitude</label><input name="lon" required inputmode="decimal"></div>
-<div class="field"><label>Radius (m)</label><input name="radius_m" value="200" inputmode="numeric"></div><button class="btn">Add</button></form>
-<table><thead><tr><th>Name</th><th>Category</th><th>Lat, Lon</th><th class="num">Radius</th><th></th></tr></thead><tbody>
-{% for f in fences %}<tr><td>{{ f.name }}</td><td>{{ f.category }}</td><td class="mono">{{ f.lat }}, {{ f.lon }}</td><td class="num">{{ f.radius_m }} m</td><td><form method="post" action="/settings/geofences/{{ f.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost">Delete</button></form></td></tr>
-{% else %}<tr><td colspan="5" class="muted">None yet.</td></tr>{% endfor %}</tbody></table>
-<h3>Frequent unnamed sign-in spots</h3>
-<table><thead><tr><th>Approx. place</th><th>Lat, Lon</th><th class="num">Punches</th><th>Employees</th></tr></thead><tbody>
-{% for b in clusters %}<tr><td>{{ b.place }}</td><td class="mono">{{ '%.5f'|format(b.lat) }}, {{ '%.5f'|format(b.lon) }}</td><td class="num">{{ b.count }}</td><td class="small">{{ b.emps|join(', ') }}</td></tr>
-{% else %}<tr><td colspan="4" class="muted">No coordinates in imported swipe data yet. (The October greytHR swipe export contains none — export the mobile sign-in report that includes latitude/longitude.)</td></tr>{% endfor %}</tbody></table>
+<section class="pane" data-pane="locations">
+<div class="grid g-1-2" style="align-items:start">
+  <form class="card" method="post" action="/settings/geofences">{{ ui.csrf_field() }}
+    <div class="hd"><h2>Name a place</h2></div><div class="bd">
+    <p class="small muted" style="margin-top:0">Sign-ins within the radius show this name, e.g. "ABC Ltd, Andheri (Client)". Others show the nearest locality from the built-in offline map{% if general.online_geocoding %} or OpenStreetMap{% endif %}.</p>
+    <div class="field"><label>Name</label><input name="name" required placeholder="e.g. Head office"></div>
+    <div class="field"><label>Type</label><select name="category"><option>Office</option><option selected>Client</option><option>Home</option><option>Other</option></select></div>
+    <div class="row"><div class="field"><label>Latitude</label><input name="lat" required inputmode="decimal" id="g-lat"></div><div class="field"><label>Longitude</label><input name="lon" required inputmode="decimal" id="g-lon"></div></div>
+    <div class="field"><label>Radius (metres)</label><input name="radius_m" value="200" inputmode="numeric"></div>
+    <button class="btn block">Save place</button></div></form>
+  <div>
+    <div class="card flush"><div class="hd"><h2>Named places</h2><span class="sub">{{ fences|length }}</span></div><div class="bd"><table class="compact"><thead><tr><th>Name</th><th>Type</th><th>Coordinates</th><th class="num">Radius</th><th></th></tr></thead><tbody>
+      {% for f in fences %}<tr><td class="strong">{{ f.name }}</td><td><span class="tag">{{ f.category }}</span></td><td class="mono">{{ f.lat }}, {{ f.lon }}</td><td class="num">{{ f.radius_m }} m</td>
+        <td class="right"><form method="post" action="/settings/geofences/{{ f.id }}/delete" class="inline">{{ ui.csrf_field() }}<button class="btn sm ghost">{{ ui.icon('trash-2','sm') }}</button></form></td></tr>
+      {% else %}<tr><td colspan="5" class="muted">None yet.</td></tr>{% endfor %}</tbody></table></div></div>
+    <div class="card flush"><div class="hd"><h2>Frequent unnamed sign-in spots</h2></div><div class="bd">
+      {% if clusters %}<table class="compact"><thead><tr><th>Nearest place</th><th>Coordinates</th><th class="num">Punches</th><th>Employees</th><th></th></tr></thead><tbody>
+      {% for b in clusters %}<tr><td>{{ b.place }}</td><td class="mono">{{ '%.5f'|format(b.lat) }}, {{ '%.5f'|format(b.lon) }}</td><td class="num">{{ b.count }}</td><td class="small">{{ b.emps|join(', ') }}</td>
+        <td><button class="btn sm sec" type="button" onclick="document.getElementById('g-lat').value='{{ '%.5f'|format(b.lat) }}';document.getElementById('g-lon').value='{{ '%.5f'|format(b.lon) }}';document.querySelector('[name=name]').focus()">Name it</button></td></tr>{% endfor %}</tbody></table>
+      {% else %}{% call ui.empty('No coordinates yet', 'The swipe export imported so far has no GPS coordinates. Import greytHR\'s mobile sign-in report with latitude/longitude to see spots here.', 'map-pin') %}{% endcall %}{% endif %}
+    </div></div>
+  </div>
+</div>
 </section>
 
-<section id="t-general" class="card hidden">
-<h2>Security &amp; system</h2>
-<form method="post" action="/settings/general"><input type="hidden" name="csrf" value="{{ csrf }}">
-<fieldset {{ 'disabled' if not can_admin }} style="border:0;padding:0;margin:0">
-<div class="grid g2">
-  <div class="field"><label>Organisation name</label><input name="org_name" value="{{ general.org_name }}"></div>
-  <div class="field"><label>Address (report header)</label><input name="org_address" value="{{ general.org_address }}"></div>
-  <div class="field"><label>Groups (comma separated)</label><input name="groups" value="{{ general.groups|join(', ') }}"></div>
-  <div class="field"><label>Locations (comma separated)</label><input name="locations" value="{{ general.locations|join(', ') }}"></div>
-</div>
-<h3>Sign-in security</h3>
-<div class="grid g3">
-  <div class="field"><label><input type="checkbox" name="mfa_required" value="1" {{ 'checked' if general.mfa_required }}> Two-step verification mandatory</label></div>
-  <div class="field"><label>Minimum password length</label><input name="password_min_length" value="{{ general.password_min_length }}"></div>
-  <div class="field"><label>Lock after failed attempts</label><input name="lockout_threshold" value="{{ general.lockout_threshold }}"></div>
-  <div class="field"><label>Lock duration (minutes)</label><input name="lockout_minutes" value="{{ general.lockout_minutes }}"></div>
-</div>
-<h3>Email (for email sign-in codes — optional)</h3>
-<div class="grid g3">
-  <div class="field"><label>SMTP host</label><input name="smtp_host" value="{{ general.smtp_host }}"></div>
-  <div class="field"><label>Port</label><input name="smtp_port" value="{{ general.smtp_port }}"></div>
-  <div class="field"><label>From address</label><input name="smtp_from" value="{{ general.smtp_from }}"></div>
-  <div class="field"><label>Username</label><input name="smtp_user" value="{{ general.smtp_user }}" autocomplete="off"></div>
-  <div class="field"><label>Password (blank = unchanged)</label><input type="password" name="smtp_password" autocomplete="new-password"></div>
-  <div class="field"><label><input type="checkbox" name="smtp_starttls" value="1" {{ 'checked' if general.smtp_starttls }}> STARTTLS</label></div>
-</div>
-<h3>Location names</h3>
-<div class="grid g2">
-  <div class="field"><label><input type="checkbox" name="online_geocoding" value="1" {{ 'checked' if general.online_geocoding }}> Allow online lookup (OpenStreetMap) — sends coordinates outside the server</label></div>
-  <div class="field"><label>Offline nearest-place radius (km)</label><input name="geocode_max_km" value="{{ general.geocode_max_km }}"></div>
-</div>
-{% if can_admin %}<button class="btn">Save</button>{% endif %}
-</fieldset></form>
+<section class="pane" data-pane="general">
+<form class="card" method="post" action="/settings/general">{{ ui.csrf_field() }}<div class="bd"><fieldset {{ 'disabled' if not can_admin }}>
+  <div class="form-sec"><div><h3>Organisation</h3><p>Shown on reports.</p></div><div>
+    <div class="field"><label>Name</label><input name="org_name" value="{{ general.org_name }}"></div>
+    <div class="field"><label>Address</label><input name="org_address" value="{{ general.org_address }}"></div>
+    <div class="row"><div class="field"><label>Groups</label><input name="groups" value="{{ general.groups|join(', ') }}"></div><div class="field"><label>Locations</label><input name="locations" value="{{ general.locations|join(', ') }}"></div></div>
+  </div></div>
+  <div class="form-sec"><div><h3>Sign-in security</h3><p>Two-step verification protects employee data.</p></div><div>
+    <label class="check mb"><input type="checkbox" name="mfa_required" value="1" {{ 'checked' if general.mfa_required }}> Two-step verification is mandatory for everyone</label>
+    <div class="row"><div class="field"><label>Minimum password length</label><input name="password_min_length" value="{{ general.password_min_length }}"></div>
+      <div class="field"><label>Lock account after … failed attempts</label><input name="lockout_threshold" value="{{ general.lockout_threshold }}"></div>
+      <div class="field"><label>Lock for (minutes)</label><input name="lockout_minutes" value="{{ general.lockout_minutes }}"></div></div>
+  </div></div>
+  <div class="form-sec"><div><h3>Email sign-in codes</h3><p>Optional. Lets users receive a one-time code by email. Only the code is sent.</p></div><div>
+    <div class="row"><div class="field" style="flex:2"><label>SMTP server</label><input name="smtp_host" value="{{ general.smtp_host }}" placeholder="smtp.office365.com"></div><div class="field"><label>Port</label><input name="smtp_port" value="{{ general.smtp_port }}"></div></div>
+    <div class="row"><div class="field"><label>From address</label><input name="smtp_from" value="{{ general.smtp_from }}"></div><div class="field"><label>Username</label><input name="smtp_user" value="{{ general.smtp_user }}" autocomplete="off"></div>
+      <div class="field"><label>Password</label><input type="password" name="smtp_password" autocomplete="new-password" placeholder="unchanged"></div></div>
+    <label class="check"><input type="checkbox" name="smtp_starttls" value="1" {{ 'checked' if general.smtp_starttls }}> Use STARTTLS</label>
+  </div></div>
+  <div class="form-sec"><div><h3>Place names</h3><p>Coordinates are named offline by default, so they never leave the server.</p></div><div>
+    <label class="check mb"><input type="checkbox" name="online_geocoding" value="1" {{ 'checked' if general.online_geocoding }}> <span>Also look up unknown places on OpenStreetMap <span class="help" style="display:block">Sends coordinates outside the server.</span></span></label>
+    <div class="field" style="max-width:240px"><label>Offline match radius (km)</label><input name="geocode_max_km" value="{{ general.geocode_max_km }}"></div>
+  </div></div>
+</fieldset></div>
+{% if can_admin %}<div class="hd" style="border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end"><button class="btn">Save</button></div>{% endif %}
+</form>
 </section>
 {% endblock %}
-{% block scripts %}<script>
-function show(){const h=(location.hash||'#policy').slice(1);document.querySelectorAll('section[id^=t-]').forEach(s=>s.classList.toggle('hidden',s.id!=='t-'+h));
-document.querySelectorAll('#tabs a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+h));}
-window.addEventListener('hashchange',show);show();
-</script>{% endblock %}

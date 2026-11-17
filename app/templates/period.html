@@ -1,45 +1,97 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Payroll leave sheet {{ period.label }}{% endblock %}
 {% block content %}
-<div class="top">
-  <h1>Payroll leave sheet — {{ period.label }}</h1>
-  <span class="pill {{ 'p-final' if period.status == 'FINALISED' else 'info' }}">{{ period.status }}{% if period.finalised_by %} · {{ period.finalised_by }} {{ period.finalised_at|dmy }}{% endif %}</span>
-  <span class="sp"></span>
-  <select data-nav aria-label="Period">{% for p in all_periods %}<option value="/periods/{{ p.key }}" {{ 'selected' if p.key == period.key }}>{{ p.label }}</option>{% endfor %}</select>
-  <a class="btn ghost" href="/exports/{{ period.key }}.xlsx">Download Excel</a>
-  {% if can_hr and period.status == 'DRAFT' %}
-  <form method="post" action="/periods/{{ period.key }}/recompute"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost">Recompute</button></form>
-  <form method="post" action="/periods/{{ period.key }}/finalise" data-confirm="Finalise {{ period.label }}? Imports and overrides will be locked."><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">Finalise for payroll</button></form>
-  {% endif %}
-  {% if can_admin and period.status == 'FINALISED' %}
-  <form method="post" action="/periods/{{ period.key }}/reopen" class="row"><input type="hidden" name="csrf" value="{{ csrf }}"><input name="reason" placeholder="Reason to re-open" required><button class="btn danger">Re-open</button></form>
-  {% endif %}
+{% set D = rows|map(attribute='data')|list %}
+{% set ded = D|selectattr('deduction_days')|list %}
+{% set lop = D|selectattr('payroll_lop_days')|list %}
+<div class="ph">
+  <div><h1>Payroll leave sheet</h1>
+    <div class="sub">{{ period.label }} · {{ ui.status_badge(period) }}{% if period.finalised_by %} <span class="muted small">by {{ period.finalised_by }} on {{ period.finalised_at|dmy }}</span>{% endif %}</div></div>
+  <div class="actions">
+    <a class="btn sec" href="/exports/{{ period.key }}.xlsx">{{ ui.icon('download','sm') }} Excel for payroll</a>
+    {% if can_hr and period.status == 'DRAFT' %}
+    <form method="post" action="/periods/{{ period.key }}/recompute" class="inline">{{ ui.csrf_field() }}<button class="btn ghost" title="Recalculate after changes">{{ ui.icon('refresh-cw','sm') }} Recompute</button></form>
+    <form method="post" action="/periods/{{ period.key }}/finalise" class="inline" data-confirm="Finalise {{ period.label }}? Imports and corrections will be locked until an admin re-opens the month.">{{ ui.csrf_field() }}<button class="btn">{{ ui.icon('lock','sm') }} Finalise for payroll</button></form>
+    {% endif %}
+    {% if can_admin and period.status == 'FINALISED' %}<button class="btn danger" type="button" onclick="HSCO.openDrawer('reopen')">{{ ui.icon('lock-open','sm') }} Re-open</button>{% endif %}
+  </div>
 </div>
-<div class="card">
-<div class="toolbar">
-  <input type="search" placeholder="Search name, ID, group, remark…" data-filter="#res" data-count="#cnt">
-  <select data-colfilter="#res" data-col="2"><option value="">All groups</option>{% for g in rows|map(attribute='group')|unique|sort %}<option>{{ g }}</option>{% endfor %}</select>
-  <span class="muted small"><span id="cnt">{{ rows|length }}</span> employees · required hours = days present × {{ policy.hours_per_day|n }} · ½ day per {{ policy.shortfall_block_hours|n }} h short · exempt: {{ policy.exempt_groups|join(', ') }}</span>
+
+<div class="minis mb">
+  <div class="mini"><div class="v">{{ rows|length }}</div><div class="l">Employees</div></div>
+  <div class="mini {{ 'bad' if ded }}"><div class="v">{{ ded|length }} <small class="muted" style="font-size:13px">· {{ ded|sum(attribute='deduction_days')|n }} d</small></div><div class="l">Leave deductions</div></div>
+  <div class="mini {{ 'bad' if lop }}"><div class="v">{{ D|sum(attribute='payroll_lop_days')|n }}</div><div class="l">Payroll LOP days</div></div>
+  <div class="mini"><div class="v">{{ D|sum(attribute='pl_days')|n }}</div><div class="l">Paid leave taken</div></div>
+  <div class="mini"><div class="v">{{ D|sum(attribute='cof_days')|n }}</div><div class="l">Comp-off taken</div></div>
+  <div class="mini"><div class="v">{{ D|sum(attribute='unauth_absent_days')|n }}</div><div class="l">Unauthorised absence</div></div>
 </div>
-<div class="tablewrap"><table id="res" data-sortable>
-<thead><tr><th>Emp No</th><th>Name</th><th>Group</th><th class="num" title="Total week days (E)">Week days</th><th class="num" title="Holidays (F)">Hol</th><th class="num" title="Leaves taken (G)">Leave</th><th class="num" title="Absent (H)">Abs</th><th class="num" title="Days present (I)">Present</th><th class="num">WFH</th><th class="num" title="Total hours present">Hours</th><th class="num" title="Hours on weekly-off/holiday (excluded)">Off-day h</th><th class="num" title="Actual hours">Actual</th><th class="num" title="Required">Required</th><th class="num">+/−</th><th class="num">Deduct</th><th class="num" title="Leave closing balance">Leave bal</th><th class="num" title="Payroll LOP days">LOP</th><th>Remark</th><th class="num" title="Flags (high/medium)">⚑</th></tr></thead>
+
+<div class="card flush">
+  <div class="hd" style="flex-wrap:wrap;gap:10px">
+    <div class="chips" data-chips="#res">
+      <button class="chip on" data-chip="" type="button">All <span class="n">{{ rows|length }}</span></button>
+      <button class="chip" data-chip="deduction" type="button">Deduction <span class="n">{{ ded|length }}</span></button>
+      <button class="chip" data-chip="lop" type="button">Loss of pay <span class="n">{{ lop|length }}</span></button>
+      <button class="chip" data-chip="wfh" type="button">Over WFH limit <span class="n">{{ D|selectattr('wfh_days','gt',policy.wfh_limit_days)|list|length }}</span></button>
+      <button class="chip" data-chip="flags" type="button">Has flags <span class="n">{{ rows|selectattr('flag_count')|list|length }}</span></button>
+      <button class="chip" data-chip="override" type="button">Corrected <span class="n">{{ D|selectattr('overrides')|list|length }}</span></button>
+      <button class="chip" data-chip="exempt" type="button">Exempt <span class="n">{{ D|selectattr('exempt')|list|length }}</span></button>
+    </div>
+    <div class="tools">
+      <select data-colfilter="#res" data-col="1" data-allcols aria-label="Group"><option value="">All groups</option>{% for g in rows|map(attribute='group')|unique|sort %}<option>{{ g }}</option>{% endfor %}</select>
+      <input type="search" placeholder="Search…" data-filter="#res" style="width:190px" aria-label="Search">
+      <div class="seg" id="density"><button class="on" type="button" data-d="key">Key columns</button><button type="button" data-d="all">All MIS columns</button></div>
+    </div>
+  </div>
+  <div class="bd"><div class="tw" style="max-height:68vh"><table id="res" data-sortable class="compact density-key">
+<thead><tr>
+  <th class="sticky">Employee</th><th class="x">Group</th>
+  <th class="num x" title="Total week days (E)">Week days</th><th class="num x" title="Holidays (F)">Holidays</th>
+  <th class="num" title="Leaves taken (G)">Leave</th><th class="num" title="Absent (H)">Absent</th><th class="num" title="Days present (I)">Present</th>
+  <th class="num">WFH</th><th class="num x" title="Total hours present">Hours</th><th class="num x" title="Hours on weekly-off/holiday, excluded">Off-day h</th>
+  <th class="num" title="Actual hours">Actual h</th><th class="num" title="Required hours">Required h</th><th class="num">+/− h</th>
+  <th class="num">Deduction</th><th class="num x" title="Leave balance after this month">Leave bal.</th><th class="num" title="Payroll loss-of-pay days">LOP</th>
+  <th>Remark</th><th class="num" title="High/medium flags">Flags</th>
+</tr></thead>
 <tbody>
 {% for r in rows %}{% set d = r.data %}
-<tr>
-  <td>{{ r.emp_no }}</td><td><a href="/periods/{{ period.key }}/employee/{{ r.emp_no }}">{{ r.name }}</a></td><td>{{ r.group }}</td>
-  <td class="num">{{ d.total_week_days|n }}</td><td class="num">{{ d.holidays|n }}</td><td class="num">{{ d.leave_days|n }}</td>
-  <td class="num">{{ d.absent_days|n }}</td><td class="num">{{ d.days_present|n }}</td>
-  <td class="num {{ 'neg' if d.wfh_days > policy.wfh_limit_days }}">{{ d.wfh_days|n }}</td>
-  <td class="num" data-v="{{ d.total_hours }}">{{ (d.total_hours*60)|hm }}</td><td class="num">{{ d.extra_hours|n }}</td>
-  <td class="num">{{ d.actual_hours|n }}</td><td class="num">{{ d.required_hours|n }}</td>
-  <td class="num {{ 'neg' if d.balance_hours < 0 else 'pos' }}">{{ d.balance_hours|n }}</td>
-  <td class="num">{% if d.deduction_days %}<span class="pill critical">{{ d.deduction_days|n }}</span>{% endif %}</td>
-  <td class="num">{{ d.leave_closing|n if d.leave_closing is not none else '—' }}</td>
-  <td class="num">{{ d.payroll_lop_days|n if d.payroll_lop_days else '' }}</td>
-  <td class="small">{{ d.remark }}{% if d.overrides %} <span class="pill medium" title="{{ d.overrides|tojson }}">override</span>{% endif %}</td>
-  <td class="num">{% if r.flag_count %}<span class="pill high">{{ r.flag_count }}</span>{% endif %}</td>
+<tr class="click" data-href="/periods/{{ period.key }}/employee/{{ r.emp_no }}"
+    data-tags="{{ 'deduction' if d.deduction_days }} {{ 'lop' if d.payroll_lop_days }} {{ 'wfh' if d.wfh_days > policy.wfh_limit_days }} {{ 'flags' if r.flag_count }} {{ 'override' if d.overrides }} {{ 'exempt' if d.exempt }}">
+  <td class="sticky" data-v="{{ r.name }}">{{ ui.person(r.name, r.emp_no ~ ' · ' ~ (r.group or '—')) }}</td><td class="x">{{ r.group }}</td>
+  <td class="num x">{{ d.total_week_days|n }}</td><td class="num x">{{ d.holidays|n }}</td><td class="num">{{ d.leave_days|n }}</td>
+  <td class="num {{ 'neg' if d.absent_days }}">{{ d.absent_days|n }}</td><td class="num">{{ d.days_present|n }}</td>
+  <td class="num">{% if d.wfh_days > policy.wfh_limit_days %}<span class="badge b-warn">{{ d.wfh_days|n }}</span>{% else %}{{ d.wfh_days|n }}{% endif %}</td>
+  <td class="num x" data-v="{{ d.total_hours }}">{{ (d.total_hours*60)|hm }}</td><td class="num x">{{ d.extra_hours|n }}</td>
+  <td class="num" data-v="{{ d.actual_hours }}">{{ d.actual_hours|n(1) }}</td><td class="num" data-v="{{ d.required_hours }}">{{ d.required_hours|n(1) }}</td>
+  <td class="num {{ 'neg' if d.balance_hours < 0 else 'pos' }}" data-v="{{ d.balance_hours }}">{{ '+' if d.balance_hours > 0 }}{{ d.balance_hours|n(1) }}</td>
+  <td class="num" data-v="{{ d.deduction_days }}">{% if d.deduction_days %}<span class="badge b-bad">{{ d.deduction_days|n }} d</span>{% elif d.exempt and d.balance_hours < 0 %}<span class="badge b-grey" title="{{ d.remark }}">exempt</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+  <td class="num x" data-v="{{ d.leave_closing if d.leave_closing is not none else -999 }}">{{ d.leave_closing|n if d.leave_closing is not none else '—' }}</td>
+  <td class="num {{ 'neg' if d.payroll_lop_days }}">{{ d.payroll_lop_days|n if d.payroll_lop_days else '' }}</td>
+  <td class="small remark">{{ d.remark }}{% if d.overrides %} <span class="badge b-violet" title="{{ d.overrides|tojson }}">corrected</span>{% endif %}</td>
+  <td class="num">{% if r.flag_count %}<span class="badge b-warn">{{ r.flag_count }}</span>{% endif %}</td>
 </tr>{% endfor %}
-</tbody></table></div>
-<p class="small muted">Click a column to sort. Click a name to drill down into the day-by-day record, punches, locations, flags and to make manual corrections.</p>
+</tbody>
+<tfoot><tr class="tfoot"><td class="sticky">Total · <span data-count="#res">{{ rows|length }}</span> shown</td><td class="x"></td>
+  <td class="num x"></td><td class="num x"></td><td data-sum class="num">{{ D|sum(attribute='leave_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='absent_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='days_present')|n }}</td>
+  <td data-sum class="num">{{ D|sum(attribute='wfh_days')|n }}</td><td class="num x"></td><td data-sum data-dec="0" class="num x">{{ D|sum(attribute='extra_hours')|n(0) }}</td>
+  <td data-sum data-dec="0" class="num">{{ D|sum(attribute='actual_hours')|n(0) }}</td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='required_hours')|n(0) }}</td><td class="num"></td>
+  <td data-sum data-unit=" d" class="num">{{ D|sum(attribute='deduction_days')|n }} d</td><td class="num x"></td><td data-sum class="num">{{ D|sum(attribute='payroll_lop_days')|n }}</td><td></td><td></td></tr></tfoot>
+</table></div></div>
 </div>
+<p class="help">Required hours = days present × {{ policy.hours_per_day|n }} h. Shortfall is deducted at ½ day per {{ policy.shortfall_block_hours|n }} h (rounded up). Exempt: {{ policy.exempt_groups|join(', ') }}. Click any row for the day-by-day record and to make corrections. Press <kbd>/</kbd> to find someone.</p>
+
+{% if can_admin and period.status == 'FINALISED' %}
+<aside class="drawer" id="reopen" aria-label="Re-open month"><div class="dh"><h2>Re-open {{ period.label }}</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<form method="post" action="/periods/{{ period.key }}/reopen" style="display:contents">{{ ui.csrf_field() }}
+<div class="db"><div class="alert warn">{{ ui.icon('triangle-alert') }}<span>Payroll may already have used this sheet. Re-opening allows imports and corrections again; it is recorded in the audit log.</span></div>
+<div class="field"><label>Reason</label><textarea name="reason" rows="3" required placeholder="e.g. Late regularisation approved by partner"></textarea></div></div>
+<div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn danger">Re-open month</button></div></form></aside><div class="scrim"></div>
+{% endif %}
+<style>#res.density-key .x{display:none}</style>
 {% endblock %}
+{% block scripts %}<script>
+document.querySelectorAll('#density button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#density button').forEach(x=>x.classList.toggle('on',x===b));
+ const t=document.getElementById('res');t.classList.toggle('density-key',b.dataset.d==='key');try{localStorage.setItem('density',b.dataset.d)}catch(e){}});
+try{if(localStorage.getItem('density')==='all')document.querySelector('#density [data-d=all]').click()}catch(e){}
+</script>{% endblock %}

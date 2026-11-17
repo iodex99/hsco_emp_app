@@ -10,16 +10,25 @@ Username + password, then a second step: authenticator-app code, security key / 
 recovery code. First sign-in forces you to set up an authenticator app and shows 10 recovery codes — print/store them.
 Add more methods under **My security** (several phones, keys).
 
+## Finding your way
+- **Overview**: the month at a glance, with a **month-end checklist** that tells you the next step.
+- **Payroll leave sheet**: everyone's figures; chips filter to deductions, loss of pay, WFH over limit, flags and more.
+- **Review queue**: every exception, grouped by type; mark each reviewed with a short note.
+- **Employees**: settings per person (group, working pattern, hours per day, exemption).
+- Press **/** anywhere to find an employee; use the **month switcher** (top right) to change month.
+- On an employee's page, **click a calendar day** to see its punches and correct it; the left/right arrow keys move
+  to the previous/next employee.
+
 ## Month end (≈ 10 minutes)
 1. In greytHR export for the month: **Attendance Muster Report**, **Employee Swipe Details**,
    **Date Of Joining Report** (and optionally **Attendance Summary Report**). No need to remove filters or extra sheets.
 2. **Import exports** → select all files → *Import & calculate*. The app recognises each file and the month.
    Warnings show possible exits (people missing from the active list) and missing coordinates.
-3. **Exceptions & flags**: review high items — shortfall deductions, unauthorised absence, WFH over limit,
-   present-without-punch, leave exhausted.
+3. **Review queue**: work through the exceptions (shortfall deductions, unauthorised absence, WFH over limit,
+   present-without-punch, leave exhausted). Mark each one reviewed; pick a reason or type a note.
 4. Click an employee to open the **drill-down**: calendar, every punch with place, flags, ledger. Correct if needed:
-   - *Correct a day* — change day type (working/off/holiday), session status (P, A, PL, COF, LOP…) or hours.
-   - *Adjust month figures* — e.g. grant an exception (Exempt this month = yes), set required hours, override
+   - *Click the day* in the calendar: change day type, session status (P, A, PL, COF, LOP…) or hours.
+   - *Corrections tab, Adjust a figure*: e.g. grant an exception (Exempt this month = yes), set required hours, override
      deduction days, or a remark. **A reason is mandatory**; everything is in the Audit log and highlighted in Excel.
    - *Opening balances* — first month only (or bulk via the Leave opening template).
 5. **Payroll leave sheet** → *Finalise for payroll* (locks the month) → **Download Excel** for payroll.

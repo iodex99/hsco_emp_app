@@ -1,20 +1,40 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
 {% block title %}Employees{% endblock %}
 {% block content %}
-<div class="top"><h1>Employees</h1><span class="sp"></span>
-  {% if can_hr %}<a class="btn ghost" href="/exports/templates/employee_master.xlsx">Master template (with current data)</a><a class="btn" href="/employees/new">+ Add employee</a>{% endif %}</div>
-<div class="card">
-<div class="toolbar"><input type="search" placeholder="Search…" data-filter="#emps" data-count="#cnt">
-  <select data-colfilter="#emps" data-col="2"><option value="">All groups</option>{% for g in emps|map(attribute='group')|unique|sort %}<option>{{ g }}</option>{% endfor %}</select>
-  <select data-colfilter="#emps" data-col="9"><option value="">Active &amp; left</option><option>Active</option><option>Left</option></select>
-  <span class="muted small"><span id="cnt">{{ emps|length }}</span> employees{% if latest %} · metrics from {{ latest.label }}{% endif %}</span></div>
-<div class="tablewrap"><table id="emps" data-sortable><thead><tr><th>Emp No</th><th>Name</th><th>Group</th><th>Location</th><th>Joined</th><th>Weekly off</th><th class="num">Hrs/day</th><th>Exempt</th><th>Calendar</th><th>Status</th><th class="num">Last +/− h</th><th class="num">⚑</th></tr></thead><tbody>
-{% for e in emps %}{% set r = last.get(e.emp_no) %}
-<tr><td>{{ e.emp_no }}</td><td><a href="/employees/{{ e.emp_no }}">{{ e.name }}</a>{% if r and latest %} <a class="small" href="/periods/{{ latest.key }}/employee/{{ e.emp_no }}">month ›</a>{% endif %}</td>
-<td>{{ e.group or '' }}{% if not e.group %}<span class="pill medium">not set</span>{% endif %}</td><td>{{ e.location }}</td><td data-v="{{ e.doj or '' }}">{{ e.doj|dmy }}</td>
-<td class="small">{{ e.weekly_off }}{% if e.weekly_off == 'CUSTOM' %} ({{ e.off_weekdays }}{% if e.working_saturdays %}; Sat {{ e.working_saturdays }}{% endif %}){% endif %}</td>
-<td class="num">{{ e.hours_per_day|n if e.hours_per_day else '' }}</td><td>{{ 'Yes' if e.exempt else '' }}</td><td class="small">{{ cals.get(e.holiday_calendar_id, '') }}</td>
-<td>{{ 'Left' if e.dol or not e.is_active else 'Active' }}</td>
-<td class="num {{ 'neg' if r and r.balance_hours < 0 }}">{{ r.balance_hours|n if r else '' }}</td><td class="num">{% if r and r.flag_count %}<span class="pill high">{{ r.flag_count }}</span>{% endif %}</td></tr>
-{% endfor %}</tbody></table></div></div>
+{% set active = emps|rejectattr('dol')|selectattr('is_active')|list %}
+<div class="ph"><div><h1>Employees</h1><div class="sub">{{ active|length }} active · {{ emps|length - active|length }} left{% if latest %} · figures from {{ latest.label }}{% endif %}</div></div>
+  <div class="actions">{% if can_hr %}<a class="btn sec" href="/exports/templates/employee_master.xlsx">{{ ui.icon('download','sm') }} Export master</a><a class="btn" href="/employees/new">{{ ui.icon('user-plus','sm') }} Add employee</a>{% endif %}</div></div>
+{% set nogroup = emps|rejectattr('group')|list %}
+{% if nogroup and can_hr %}<div class="alert warn">{{ ui.icon('triangle-alert') }}<span><b>{{ nogroup|length }} employee{{ 's' if nogroup|length > 1 }} without a group</b> — exemptions can't apply to them. Use the “No group” filter below.</span></div>{% endif %}
+<div class="card flush">
+  <div class="hd" style="flex-wrap:wrap;gap:10px">
+    <div class="chips" data-chips="#emps">
+      <button class="chip on" data-chip="" type="button">All <span class="n">{{ emps|length }}</span></button>
+      <button class="chip" data-chip="active" type="button">Active <span class="n">{{ active|length }}</span></button>
+      <button class="chip" data-chip="left" type="button">Left <span class="n">{{ emps|length - active|length }}</span></button>
+      <button class="chip" data-chip="custom" type="button">Special working pattern</button>
+      <button class="chip" data-chip="exempt" type="button">Exempt</button>
+      {% if nogroup %}<button class="chip" data-chip="nogroup" type="button">No group <span class="n">{{ nogroup|length }}</span></button>{% endif %}
+    </div>
+    <div class="tools"><select data-colfilter="#emps" data-col="1" aria-label="Group"><option value="">All groups</option>{% for g in emps|map(attribute='group')|unique|sort if g %}<option>{{ g }}</option>{% endfor %}</select>
+      <input type="search" placeholder="Search…" data-filter="#emps" style="width:200px"></div>
+  </div>
+  <div class="bd"><div class="tw"><table id="emps" data-sortable class="compact">
+  <thead><tr><th class="sticky">Employee</th><th>Group</th><th>Location</th><th>Joined</th><th>Working pattern</th><th>Exemption</th><th class="num">Last month +/− h</th><th class="num">Flags</th></tr></thead><tbody>
+  {% for e in emps %}{% set r = last.get(e.emp_no) %}{% set left = e.dol or not e.is_active %}
+  <tr class="click" data-href="{{ '/periods/' ~ latest.key ~ '/employee/' ~ e.emp_no if r and latest else '/employees/' ~ e.emp_no }}"
+      data-tags="{{ 'left' if left else 'active' }} {{ 'custom' if e.weekly_off != 'MUSTER' or e.hours_per_day or e.holiday_calendar_id }} {{ 'exempt' if e.exempt }} {{ 'nogroup' if not e.group }}">
+    <td class="sticky" data-v="{{ e.name }}">{{ ui.person(e.name, e.emp_no ~ (' · left ' ~ (e.dol|dmy) if e.dol else '')) }}</td>
+    <td>{% if e.group %}{{ e.group }}{% else %}<span class="badge b-warn">not set</span>{% endif %}</td><td>{{ e.location }}</td>
+    <td data-v="{{ e.doj or '' }}" class="small">{{ e.doj|dmy }}</td>
+    <td class="small">{% if e.weekly_off == 'MUSTER' and not e.hours_per_day and not e.holiday_calendar_id %}<span class="muted">Standard</span>{% else %}
+      {% if e.weekly_off != 'MUSTER' %}<span class="tag">{{ {'STD_FIRST_SAT':'1st Sat working','ALL_SAT_OFF':'All Sat off','SUN_ONLY':'6-day week','CUSTOM':'Custom off-days'}.get(e.weekly_off, e.weekly_off) }}</span>{% endif %}
+      {% if e.hours_per_day %}<span class="tag">{{ e.hours_per_day|n }} h/day</span>{% endif %}{% if e.holiday_calendar_id %}<span class="tag">{{ cals.get(e.holiday_calendar_id) }}</span>{% endif %}{% endif %}</td>
+    <td class="small">{% if e.exempt %}<span class="badge b-grey">{{ e.exempt_reason or 'Exempt' }}</span>{% endif %}</td>
+    <td class="num {{ 'neg' if r and r.balance_hours < 0 }}" data-v="{{ r.balance_hours if r else '' }}">{{ r.balance_hours|n(1) if r else '' }}</td>
+    <td class="num">{% if r and r.flag_count %}<span class="badge b-warn">{{ r.flag_count }}</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div></div>
+</div>
+<p class="help">Click a row to open the employee's latest month. Settings (group, working pattern, exemption) are on the employee page.</p>
 {% endblock %}

@@ -1,13 +1,14 @@
 {% extends "auth_base.html" %}
 {% block content %}
-<h1>Attendance &amp; Leave</h1>
-<p class="muted">Sign in to continue</p>
-{% if error %}<div class="err">{{ error }}</div>{% endif %}
-{% if first_run %}<div class="flash">No users yet. On the server run <code>python -m app.cli create-admin</code> to create the first administrator.</div>{% endif %}
+<h1>Welcome back</h1>
+<p class="muted" style="margin:0 0 24px">Sign in to the attendance &amp; leave workspace.</p>
+{% if error %}<div class="alert bad">{{ ui.icon('circle-alert') }}<span>{{ error }}</span></div>{% endif %}
+{% if first_run %}<div class="alert">{{ ui.icon('info') }}<span>No users yet. On the server run <code>python -m app.cli create-admin</code>.</span></div>{% endif %}
 <form method="post" action="/login" autocomplete="off">
   <input type="hidden" name="next" value="{{ next }}">
   <div class="field"><label for="u">Username</label><input id="u" name="username" required autofocus autocomplete="username"></div>
   <div class="field"><label for="p">Password</label><input id="p" type="password" name="password" required autocomplete="current-password"></div>
-  <button class="btn" style="width:100%">Continue</button>
+  <button class="btn block lg">Continue</button>
 </form>
+<p class="help" style="margin-top:18px">Forgot your password or lost your phone? Ask an administrator to reset it.</p>
 {% endblock %}

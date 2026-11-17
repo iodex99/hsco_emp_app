@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import date
 
+import anyio
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
@@ -35,7 +37,7 @@ POLICY_NUMBERS = [
 ]
 
 
-async def _recompute_drafts(c: Ctx):
+def _recompute_drafts(c: Ctx):
     for p in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))
                           .order_by(Period.year, Period.month)):
         compute_period(c.db, p, cascade=False)
@@ -57,6 +59,10 @@ def settings_page(c: Ctx = Depends(hr)):
 @router.post("/settings/policy")
 async def save_policy_route(request: Request, c: Ctx = Depends(admin)):
     form = await request.form()
+    return await anyio.to_thread.run_sync(_save_policy, c, form)
+
+
+def _save_policy(c: Ctx, form):
     data = {}
     for key, _, _ in POLICY_NUMBERS:
         v = form.get(key, "").strip()
@@ -103,13 +109,17 @@ async def save_policy_route(request: Request, c: Ctx = Depends(admin)):
     except Exception as ex:  # noqa: BLE001
         return redirect("/settings#policy", f"Could not save: {ex}")
     audit(c.db, c.user, "settings.policy", details=data, ip=c.ip)
-    await _recompute_drafts(c)
+    _recompute_drafts(c)
     return redirect("/settings#policy", "Policy saved; draft months recomputed.")
 
 
 @router.post("/settings/general")
 async def save_general_route(request: Request, c: Ctx = Depends(admin)):
     form = await request.form()
+    return await anyio.to_thread.run_sync(_save_general, c, form)
+
+
+def _save_general(c: Ctx, form):
     g = get_general(c.db)
     data = {
         "org_name": form.get("org_name", g["org_name"]).strip() or g["org_name"],
@@ -136,7 +146,7 @@ async def save_general_route(request: Request, c: Ctx = Depends(admin)):
 # ---------------------------------------------------------------- holiday calendars
 
 @router.post("/settings/calendars")
-async def add_calendar(name: str = Form(...), is_default: str = Form(""), c: Ctx = Depends(hr)):
+def add_calendar(name: str = Form(...), is_default: str = Form(""), c: Ctx = Depends(hr)):
     name = name.strip()
     if not name or c.db.scalar(select(HolidayCalendar).where(HolidayCalendar.name == name)):
         return redirect("/settings#holidays", "Calendar name missing or already exists.")
@@ -145,33 +155,33 @@ async def add_calendar(name: str = Form(...), is_default: str = Form(""), c: Ctx
             cal.is_default = False
     c.db.add(HolidayCalendar(name=name, is_default=bool(is_default)))
     audit(c.db, c.user, "calendar.add", "calendar", name, ip=c.ip)
-    await _recompute_drafts(c)
+    _recompute_drafts(c)
     return redirect("/settings#holidays", f"Calendar '{name}' added.")
 
 
 @router.post("/settings/calendars/{cid}/default")
-async def default_calendar(cid: int, c: Ctx = Depends(hr)):
+def default_calendar(cid: int, c: Ctx = Depends(hr)):
     for cal in c.db.scalars(select(HolidayCalendar)):
         cal.is_default = cal.id == cid
     audit(c.db, c.user, "calendar.default", "calendar", cid, ip=c.ip)
     c.db.flush()
-    await _recompute_drafts(c)
+    _recompute_drafts(c)
     return redirect("/settings#holidays", "Default calendar changed.")
 
 
 @router.post("/settings/calendars/{cid}/delete")
-async def delete_calendar(cid: int, c: Ctx = Depends(hr)):
+def delete_calendar(cid: int, c: Ctx = Depends(hr)):
     cal = c.db.get(HolidayCalendar, cid)
     if cal:
         audit(c.db, c.user, "calendar.delete", "calendar", cal.name, ip=c.ip)
         c.db.delete(cal)
         c.db.flush()
-        await _recompute_drafts(c)
+        _recompute_drafts(c)
     return redirect("/settings#holidays", "Calendar deleted.")
 
 
 @router.post("/settings/calendars/{cid}/holiday")
-async def add_holiday(cid: int, day: str = Form(...), name: str = Form(""), c: Ctx = Depends(hr)):
+def add_holiday(cid: int, day: str = Form(...), name: str = Form(""), c: Ctx = Depends(hr)):
     cal = c.db.get(HolidayCalendar, cid)
     if not cal:
         return redirect("/settings#holidays", "Calendar not found.")
@@ -180,18 +190,18 @@ async def add_holiday(cid: int, day: str = Form(...), name: str = Form(""), c: C
         c.db.add(Holiday(calendar_id=cid, day=d, name=name.strip()))
     audit(c.db, c.user, "holiday.add", "calendar", cal.name, {"day": day, "name": name}, c.ip)
     c.db.flush()
-    await _recompute_drafts(c)
+    _recompute_drafts(c)
     return redirect("/settings#holidays", f"Holiday {d:%d-%b-%Y} added to {cal.name}.")
 
 
 @router.post("/settings/holidays/{hid}/delete")
-async def delete_holiday(hid: int, c: Ctx = Depends(hr)):
+def delete_holiday(hid: int, c: Ctx = Depends(hr)):
     h = c.db.get(Holiday, hid)
     if h:
         audit(c.db, c.user, "holiday.delete", "calendar", h.calendar_id, {"day": h.day.isoformat()}, c.ip)
         c.db.delete(h)
         c.db.flush()
-        await _recompute_drafts(c)
+        _recompute_drafts(c)
     return redirect("/settings#holidays", "Holiday removed.")
 
 

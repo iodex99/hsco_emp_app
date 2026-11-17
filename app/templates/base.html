@@ -1,42 +1,67 @@
+{% import "_ui.html" as ui with context %}
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="{{ csrf }}">
 <title>{% block title %}Attendance & Leave{% endblock %} · {{ org or "HSCO" }}</title>
+<link rel="preload" href="/static/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/vendor/chart.umd.min.js"></script>
 </head>
 <body>
-<div class="layout">
-  <aside class="side">
-    <div class="brand">{{ org or "HSCO" }}<small>Attendance &amp; Leave Intelligence</small></div>
-    <nav>
-      <div class="sec">Reports</div>
-      <a href="/" class="{{ 'on' if path == '/' }}">Board dashboard</a>
-      {% if all_periods %}<a href="/periods/{{ all_periods[0].key }}" class="{{ 'on' if path.startswith('/periods') }}">Payroll leave sheet</a>{% endif %}
-      <a href="/flags" class="{{ 'on' if path.startswith('/flags') }}">Exceptions &amp; flags</a>
-      <a href="/employees" class="{{ 'on' if path.startswith('/employees') }}">Employees</a>
-      <a href="/reconciliation" class="{{ 'on' if path.startswith('/reconciliation') }}">Reconciliation</a>
-      <a href="/exports" class="{{ 'on' if path.startswith('/exports') }}">Downloads</a>
+<div class="app">
+  <aside class="side" id="side">
+    <a class="brand" href="/" style="color:inherit"><span class="logo">{{ ui.org_initials(org) }}</span><span><b>{{ org or "HSCO" }}</b><small>Attendance &amp; Leave</small></span></a>
+    <nav class="nav" aria-label="Main">
+      {% set pk = cur_period.key if cur_period else '' %}
+      <a href="/{{ '?period=' ~ pk if pk }}" class="{{ 'on' if path == '/' }}">{{ ui.icon('layout-dashboard') }}Overview</a>
+      {% if cur_period %}<a href="/periods/{{ pk }}" class="{{ 'on' if path.startswith('/periods') }}">{{ ui.icon('file-spreadsheet') }}Payroll leave sheet</a>{% endif %}
+      <a href="/flags{{ '?period=' ~ pk if pk }}" class="{{ 'on' if path.startswith('/flags') }}">{{ ui.icon('list-checks') }}Review queue{% if nav_open %}<span class="count">{{ nav_open }}</span>{% endif %}</a>
+      <a href="/employees" class="{{ 'on' if path.startswith('/employees') }}">{{ ui.icon('users') }}Employees</a>
+      <div class="grp">Reports</div>
+      <a href="/exports" class="{{ 'on' if path.startswith('/exports') }}">{{ ui.icon('download') }}Downloads</a>
+      <a href="/reconciliation{{ '?period=' ~ pk if pk }}" class="{{ 'on' if path.startswith('/reconciliation') }}">{{ ui.icon('git-compare') }}Reconciliation</a>
       {% if can_hr %}
-      <div class="sec">Operations</div>
-      <a href="/imports" class="{{ 'on' if path.startswith('/imports') }}">Import exports</a>
-      <a href="/settings" class="{{ 'on' if path.startswith('/settings') }}">Rules &amp; calendars</a>
-      <a href="/audit" class="{{ 'on' if path.startswith('/audit') }}">Audit log</a>
+      <div class="grp">Manage</div>
+      <a href="/imports" class="{{ 'on' if path.startswith('/imports') }}">{{ ui.icon('upload') }}Import files</a>
+      <a href="/settings" class="{{ 'on' if path.startswith('/settings') }}">{{ ui.icon('sliders-horizontal') }}Rules &amp; calendars</a>
+      <a href="/audit" class="{{ 'on' if path.startswith('/audit') }}">{{ ui.icon('scroll-text') }}Audit log</a>
       {% endif %}
-      {% if can_admin %}<a href="/users" class="{{ 'on' if path.startswith('/users') }}">Users</a>{% endif %}
-      <div class="sec">Account</div>
-      <a href="/security" class="{{ 'on' if path.startswith('/security') }}">My security</a>
+      {% if can_admin %}<a href="/users" class="{{ 'on' if path.startswith('/users') }}">{{ ui.icon('user-cog') }}Users</a>{% endif %}
     </nav>
-    {% if user %}<div class="me">Signed in as <b>{{ user.username }}</b> ({{ user.role }})<br>
-      <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost" style="margin-top:6px">Sign out</button></form></div>{% endif %}
+    <div class="foot">{{ ui.icon('shield-check','sm') }} Data stays on this server</div>
   </aside>
-  <main class="main">
-    {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
-    {% block content %}{% endblock %}
-  </main>
+  <div class="main">
+    <header class="topbar" id="topbar">
+      <button class="btn ghost icon menu-btn" type="button" onclick="document.getElementById('side').classList.toggle('open')" aria-label="Menu">{{ ui.icon('menu') }}</button>
+      <div class="search" role="search">
+        {{ ui.icon('search','sm') }}
+        <input id="q-global" type="search" placeholder="Find an employee by name or ID…" autocomplete="off" aria-label="Find employee">
+        <kbd>/</kbd>
+        <div class="results" id="q-results" role="listbox"></div>
+      </div>
+      <span class="spacer"></span>
+      {% if all_periods %}
+      <select id="period-switch" aria-label="Month" title="Month">
+        {% for p in all_periods %}<option value="{{ p.key }}" {{ 'selected' if cur_period and p.key == cur_period.key }}>{{ p.label }}{{ ' · final' if p.status == 'FINALISED' }}</option>{% endfor %}
+      </select>{% endif %}
+      {% if user %}
+      <div class="um">
+        <button class="avatar" type="button" id="um-btn" aria-label="Account menu">{{ ui.initials(user.full_name or user.username) }}</button>
+        <div class="menu" id="um-menu">
+          <div class="who"><b>{{ user.full_name or user.username }}</b><span>{{ user.username }} · {{ user.role|capitalize }}</span></div>
+          <a href="/security">{{ ui.icon('shield-check','sm') }} Security &amp; 2FA</a>
+          <form method="post" action="/logout">{{ ui.csrf_field() }}<button type="submit">{{ ui.icon('log-out','sm') }} Sign out</button></form>
+        </div>
+      </div>{% endif %}
+    </header>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
 </div>
+<div class="toasts" id="toasts">{% if flash %}<div class="toast" role="status">{{ ui.icon('circle-check') }}<span>{{ flash }}</span><button type="button" aria-label="Dismiss" onclick="this.parentNode.remove()">{{ ui.icon('x','sm') }}</button></div>{% endif %}</div>
 <script src="/static/app.js"></script>
 {% block scripts %}{% endblock %}
 </body>

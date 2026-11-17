@@ -19,7 +19,7 @@ FLAG_LABELS = {
     "SHORTFALL_EXEMPT": "Shortfall but exempt",
     "UNAUTHORISED_ABSENCE": "Unauthorised absence",
     "WFH_OVER_LIMIT": "WFH above monthly limit",
-    "PERSISTENT_LATE": "Persistent late arrival",
+    "PERSISTENT_LATE": "Often more than 1 h late",
     "PERSISTENT_REGULARISATION": "Persistent regularisation",
     "MISSING_PUNCHES": "Repeated missing punches",
     "MOBILE_AT_OFFICE": "Mobile sign-in tagged 'Office'",
@@ -54,10 +54,10 @@ def results_for(db: Session, period: Period) -> list[MonthResult]:
     return list(db.scalars(select(MonthResult).where(MonthResult.period_id == period.id).order_by(MonthResult.emp_no)))
 
 
-def period_metrics(db: Session, period: Period) -> dict:
-    policy = get_policy(db)
-    res = results_for(db, period)
-    emps = {e.emp_no: e for e in db.scalars(select(Employee))}
+def compute_kpis(db: Session, period: Period, policy=None, res=None, emps=None) -> dict:
+    policy = policy or get_policy(db)
+    res = res if res is not None else results_for(db, period)
+    emps = emps if emps is not None else {e.emp_no: e for e in db.scalars(select(Employee))}
     y, m = period.year, period.month
     month_start = date(y, m, 1)
     month_end = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
@@ -103,6 +103,19 @@ def period_metrics(db: Session, period: Period) -> dict:
     kpis["avg_in_time"] = hm(sum(ins) / len(ins)) if ins else ""
     outs = [d["avg_out_min"] for d in behaviour if d.get("avg_out_min")]
     kpis["avg_out_time"] = hm(sum(outs) / len(outs)) if outs else ""
+
+    return kpis
+
+
+def period_metrics(db: Session, period: Period) -> dict:
+    policy = get_policy(db)
+    res = results_for(db, period)
+    emps = {e.emp_no: e for e in db.scalars(select(Employee))}
+    y, m = period.year, period.month
+    D = [r.data for r in res]
+    kpis = compute_kpis(db, period, policy, res, emps)
+    prev = previous_period(db, period)
+    prev_kpis = compute_kpis(db, prev, policy, None, emps) if prev and prev.computed_at else None
 
     # flags
     flag_counts = Counter()
@@ -162,6 +175,8 @@ def period_metrics(db: Session, period: Period) -> dict:
     return {
         "period": {"key": period.key, "label": period.label, "status": period.status},
         "kpis": kpis,
+        "prev_kpis": prev_kpis,
+        "prev_label": prev.label if prev and prev_kpis else "",
         "flag_summary": flag_summary,
         "flags": flag_rows,
         "groups": group_rows,

@@ -2,30 +2,30 @@
 {% block title %}Verify{% endblock %}
 {% block content %}
 <h1>Two-step verification</h1>
-<p class="muted">Signed in as <b>{{ user.username }}</b>. Choose a method:</p>
+<p class="muted" style="margin:0 0 20px">Signed in as <b>{{ user.username }}</b>. Confirm it's you.</p>
 {% if 'totp' in kinds %}
-<form method="post" action="/mfa/totp" class="card">
-  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
-  <label for="code">Authenticator app code</label>
-  <div class="row"><div class="field"><input id="code" name="code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" autofocus required placeholder="123456"></div>
-  <button class="btn">Verify</button></div>
+<form method="post" action="/mfa/totp" class="method">
+  {{ ui.csrf_field() }}<input type="hidden" name="next" value="{{ next }}">
+  <div class="mh">{{ ui.icon('smartphone') }} Authenticator app</div>
+  <input id="code" class="otp" name="code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" autofocus required placeholder="000000" style="width:100%">
+  <button class="btn block mt-s">Verify</button>
 </form>{% endif %}
 {% if 'webauthn' in kinds %}
-<div class="card"><label>Security key / Windows Hello / passkey</label>
-  <button class="btn" id="pk" type="button">Use security key</button> <span id="pkmsg" class="small muted"></span></div>
+<div class="method"><div class="mh">{{ ui.icon('fingerprint') }} Security key or Windows Hello</div>
+  <button class="btn sec block" id="pk" type="button">Use security key</button><div id="pkmsg" class="help"></div></div>
 {% endif %}
 {% if 'email' in kinds and smtp %}
-<div class="card"><label>Email code</label>
-  <form method="post" action="/mfa/email/send" style="display:inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}"><button class="btn ghost sm">Email me a code</button></form>
-  <form method="post" action="/mfa/email" class="row" style="margin-top:8px"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
-    <div class="field"><input name="code" inputmode="numeric" maxlength="6" placeholder="Code from email" required></div><button class="btn">Verify</button></form>
+<div class="method"><div class="mh">{{ ui.icon('mail') }} Email code</div>
+  <form method="post" action="/mfa/email/send">{{ ui.csrf_field() }}<input type="hidden" name="next" value="{{ next }}"><button class="btn sec sm">Email me a code</button></form>
+  <form method="post" action="/mfa/email" class="row mt-s">{{ ui.csrf_field() }}<input type="hidden" name="next" value="{{ next }}">
+    <div class="field" style="margin:0"><input name="code" inputmode="numeric" maxlength="6" placeholder="Code from email" required></div><button class="btn">Verify</button></form>
 </div>{% endif %}
-<details class="card"><summary>Use a recovery code ({{ recovery_left }} left)</summary>
-  <form method="post" action="/mfa/recovery" class="row" style="margin-top:10px"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
-  <div class="field"><input name="code" placeholder="XXXXXX-XXXXXX" required></div><button class="btn">Verify</button></form></details>
-<form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost sm">Cancel</button></form>
+<details class="method"><summary class="strong" style="cursor:pointer">Use a recovery code <span class="muted">({{ recovery_left }} left)</span></summary>
+  <form method="post" action="/mfa/recovery" class="row mt-s">{{ ui.csrf_field() }}<input type="hidden" name="next" value="{{ next }}">
+  <div class="field" style="margin:0"><input name="code" placeholder="XXXXXX-XXXXXX" required></div><button class="btn">Verify</button></form></details>
+<form method="post" action="/logout">{{ ui.csrf_field() }}<button class="btn ghost sm">{{ ui.icon('chevron-left','sm') }} Use a different account</button></form>
 {% endblock %}
 {% block scripts %}<script>
-const b=document.getElementById('pk'); if(b) b.onclick=async()=>{const m=document.getElementById('pkmsg');m.textContent='Waiting for key…';
+const b=document.getElementById('pk'); if(b) b.onclick=async()=>{const m=document.getElementById('pkmsg');m.textContent='Waiting for your key…';
 try{const r=await HSCO.loginPasskey({{ next|tojson }}); location.href=r.redirect;}catch(e){m.textContent=e.message;}};
 </script>{% endblock %}

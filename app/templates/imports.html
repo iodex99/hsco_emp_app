@@ -1,40 +1,75 @@
 {% extends "base.html" %}
-{% block title %}Import{% endblock %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Import files{% endblock %}
 {% block content %}
-<div class="top"><h1>Import greytHR exports</h1></div>
-{% if results or errors %}
-<div class="card"><h2>Import result</h2>
-{% for e in errors or [] %}<div class="err"><b>{{ e.file }}</b>: {{ e.error }}</div>{% endfor %}
-{% for r in results %}<div class="stack"><b>{{ r.file }}</b>
-  <table><thead><tr><th>Sheet</th><th>Recognised as</th><th>Month</th><th class="num">Rows</th><th>Notes</th></tr></thead><tbody>
-  {% for s in r.sheets %}<tr><td>{{ s.sheet }}</td><td>{{ s.label }}</td><td>{{ s.period }}</td><td class="num">{{ s.rows }}</td><td class="small">{{ s.warnings|join(' · ') }}</td></tr>{% endfor %}</tbody></table></div>{% endfor %}
-{% if results %}<p><a class="btn" href="/">Open dashboard</a> {% if all_periods %}<a class="btn ghost" href="/periods/{{ all_periods[0].key }}">Payroll leave sheet</a>{% endif %}</p>{% endif %}
-</div>{% endif %}
+<div class="ph"><div><h1>Import files</h1><div class="sub">Upload the month's greytHR exports exactly as downloaded — filters, pivots and extra sheets are fine.</div></div></div>
 
-<div class="grid g2">
-<form class="card" method="post" action="/imports" enctype="multipart/form-data">
-  <input type="hidden" name="csrf" value="{{ csrf }}">
-  <h2>Upload files</h2>
-  <p class="small muted">Select one or more Excel files. Each sheet is recognised automatically from its headers; extra sheets with manual working are ignored. Filters and hidden rows in the files do not matter — every row is read. Re-importing a month replaces that month's data.</p>
-  <div class="field"><label>Files (.xlsx / .xls / .csv)</label><input type="file" name="files" multiple required accept=".xlsx,.xls,.xlsm,.csv"></div>
-  <div class="field"><label>Month (only needed if the file has no dates, e.g. leave opening balances)</label><input type="month" name="period"></div>
-  <button class="btn">Import &amp; calculate</button>
+{% if results or errors %}
+<div class="card"><div class="hd"><h2>{% if errors and not results %}Import failed{% else %}Import result{% endif %}</h2>
+  {% if results %}<div class="tools">{% if all_periods %}<a class="btn sm sec" href="/periods/{{ all_periods[0].key }}">Payroll leave sheet</a>{% endif %}<a class="btn sm" href="/">Go to overview {{ ui.icon('arrow-right','sm') }}</a></div>{% endif %}</div>
+<div class="bd">
+{% for e in errors or [] %}<div class="alert bad">{{ ui.icon('circle-x') }}<span><b>{{ e.file }}</b> — {{ e.error }}</span></div>{% endfor %}
+{% for r in results %}{% for s in r.sheets %}
+  <div class="alert ok" style="align-items:flex-start">{{ ui.icon('circle-check') }}<div><b>{{ r.file }}</b> → {{ s.label }}{% if s.period %} · {{ s.period }}{% endif %} · {{ s.rows }} rows
+    {% for w in s.warnings %}<div class="small" style="color:var(--warn);margin-top:3px">{{ ui.icon('triangle-alert','sm') }} {{ w }}</div>{% endfor %}</div></div>
+{% endfor %}{% endfor %}
+</div></div>{% endif %}
+
+<div class="grid g-2-1 mb">
+<form class="card" method="post" action="/imports" enctype="multipart/form-data" id="upform">
+  {{ ui.csrf_field() }}
+  <div class="hd"><h2>Upload</h2></div>
+  <div class="bd">
+    <label class="drop" id="drop" for="files">
+      <div class="ring">{{ ui.icon('file-up','lg') }}</div>
+      <div class="strong">Drop files here, or click to choose</div>
+      <div class="help">.xlsx, .xls or .csv · several files at once</div>
+      <input type="file" id="files" name="files" multiple required accept=".xlsx,.xls,.xlsm,.csv" class="sr">
+    </label>
+    <ul class="filelist" id="filelist"></ul>
+    <details class="mt"><summary class="small strong" style="cursor:pointer">Advanced: choose the month manually</summary>
+      <div class="field mt-s" style="max-width:240px"><input type="month" name="period"><div class="help">Only needed for files without dates (e.g. leave opening balances).</div></div></details>
+    <button class="btn lg mt" id="upbtn" disabled>{{ ui.icon('upload','sm') }} Import &amp; calculate</button>
+  </div>
 </form>
-<div class="card"><h2>What to upload each month</h2>
-<ol class="small">
-  <li><b>Attendance Muster Report</b> (greytHR) — required. Day-wise status, in/out and hours.</li>
-  <li><b>Employee Swipe Details</b> — punches, WFH / client / office locations, coordinates if present.</li>
-  <li><b>Date of Joining Report</b> — joiners and the active-employee list (exits are suggested).</li>
-  <li><b>Attendance Summary Report</b> — optional, kept for reconciliation.</li>
-</ol>
-<p class="small"><b>One-time / occasional:</b> Employee master (groups, weekly-off pattern, exemptions), Holiday list, Leave opening balances, or a previous manual MIS sheet (used to seed groups and to reconcile).</p>
-<p class="badge-row"><a class="btn sm ghost" href="/exports/templates/employee_master.xlsx">Employee master template</a>
-<a class="btn sm ghost" href="/exports/templates/holidays.xlsx">Holiday list template</a>
-<a class="btn sm ghost" href="/exports/templates/leave_opening.xlsx">Leave opening template</a></p>
+<div class="card"><div class="hd"><h2>{{ cur_period.label if cur_period else 'This month' }}</h2><span class="sub">what's been imported</span></div><div class="bd" style="padding-top:6px">
+  {% if wf %}<ul class="checklist">{% for f in wf.files %}<li>{% if f.done %}<span class="ok-ic">{{ ui.icon('circle-check') }}</span>{% else %}<span class="no-ic">{{ ui.icon('circle-dot') }}</span>{% endif %}
+    <span>{{ f.label }}</span><span class="spacer"></span>{% if not f.required %}<span class="muted small">optional</span>{% elif not f.done %}<span class="badge b-warn">needed</span>{% endif %}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">Nothing imported yet.</p>{% endif %}
+  <h3 style="font-size:13px;margin:18px 0 8px">Templates</h3>
+  <div class="stack small">
+    <a href="/exports/templates/employee_master.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Employee master (pre-filled)</a><br>
+    <a href="/exports/templates/holidays.xlsx">{{ ui.icon('calendar','sm') }} Holiday list</a><br>
+    <a href="/exports/templates/leave_opening.xlsx">{{ ui.icon('briefcase','sm') }} Leave opening balances</a>
+  </div>
+</div></div>
+</div>
+
+<div class="card"><div class="hd"><h2>Every month, export these from greytHR</h2></div><div class="bd">
+  <div class="grid g4">
+    {% for t, d, req in [('Attendance Muster Report','Day-wise status, in/out times and hours. The core input.', True),
+                         ('Employee Swipe Details','Every punch, with office / client / WFH location.', True),
+                         ('Date Of Joining Report','Joiners and the active list (exits are suggested).', False),
+                         ('Attendance Summary Report','Optional — used to cross-check greytHR.', False)] %}
+    <div><div class="strong">{{ loop.index }}. {{ t }}</div><div class="small muted mt-s">{{ d }}</div>{% if req %}<span class="badge b-info mt-s">required</span>{% endif %}</div>
+    {% endfor %}
+  </div>
 </div></div>
 
-<div class="card"><h2>Import history</h2>
-<div class="tablewrap"><table data-sortable><thead><tr><th>When</th><th>By</th><th>File</th><th>Sheet</th><th>Type</th><th>Month</th><th class="num">Rows</th><th>Warnings</th></tr></thead><tbody>
-{% for b in batches %}<tr><td class="small">{{ b.uploaded_at.strftime('%d-%b-%Y %H:%M') }}</td><td>{{ b.uploaded_by }}</td><td class="small">{{ b.filename }}</td><td class="small">{{ b.sheet }}</td><td>{{ b.kind }}</td><td>{{ pmap[b.period_id].label if b.period_id in pmap else '' }}</td><td class="num">{{ b.rows }}</td><td class="small">{{ b.warnings|join(' · ') }}</td></tr>
-{% else %}<tr><td colspan="8" class="muted">Nothing imported yet.</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="card flush"><div class="hd"><h2>Import history</h2></div><div class="bd"><div class="tw" style="max-height:420px"><table data-sortable class="compact">
+<thead><tr><th>When</th><th>By</th><th>File</th><th>Recognised as</th><th>Month</th><th class="num">Rows</th><th>Notes</th></tr></thead><tbody>
+{% for b in batches %}<tr><td class="small" data-v="{{ b.uploaded_at.isoformat() }}" style="white-space:nowrap">{{ b.uploaded_at.strftime('%d %b %Y, %H:%M') }}</td><td>{{ b.uploaded_by }}</td><td class="small">{{ b.filename }}</td><td><span class="tag">{{ b.kind }}</span></td><td>{{ pmap[b.period_id].label if b.period_id in pmap else '' }}</td><td class="num">{{ b.rows }}</td><td class="small muted">{{ b.warnings|join(' · ') }}</td></tr>
+{% else %}<tr><td colspan="7">{% call ui.empty('Nothing imported yet', 'Upload the month\'s exports above to get started.', 'upload') %}{% endcall %}</td></tr>{% endfor %}</tbody></table></div></div></div>
 {% endblock %}
+{% block scripts %}<script>
+const inp=document.getElementById('files'), drop=document.getElementById('drop'), list=document.getElementById('filelist'), btn=document.getElementById('upbtn');
+const guess=n=>{n=n.toLowerCase();return n.includes('muster')?'Attendance muster':n.includes('swipe')?'Swipe details':n.includes('joining')||n.includes('doj')?'Date of joining':
+  n.includes('summary')?'Attendance summary':n.includes('mis')?'Manual MIS (reconciliation)':n.includes('master')?'Employee master':n.includes('holiday')?'Holiday list':n.includes('opening')||n.includes('leave')?'Leave opening balances':'Detected after upload';};
+function show(){const fs=[...inp.files];btn.disabled=!fs.length;btn.innerHTML=btn.innerHTML.replace(/Import.*$/, fs.length?`Import ${fs.length} file${fs.length>1?'s':''} &amp; calculate`:'Import &amp; calculate');
+  list.innerHTML=fs.map(f=>`<li><svg class="ic"><use href="/static/icons.svg#i-file-spreadsheet"></use></svg><span><b>${HSCO.esc(f.name)}</b><br><span class="muted small">${guess(f.name)} · ${(f.size/1024).toFixed(0)} KB</span></span></li>`).join('');}
+inp.addEventListener('change',show);
+['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',ev=>{inp.files=ev.dataTransfer.files;show();});
+document.getElementById('upform').addEventListener('submit',()=>{btn.innerHTML='Importing and calculating… this takes a few seconds';});
+</script>{% endblock %}

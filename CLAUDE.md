@@ -29,6 +29,10 @@ fix) update the relevant docs in the same change:
   synthetic fixtures (`tests/fixtures/make_fixtures.py`) cover CI.
 - 2FA is mandatory and multiple methods per user are supported (TOTP, WebAuthn/passkey, email OTP, recovery codes).
 - Every manual change (override, master edit, setting) is audit‑logged with user + reason.
+- **Never block the event loop with SQLite.** DB work only in `def` handlers or via `anyio.to_thread`; no
+  `BaseHTTPMiddleware`. Violating this caused the v1.0 "database is locked" 500s (ARCHITECTURE, Concurrency rule).
+- UI: reuse `templates/_ui.html` macros and the tokens in `static/app.css`; check pages with real data in a
+  browser (screenshots). Tests alone missed real layout and interaction bugs.
 
 ## Quick commands (Windows, from repo root)
 ```powershell

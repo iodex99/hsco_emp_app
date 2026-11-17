@@ -77,7 +77,7 @@ def test_real_month_end_to_end(client):
 
     # --- reconciliation page
     html = c.get("/reconciliation?period=2026-10").text
-    m = re.search(r"<b>(\d+)</b> of <b>(\d+)</b> employees are identical", html)
+    m = re.search(r"Identical employees</div>\s*<div class=\"v\">(\d+) / (\d+)", html)
     assert m and (int(m.group(1)), int(m.group(2))) == (91, 97), m and m.groups()
 
     # --- dashboard + flags + drill-down on real data

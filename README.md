@@ -5,7 +5,7 @@ On-premise web app for a CA firm that turns monthly **greytHR** exports into the
 drill-down to every employee-day, manual corrections with an audit trail, Excel and interactive HTML reports, and
 mandatory multi-method two-factor authentication. All data stays on the firm's Windows server.
 
-![status](https://img.shields.io/badge/tests-66%20passing-brightgreen)
+![status](https://img.shields.io/badge/tests-70%20passing-brightgreen)
 
 ## What it does
 - **Import** the month's greytHR exports as they are (filters, pivots and manual sheets are ignored automatically).

@@ -133,7 +133,7 @@ def test_roles_and_user_admin(client):
     login_full(client)
     r = client.post("/users", data={"csrf": csrf_of(client, "/users"), "username": "board1", "role": "viewer",
                                     "full_name": "Board Member"})
-    temp = re.search(r'id="temp-pw">([^<]+)<', r.text).group(1)
+    temp = re.search(r'id="temp-pw"[^>]*>([^<]+)<', r.text).group(1)
     client.post("/logout", data={"csrf": csrf_of(client)})
     # new user: password ok -> forced enrolment -> forced password change
     r = client.post("/login", data={"username": "board1", "password": temp}, follow_redirects=True)
@@ -196,7 +196,7 @@ def test_all_pages_render(loaded):
     assert c.get("/periods/2099-01").status_code == 404
     assert c.get("/periods/2026-10/employee/NOPE").status_code == 404
     html = c.get("/").text
-    assert "Board dashboard — October 2026" in html and "Over WFH limit" in html
+    assert "<h1>October 2026</h1>" in html and "Over WFH limit" in html and "Month-end checklist" in html
 
 
 def test_overrides_ledger_and_audit(loaded):
@@ -312,7 +312,8 @@ def test_exports(loaded):
     assert r.status_code == 200
     html = r.text
     assert "Board Pack" in html and "Dev Mehta" in html and "Chart" in html
-    assert "cdn" not in html.lower() and "https://" not in html.split("<script>")[0]
+    assert not re.search(r"""(src|href)=["']?(https?:)?//""", html), "board pack must not load external resources"
+    assert "data:font/woff2;base64," in html  # font embedded for offline use
     # templates
     for t in ("employee_master", "holidays", "leave_opening"):
         r = c.get(f"/exports/templates/{t}.xlsx")
@@ -358,3 +359,52 @@ def test_db_dependency_commits_before_response():
     from app.routes import auth
     src = inspect.getsource(web) + inspect.getsource(auth)
     assert "Depends(get_db)" not in src and src.count('Depends(get_db, scope="function")') >= 4
+
+
+def test_review_queue_search_and_navigation(loaded):
+    c = loaded
+    # review queue lists actionable flags; mark one reviewed, then a whole type
+    page = c.get("/flags?period=2026-10")
+    assert page.status_code == 200 and "Review queue" in page.text and "Mark reviewed" in page.text
+    tok = csrf_of(c, "/flags")
+    j = c.post("/flags/review", json={"period": "2026-10", "emp_no": "T004", "code": "WFH_OVER_LIMIT", "action": "review",
+                                      "note": "OK-T004-note"}, headers={"X-CSRF-Token": tok}).json()
+    assert j["ok"] and j["reviewed"] == 1 and j["total"] > 1
+    reviewed = c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT&show=reviewed").text
+    assert "OK-T004-note" in reviewed and "Re-open" in reviewed
+    assert "OK-T004-note" not in c.get("/flags?period=2026-10&show=open").text
+    j = c.post("/flags/review", json={"period": "2026-10", "emp_no": "*", "code": "PERSISTENT_LATE", "action": "review"},
+               headers={"X-CSRF-Token": tok}).json()
+    assert j["count"] >= 1
+    j2 = c.post("/flags/review", json={"period": "2026-10", "emp_no": "T004", "code": "WFH_OVER_LIMIT", "action": "reopen"},
+                headers={"X-CSRF-Token": tok}).json()
+    assert j2["reviewed"] == j["reviewed"] - 1
+    # reviews survive recomputation
+    c.post("/periods/2026-10/recompute", data={"csrf": tok})
+    assert "flag.review" in c.get("/audit").text
+    assert c.post("/flags/review", json={"period": "2026-10", "emp_no": "T001", "code": "X"}).status_code == 400  # no CSRF
+    # overview shows the month-end checklist with review progress
+    html = c.get("/").text
+    assert "Month-end checklist" in html and re.search(r"\d+ of \d+ reviewed", html)
+    # quick search index
+    people = c.get("/api/employees").json()
+    t4 = next(p for p in people if p["emp_no"] == "T004")
+    assert t4["name"] == "Dev Mehta" and t4["href"] == "/periods/2026-10/employee/T004" and t4["initials"] == "DM"
+    # previous / next employee on the drill-down
+    html = c.get("/periods/2026-10/employee/T003").text
+    assert 'href="/periods/2026-10/employee/T002"' in html and 'href="/periods/2026-10/employee/T004"' in html
+    # sidebar badge counts open exceptions
+    assert re.search(r'Review queue<span class="count">\d+</span>', c.get("/employees").text)
+
+
+def test_viewer_cannot_review(loaded):
+    c = loaded
+    from tests.conftest import make_user as mk
+    mk("viewer1", "viewer", "View!Only#2026")
+    c.post("/logout", data={"csrf": csrf_of(c)})
+    login_full(c, "viewer1", "View!Only#2026")
+    page = c.get("/flags?period=2026-10")
+    assert page.status_code == 200 and "Mark reviewed" not in page.text
+    r = c.post("/flags/review", json={"period": "2026-10", "emp_no": "T004", "code": "WFH_OVER_LIMIT"},
+               headers={"X-CSRF-Token": csrf_of(c)})
+    assert r.status_code == 403
