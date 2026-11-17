@@ -1,0 +1,29 @@
+# --- NEVER COMMIT CLIENT DATA (repo is public) ---
+/reference/
+/data/
+/exports/
+/backups/
+*.db
+*.db-*
+*.sqlite*
+*.xlsx
+*.xls
+*.pdf
+!tests/fixtures/README.md
+certs/
+*.pem
+*.pfx
+*.key
+.env
+secret.key
+
+# --- python / tooling ---
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+test-results/
+playwright-report/
+*.log
+.vscode/
+.idea/

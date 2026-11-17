@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Downloads{% endblock %}
+{% block content %}
+<div class="top"><h1>Downloads</h1></div>
+<div class="card"><h2>Monthly reports</h2>
+<table><thead><tr><th>Month</th><th>Status</th><th>Excel workbook</th><th>Interactive board pack (HTML)</th></tr></thead><tbody>
+{% for p in all_periods if p.computed_at %}<tr><td>{{ p.label }}</td><td><span class="pill {{ 'p-final' if p.status == 'FINALISED' else 'info' }}">{{ p.status }}</span></td>
+<td><a class="btn sm ghost" href="/exports/{{ p.key }}.xlsx">Payroll sheet + board metrics (.xlsx)</a></td>
+<td><a class="btn sm" href="/exports/{{ p.key }}.html">Board pack (.html)</a></td></tr>
+{% else %}<tr><td colspan="4" class="muted">No computed months yet.</td></tr>{% endfor %}</tbody></table>
+<p class="small muted">The Excel workbook keeps live formulas on the payroll sheet (edit E–H, O, P or hours/day and the deduction recalculates) and highlights manual overrides. The board pack is a single self-contained HTML file — open it in any browser, no server or internet needed — with charts, filters and per-employee drill-down.</p></div>
+<div class="card"><h2>Import templates</h2>
+<p class="badge-row"><a class="btn sm ghost" href="/exports/templates/employee_master.xlsx">Employee master (pre-filled)</a>
+<a class="btn sm ghost" href="/exports/templates/holidays.xlsx">Holiday list</a>
+<a class="btn sm ghost" href="/exports/templates/leave_opening.xlsx">Leave opening balances (pre-filled)</a></p></div>
+{% endblock %}

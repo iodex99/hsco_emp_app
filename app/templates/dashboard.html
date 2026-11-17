@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Board dashboard{% endblock %}
+{% block content %}
+{% set k = m.kpis %}
+<div class="top">
+  <h1>Board dashboard — {{ period.label }}</h1>
+  <span class="pill {{ 'p-final' if period.status == 'FINALISED' else 'info' }}">{{ period.status }}</span>
+  <span class="sp"></span>
+  <select data-nav aria-label="Period">{% for p in all_periods %}<option value="/?period={{ p.key }}" {{ 'selected' if p.key == period.key }}>{{ p.label }}</option>{% endfor %}</select>
+  <a class="btn ghost" href="/exports/{{ period.key }}.xlsx">Excel</a>
+  <a class="btn" href="/exports/{{ period.key }}.html">Interactive board pack</a>
+</div>
+
+<div class="kpis">
+  <a class="kpi" href="/periods/{{ period.key }}"><div class="v">{{ k.headcount }}</div><div class="l">Employees in muster</div></a>
+  <a class="kpi good" href="#people"><div class="v">{{ k.new_joinees }}</div><div class="l">New joinees this month</div></a>
+  <a class="kpi {{ 'warn' if k.exits }}" href="#people"><div class="v">{{ k.exits }}</div><div class="l">Exits this month</div></a>
+  <div class="kpi"><div class="v">{{ k.attendance_rate }}%</div><div class="l">Attendance rate</div></div>
+  <a class="kpi {{ 'bad' if k.deduction_employees }}" href="/flags?period={{ period.key }}&code=SHORTFALL_DEDUCTION"><div class="v">{{ k.deduction_employees }}</div><div class="l">Leave deductions ({{ k.deduction_days|n }} days)</div></a>
+  <a class="kpi {{ 'bad' if k.salary_deduction_days }}" href="/flags?period={{ period.key }}&code=LEAVE_EXHAUSTED"><div class="v">{{ k.payroll_lop_days|n }}</div><div class="l">Payroll LOP days</div></a>
+  <a class="kpi {{ 'warn' if k.wfh_over_limit }}" href="/flags?period={{ period.key }}&code=WFH_OVER_LIMIT"><div class="v">{{ k.wfh_over_limit }}</div><div class="l">Over WFH limit</div></a>
+  <a class="kpi {{ 'warn' if k.persistent_late }}" href="/flags?period={{ period.key }}&code=PERSISTENT_LATE"><div class="v">{{ k.persistent_late }}</div><div class="l">Persistently late</div></a>
+  <a class="kpi {{ 'warn' if k.persistent_regularisation }}" href="/flags?period={{ period.key }}&code=PERSISTENT_REGULARISATION"><div class="v">{{ k.persistent_regularisation }}</div><div class="l">Persistent regularisation</div></a>
+  <a class="kpi {{ 'bad' if k.absent_days }}" href="/flags?period={{ period.key }}&code=UNAUTHORISED_ABSENCE"><div class="v">{{ k.absent_days|n }}</div><div class="l">Unauthorised absent days</div></a>
+  <div class="kpi"><div class="v">{{ k.avg_work_hours }}</div><div class="l">Avg hours / present day</div></div>
+  <div class="kpi"><div class="v">{{ k.avg_in_time }}</div><div class="l">Avg in-time (out {{ k.avg_out_time }})</div></div>
+  <div class="kpi"><div class="v">{{ k.extra_days|n }}</div><div class="l">Off-day/holiday work days</div></div>
+  <div class="kpi"><div class="v">{{ k.excess_hours|n(0) }}</div><div class="l">Excess hours (shortfall {{ k.shortfall_hours|n(0) }})</div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card"><h2>Where people worked (swipes)</h2><div class="chartbox"><canvas id="cLoc"></canvas></div></div>
+  <div class="card"><h2>Arrival time distribution (working days)</h2><div class="chartbox"><canvas id="cIn"></canvas></div></div>
+  <div class="card"><h2>Daily attendance mix</h2><div class="chartbox"><canvas id="cDaily"></canvas></div></div>
+  <div class="card"><h2>Late arrivals by weekday</h2><div class="chartbox"><canvas id="cLateWd"></canvas></div></div>
+</div>
+
+<div class="card"><h2>Exceptions needing attention</h2>
+  <div class="tablewrap" style="max-height:340px"><table data-sortable><thead><tr><th>Severity</th><th>Exception</th><th class="num">Employees</th></tr></thead><tbody>
+  {% for f in m.flag_summary if f.severity != 'info' %}<tr><td><span class="pill p-{{ f.severity }}">{{ f.severity }}</span></td>
+    <td><a href="/flags?period={{ period.key }}&code={{ f.code }}">{{ f.label }}</a></td><td class="num">{{ f.count }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted">No exceptions.</td></tr>{% endfor %}</tbody></table></div>
+</div>
+
+<div class="grid g3">
+{% set tl = [('Most often > 1 h late','late','days'),('Above WFH limit','wfh','days'),('Most regularisations','regularised','days'),
+             ('Missing punches','missing_punch','days'),('Unauthorised absence','absent','days'),('Most excess hours','excess_hours','h')] %}
+{% for title, key, unit in tl %}
+<div class="card"><h2>{{ title }}</h2>
+<table><tbody>{% for r in m.top[key] %}<tr><td><a href="/periods/{{ period.key }}/employee/{{ r.emp_no }}">{{ r.name }}</a> <span class="muted small">{{ r.group }}</span></td><td class="num">{{ r.value|n }} {{ unit }}</td></tr>
+{% else %}<tr><td class="muted">None 🎉</td></tr>{% endfor %}</tbody></table></div>
+{% endfor %}
+<div class="card"><h2>Hours shortfall</h2>
+<table><tbody>{% for r in m.top.shortfall %}<tr><td><a href="/periods/{{ period.key }}/employee/{{ r.emp_no }}">{{ r.name }}</a> <span class="muted small">{{ r.group }}</span></td><td class="num neg">−{{ r.value|n }} h</td><td class="num">{{ r.deduction|n }} d</td></tr>
+{% else %}<tr><td class="muted">None</td></tr>{% endfor %}</tbody></table></div>
+<div class="card"><h2>Comp-offs earned</h2>
+<table><tbody>{% for r in m.top.compoff_earned %}<tr><td><a href="/periods/{{ period.key }}/employee/{{ r.emp_no }}">{{ r.name }}</a></td><td class="num">{{ r.value|n }}</td></tr>
+{% else %}<tr><td class="muted">None</td></tr>{% endfor %}</tbody></table></div>
+<div class="card"><h2>Leave next to weekends</h2>
+<table><tbody>{% for r in m.top.sandwich %}<tr><td><a href="/periods/{{ period.key }}/employee/{{ r.emp_no }}">{{ r.name }}</a></td><td class="num">{{ r.value|n }}</td></tr>
+{% else %}<tr><td class="muted">None</td></tr>{% endfor %}</tbody></table></div>
+</div>
+
+<div class="card"><h2>By group</h2>
+<div class="tablewrap"><table data-sortable><thead><tr><th>Group</th><th class="num">Headcount</th><th class="num">Present days</th><th class="num">PL</th><th class="num">Comp-off</th><th class="num">Absent</th><th class="num">LOP</th><th class="num">WFH</th><th class="num">Late days</th><th class="num">Regularised</th><th class="num">Deduction days</th><th class="num">Hours vs required</th></tr></thead><tbody>
+{% for g in m.groups %}<tr><td>{{ g.group }}</td><td class="num">{{ g.headcount|n }}</td><td class="num">{{ g.days_present|n }}</td><td class="num">{{ g.pl_days|n }}</td><td class="num">{{ g.cof_days|n }}</td><td class="num">{{ g.unauth_absent_days|n }}</td><td class="num">{{ g.lop_days|n }}</td><td class="num">{{ g.wfh_days|n }}</td><td class="num">{{ g.late_days|n }}</td><td class="num">{{ g.regularised_days|n }}</td><td class="num">{{ g.deduction_days|n }}</td><td class="num">{{ (g.hours_vs_required_pct|n(1)) ~ '%' if g.hours_vs_required_pct is not none }}</td></tr>{% endfor %}
+</tbody></table></div></div>
+
+<div class="grid g2" id="people">
+<div class="card"><h2>People movement</h2>
+  <h3>New joinees ({{ m.people.joiners|length }})</h3>
+  <table><tbody>{% for e in m.people.joiners %}<tr><td><a href="/employees/{{ e.emp_no }}">{{ e.name }}</a></td><td>{{ e.group }}</td><td>{{ e.doj }}</td></tr>{% else %}<tr><td class="muted">None</td></tr>{% endfor %}</tbody></table>
+  <h3>Exits ({{ m.people.exits|length }})</h3>
+  <table><tbody>{% for e in m.people.exits %}<tr><td><a href="/employees/{{ e.emp_no }}">{{ e.name }}</a></td><td>{{ e.group }}</td><td>{{ e.dol }}</td></tr>{% else %}<tr><td class="muted">None recorded</td></tr>{% endfor %}</tbody></table>
+  {% if m.people.exit_candidates %}<h3>Possible exits — in last month's muster but not this month's</h3>
+  <table><tbody>{% for e in m.people.exit_candidates %}<tr><td><a href="/employees/{{ e.emp_no }}">{{ e.name }}</a></td><td>{{ e.group }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+  <h3>Work anniversaries</h3>
+  <table><tbody>{% for e in m.people.anniversaries %}<tr><td>{{ e.name }}</td><td>{{ e.years }} yr</td><td>{{ e.doj }}</td></tr>{% else %}<tr><td class="muted">None</td></tr>{% endfor %}</tbody></table>
+</div>
+<div class="card"><h2>Tenure profile (active employees)</h2><div class="chartbox"><canvas id="cTenure"></canvas></div>
+  <h3>Joined in the last 6 months ({{ m.people.recent_joiners|length }})</h3>
+  <p class="small muted">{% for e in m.people.recent_joiners %}{{ e.name }} ({{ e.doj }}){{ ", " if not loop.last }}{% endfor %}</p>
+</div>
+</div>
+
+{% if m.trend|length > 1 %}
+<div class="card"><h2>Trend</h2><div class="chartbox" style="height:300px"><canvas id="cTrend"></canvas></div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const M = {{ m|tojson_safe }}; const P = HSCO.palette;
+HSCO.chart('cLoc',{type:'doughnut',data:{labels:M.location_mix.map(x=>x.label),datasets:[{data:M.location_mix.map(x=>x.count),backgroundColor:P}]},options:{plugins:{legend:{position:'right'}}}});
+HSCO.chart('cIn',{type:'bar',data:{labels:M.in_time_hist.map(x=>x.bucket),datasets:[{label:'Arrivals',data:M.in_time_hist.map(x=>x.count),backgroundColor:M.in_time_hist.map(x=>x.bucket>'10:00'?'#d69e2e':'#2b6cb0')}]},options:{plugins:{legend:{display:false}}}});
+HSCO.chart('cDaily',{type:'bar',data:{labels:M.daily.map(x=>x.date.slice(8)),datasets:[
+ {label:'Present',data:M.daily.map(x=>x.present||0),backgroundColor:'#2b6cb0',stack:'a'},
+ {label:'Leave',data:M.daily.map(x=>(x.leave||0)+(x.compoff||0)),backgroundColor:'#38a169',stack:'a'},
+ {label:'Absent/LOP',data:M.daily.map(x=>(x.absent||0)+(x.lop||0)),backgroundColor:'#c53030',stack:'a'},
+ {label:'WFH',data:M.daily.map(x=>x.wfh||0),type:'line',borderColor:'#6b46c1',backgroundColor:'#6b46c1'}]},
+ options:{scales:{x:{stacked:true},y:{stacked:true}}}});
+HSCO.chart('cLateWd',{type:'bar',data:{labels:M.late_by_weekday.map(x=>x.wd),datasets:[{label:'Late arrivals',data:M.late_by_weekday.map(x=>x.count),backgroundColor:'#d69e2e'}]},options:{plugins:{legend:{display:false}}}});
+HSCO.chart('cTenure',{type:'bar',data:{labels:M.people.tenure_buckets.map(x=>x.bucket),datasets:[{label:'Employees',data:M.people.tenure_buckets.map(x=>x.count),backgroundColor:'#1f3a5f'}]},options:{indexAxis:'y',plugins:{legend:{display:false}}}});
+if(M.trend.length>1){HSCO.chart('cTrend',{type:'line',data:{labels:M.trend.map(x=>x.label),datasets:[
+ {label:'Deduction days',data:M.trend.map(x=>x.deduction_days),borderColor:P[4]},{label:'Late days',data:M.trend.map(x=>x.late_days),borderColor:P[3]},
+ {label:'WFH days',data:M.trend.map(x=>x.wfh_days),borderColor:P[5]},{label:'Absent days',data:M.trend.map(x=>x.absent_days),borderColor:P[0]},
+ {label:'Regularised days',data:M.trend.map(x=>x.regularised_days),borderColor:P[1]}]}});}
+</script>
+{% endblock %}

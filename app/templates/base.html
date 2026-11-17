@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{ csrf }}">
+<title>{% block title %}Attendance & Leave{% endblock %} · {{ org or "HSCO" }}</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/vendor/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="brand">{{ org or "HSCO" }}<small>Attendance &amp; Leave Intelligence</small></div>
+    <nav>
+      <div class="sec">Reports</div>
+      <a href="/" class="{{ 'on' if path == '/' }}">Board dashboard</a>
+      {% if all_periods %}<a href="/periods/{{ all_periods[0].key }}" class="{{ 'on' if path.startswith('/periods') }}">Payroll leave sheet</a>{% endif %}
+      <a href="/flags" class="{{ 'on' if path.startswith('/flags') }}">Exceptions &amp; flags</a>
+      <a href="/employees" class="{{ 'on' if path.startswith('/employees') }}">Employees</a>
+      <a href="/reconciliation" class="{{ 'on' if path.startswith('/reconciliation') }}">Reconciliation</a>
+      <a href="/exports" class="{{ 'on' if path.startswith('/exports') }}">Downloads</a>
+      {% if can_hr %}
+      <div class="sec">Operations</div>
+      <a href="/imports" class="{{ 'on' if path.startswith('/imports') }}">Import exports</a>
+      <a href="/settings" class="{{ 'on' if path.startswith('/settings') }}">Rules &amp; calendars</a>
+      <a href="/audit" class="{{ 'on' if path.startswith('/audit') }}">Audit log</a>
+      {% endif %}
+      {% if can_admin %}<a href="/users" class="{{ 'on' if path.startswith('/users') }}">Users</a>{% endif %}
+      <div class="sec">Account</div>
+      <a href="/security" class="{{ 'on' if path.startswith('/security') }}">My security</a>
+    </nav>
+    {% if user %}<div class="me">Signed in as <b>{{ user.username }}</b> ({{ user.role }})<br>
+      <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost" style="margin-top:6px">Sign out</button></form></div>{% endif %}
+  </aside>
+  <main class="main">
+    {% if flash %}<div class="flash" role="status">{{ flash }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{ csrf }}">
+<title>{% block title %}Sign in{% endblock %} · {{ org }}</title><link rel="stylesheet" href="/static/app.css"></head>
+<body><div class="authbox">
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+{% block content %}{% endblock %}
+<p class="muted small" style="margin-top:22px">{{ org }} · data stays on this server</p>
+</div><script src="/static/app.js"></script>{% block scripts %}{% endblock %}</body></html>

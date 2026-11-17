@@ -1,0 +1,102 @@
+"""End-to-end over HTTP with the REAL October-2026 exports (skipped when reference/ is absent).
+
+Mirrors what HR will do at go-live: import all exports + last manual MIS, set the few employee settings HR applies by
+hand, record the month-specific decisions as overrides, then check the reconciliation page and the exports.
+"""
+import io
+import re
+
+import pytest
+from openpyxl import load_workbook
+
+from tests.conftest import HAS_REF, REF, csrf_of, login_full, make_user
+
+pytestmark = pytest.mark.skipif(not HAS_REF, reason="reference/ (real data, git-ignored) not present")
+
+FILES = ["MIS Report October 2026_Manual.xlsx", "DateOfJoiningReport.xlsx", "Attendance Summary Report.xls",
+         "EmployeeSwipeDetails.xlsx", "Attendance Muster Report.xlsx"]
+
+
+def _emp_form(c, emp_no, **changes):
+    html = c.get(f"/employees/{emp_no}").text
+    val = lambda n: (re.search(rf'name="{n}" value="([^"]*)"', html) or [None, ""])[1]  # noqa: E731
+    data = {"csrf": csrf_of(c), "emp_no": emp_no, "name": val("name"), "group": val("group"), "location": val("location"),
+            "weekly_off": "MUSTER", "doj": val("doj"), "is_active": "1"}
+    data.update(changes)
+    r = c.post("/employees/save", data=data, follow_redirects=True)
+    assert "Employee saved" in r.text
+
+
+def test_real_month_end_to_end(client):
+    c = client
+    make_user()
+    login_full(c)
+    csrf = csrf_of(c, "/imports")
+    files = [("files", (f, (REF / f).read_bytes(), "application/octet-stream")) for f in FILES]
+    r = c.post("/imports", data={"csrf": csrf}, files=files)
+    assert r.status_code == 200 and "Unexpected" not in r.text and "Could not" not in r.text, r.text[-2000:]
+    for label in ("Attendance Muster Report", "Employee Swipe Details", "Date of Joining Report",
+                  "Attendance Summary Report", "Manual MIS working"):
+        assert label in r.text
+    assert "possible exits" in r.text  # HS098/HS102/HS104 not in active DOJ list
+
+    # --- employee settings HR applies by hand (become permanent master data)
+    for e in ("HS053", "HS162", "HS192"):
+        _emp_form(c, e, weekly_off="ALL_SAT_OFF", **({"hours_per_day": "8"} if e == "HS192" else {}))
+    _emp_form(c, "HS068", weekly_off="CUSTOM", off_weekdays="2")
+    _emp_form(c, "HS138", hours_per_day="8")
+    for e in ("HS014", "HS055"):
+        _emp_form(c, e, exempt="1", exempt_reason="Treated as Partner")
+    csrf = csrf_of(c, "/settings")
+    c.post("/settings/calendars", data={"csrf": csrf, "name": "Gandhi Jayanti + Dussehra"})
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import HolidayCalendar
+    with session_scope() as db:
+        cid = db.scalar(select(HolidayCalendar.id))
+    c.post(f"/settings/calendars/{cid}/holiday", data={"csrf": csrf, "day": "2026-10-02", "name": "Gandhi Jayanti"})
+    c.post(f"/settings/calendars/{cid}/holiday", data={"csrf": csrf, "day": "2026-10-20", "name": "Dussehra"})
+    _emp_form(c, "HS207", holiday_calendar_id=str(cid))
+
+    # --- month decisions recorded as overrides
+    def mo(emp, field, value, reason):
+        r = c.post(f"/periods/2026-10/employee/{emp}/month-override",
+                   data={"csrf": csrf_of(c), "field": field, "value": value, "reason": reason}, follow_redirects=True)
+        assert "overridden" in r.text
+    mo("HS158", "exempt", "yes", "Exception approved")
+    mo("HS134", "leave_days", "2", "Comp-off not earned")
+    mo("HS134", "absent_days", "3", "Comp-off not earned")
+    mo("HS138", "leave_days", "4", "Leave balance exhausted")
+    mo("HS138", "absent_days", "1", "Leave balance exhausted")
+    mo("HS129", "leave_days", "1", "LOP treated as absence")
+    mo("HS129", "absent_days", "12", "LOP treated as absence")
+    r = c.post("/periods/2026-10/employee/HS197/day-override",
+               data={"csrf": csrf_of(c), "day": "2026-10-23", "s1": "A", "s2": "A", "work_hm": "00:00",
+                     "reason": "Present without punch - disallowed"}, follow_redirects=True)
+    assert "Day override saved" in r.text
+
+    # --- reconciliation page
+    html = c.get("/reconciliation?period=2026-10").text
+    m = re.search(r"<b>(\d+)</b> of <b>(\d+)</b> employees are identical", html)
+    assert m and (int(m.group(1)), int(m.group(2))) == (91, 97), m and m.groups()
+
+    # --- dashboard + flags + drill-down on real data
+    html = c.get("/?period=2026-10").text
+    assert "October 2026" in html and "Over WFH limit" in html
+    assert c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT").text.count("WFH days (limit 2)") == 6
+    for e in ("HS001", "HS068", "HS207", "PC006"):
+        assert c.get(f"/periods/2026-10/employee/{e}").status_code == 200
+
+    # --- Excel: same deductions as the manual sheet (+ the HS207 finding)
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    ws = wb["Payroll Leave Sheet"]
+    from sqlalchemy import select as s_
+    from app.models import MonthResult
+    with session_scope() as db:
+        ded = {r.emp_no: r.deduction_days for r in db.scalars(s_(MonthResult)) if r.deduction_days}
+    assert ded == {"HS112": 1.0, "HS138": 0.5, "HS205": 0.5, "HS207": 0.5}
+    assert ws.max_row >= 5 + 97
+    assert "Reconciliation" in wb.sheetnames
+    html = c.get("/exports/2026-10.html").text
+    from tests.reference_setup import build
+    assert build()["mis"]["PC003"]["name"] in html and len(html) > 300_000

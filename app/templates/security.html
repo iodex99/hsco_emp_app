@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}My security{% endblock %}
+{% block content %}
+<div class="top"><h1>My security</h1></div>
+{% if must_change %}<div class="err">Please set a new password before continuing.</div>{% endif %}
+<div class="grid g2">
+<div class="card">
+  <h2>Two-step verification methods</h2>
+  <table><thead><tr><th>Method</th><th>Name</th><th>Added</th><th>Last used</th><th></th></tr></thead><tbody>
+  {% for m in methods %}<tr>
+    <td>{{ {'totp':'Authenticator app','webauthn':'Security key / passkey','email':'Email code'}[m.kind] }}</td>
+    <td>{{ m.label }}</td><td class="small">{{ m.created_at|dmy }}</td><td class="small">{{ m.last_used|dmy }}</td>
+    <td><form method="post" action="/security/method/{{ m.id }}/delete" data-confirm="Remove this method?"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm ghost">Remove</button></form></td></tr>
+  {% else %}<tr><td colspan="5" class="muted">No methods yet.</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="small muted">Recovery codes remaining: <b>{{ recovery_left }}</b></p>
+  <div class="badge-row" style="margin-top:10px">
+    <a class="btn" href="/security/enrol">+ Authenticator app</a>
+    <button class="btn" id="addkey" type="button">+ Security key / passkey</button>
+    {% if smtp and user.email %}<form method="post" action="/security/email/enable" style="display:inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">+ Email codes</button></form>{% endif %}
+    <form method="post" action="/security/recovery/regenerate" style="display:inline" data-confirm="Old recovery codes will stop working. Continue?"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost">New recovery codes</button></form>
+  </div>
+  <p id="keymsg" class="small muted"></p>
+  {% if request.query_params.get('email_sent') %}
+  <form method="post" action="/security/email/confirm" class="row" style="margin-top:10px"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="field"><label>Code sent to {{ user.email }}</label><input name="code" maxlength="6" required></div><button class="btn">Confirm</button></form>
+  {% endif %}
+  <p class="small muted">Security keys and passkeys need the app to be opened over HTTPS at <code>{{ rp_id }}</code>.</p>
+</div>
+<div class="card">
+  <h2>Change password</h2>
+  <form method="post" action="/security/password">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="field"><label>Current password</label><input type="password" name="current" required autocomplete="current-password"></div>
+    <div class="field"><label>New password</label><input type="password" name="new" required autocomplete="new-password"></div>
+    <div class="field"><label>Confirm new password</label><input type="password" name="confirm" required autocomplete="new-password"></div>
+    <p class="small muted">At least {{ general.password_min_length }} characters with upper &amp; lower case, a number and a symbol.</p>
+    <button class="btn">Change password</button>
+  </form>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+document.getElementById('addkey').onclick=async()=>{const m=document.getElementById('keymsg');
+const label=prompt('Name for this key (e.g. "YubiKey" or "Office PC Windows Hello")','Security key'); if(label===null)return;
+m.textContent='Touch your key / confirm with Windows Hello…';
+try{await HSCO.registerPasskey(label); location.reload();}catch(e){m.textContent='Could not add key: '+e.message;}};
+</script>{% endblock %}

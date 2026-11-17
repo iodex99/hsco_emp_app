@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Import{% endblock %}
+{% block content %}
+<div class="top"><h1>Import greytHR exports</h1></div>
+{% if results or errors %}
+<div class="card"><h2>Import result</h2>
+{% for e in errors or [] %}<div class="err"><b>{{ e.file }}</b>: {{ e.error }}</div>{% endfor %}
+{% for r in results %}<div class="stack"><b>{{ r.file }}</b>
+  <table><thead><tr><th>Sheet</th><th>Recognised as</th><th>Month</th><th class="num">Rows</th><th>Notes</th></tr></thead><tbody>
+  {% for s in r.sheets %}<tr><td>{{ s.sheet }}</td><td>{{ s.label }}</td><td>{{ s.period }}</td><td class="num">{{ s.rows }}</td><td class="small">{{ s.warnings|join(' · ') }}</td></tr>{% endfor %}</tbody></table></div>{% endfor %}
+{% if results %}<p><a class="btn" href="/">Open dashboard</a> {% if all_periods %}<a class="btn ghost" href="/periods/{{ all_periods[0].key }}">Payroll leave sheet</a>{% endif %}</p>{% endif %}
+</div>{% endif %}
+
+<div class="grid g2">
+<form class="card" method="post" action="/imports" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Upload files</h2>
+  <p class="small muted">Select one or more Excel files. Each sheet is recognised automatically from its headers; extra sheets with manual working are ignored. Filters and hidden rows in the files do not matter — every row is read. Re-importing a month replaces that month's data.</p>
+  <div class="field"><label>Files (.xlsx / .xls / .csv)</label><input type="file" name="files" multiple required accept=".xlsx,.xls,.xlsm,.csv"></div>
+  <div class="field"><label>Month (only needed if the file has no dates, e.g. leave opening balances)</label><input type="month" name="period"></div>
+  <button class="btn">Import &amp; calculate</button>
+</form>
+<div class="card"><h2>What to upload each month</h2>
+<ol class="small">
+  <li><b>Attendance Muster Report</b> (greytHR) — required. Day-wise status, in/out and hours.</li>
+  <li><b>Employee Swipe Details</b> — punches, WFH / client / office locations, coordinates if present.</li>
+  <li><b>Date of Joining Report</b> — joiners and the active-employee list (exits are suggested).</li>
+  <li><b>Attendance Summary Report</b> — optional, kept for reconciliation.</li>
+</ol>
+<p class="small"><b>One-time / occasional:</b> Employee master (groups, weekly-off pattern, exemptions), Holiday list, Leave opening balances, or a previous manual MIS sheet (used to seed groups and to reconcile).</p>
+<p class="badge-row"><a class="btn sm ghost" href="/exports/templates/employee_master.xlsx">Employee master template</a>
+<a class="btn sm ghost" href="/exports/templates/holidays.xlsx">Holiday list template</a>
+<a class="btn sm ghost" href="/exports/templates/leave_opening.xlsx">Leave opening template</a></p>
+</div></div>
+
+<div class="card"><h2>Import history</h2>
+<div class="tablewrap"><table data-sortable><thead><tr><th>When</th><th>By</th><th>File</th><th>Sheet</th><th>Type</th><th>Month</th><th class="num">Rows</th><th>Warnings</th></tr></thead><tbody>
+{% for b in batches %}<tr><td class="small">{{ b.uploaded_at.strftime('%d-%b-%Y %H:%M') }}</td><td>{{ b.uploaded_by }}</td><td class="small">{{ b.filename }}</td><td class="small">{{ b.sheet }}</td><td>{{ b.kind }}</td><td>{{ pmap[b.period_id].label if b.period_id in pmap else '' }}</td><td class="num">{{ b.rows }}</td><td class="small">{{ b.warnings|join(' · ') }}</td></tr>
+{% else %}<tr><td colspan="8" class="muted">Nothing imported yet.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

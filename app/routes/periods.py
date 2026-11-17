@@ -1,0 +1,225 @@
+"""Monthly results (payroll leave sheet), employee drill-down, manual overrides, finalise / re-open."""
+from __future__ import annotations
+
+from datetime import date, datetime
+
+from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi.responses import HTMLResponse
+from sqlalchemy import select
+
+from app.engine.compute import MONTH_OVERRIDABLE
+from app.engine.model import B_ABSENT, B_COMPOFF, B_LEAVE, B_LOP, B_PRESENT, HOLIDAY, WEEKLY_OFF, WORKDAY
+from app.models import (
+    DayOverrideRow, Employee, LeaveOpening, MonthOverrideRow, MonthResult, MusterRow, Period,
+)
+from app.services import metrics as MX
+from app.services.audit import audit
+from app.services.compute import compute_period
+from app.services.settings import get_policy
+from app.web import Ctx, admin, hr, redirect, render, viewer
+
+router = APIRouter()
+
+OVERRIDE_LABELS = {
+    "total_week_days": "Total week days (E)", "holidays": "Holidays (F)", "leave_days": "Leave days (G)",
+    "absent_days": "Absent days (H)", "wfh_days": "WFH days (J)", "total_hours": "Total hours present (K/O)",
+    "extra_days": "Extra working days (L)", "extra_hours": "Holiday/off-day hours to exclude (P)",
+    "required_hours": "Hours required (N)", "deduction_days": "Deduction days", "exempt": "Exempt this month (yes/no)",
+    "remark": "Remark",
+}
+
+
+def get_p(c: Ctx, key: str) -> Period:
+    try:
+        y, m = (int(x) for x in key.split("-"))
+    except ValueError:
+        raise HTTPException(404, "Unknown period")
+    p = c.db.scalar(select(Period).where(Period.year == y, Period.month == m))
+    if p is None:
+        raise HTTPException(404, "Period not found")
+    return p
+
+
+def _editable(p: Period):
+    if p.status == "FINALISED":
+        raise HTTPException(409, f"{p.label} is finalised. An admin must re-open it before changes.")
+
+
+@router.get("/periods/{key}", response_class=HTMLResponse)
+def period_results(key: str, c: Ctx = Depends(viewer)):
+    p = get_p(c, key)
+    rows = MX.results_for(c.db, p)
+    policy = get_policy(c.db)
+    return render(c, "period.html", period=p, rows=rows, policy=policy)
+
+
+@router.post("/periods/{key}/recompute")
+def recompute(key: str, c: Ctx = Depends(hr)):
+    p = get_p(c, key)
+    _editable(p)
+    s = compute_period(c.db, p)
+    audit(c.db, c.user, "period.recompute", "period", p.key, s, c.ip)
+    return redirect(f"/periods/{key}", f"Recomputed {s['employees']} employees.")
+
+
+@router.post("/periods/{key}/finalise")
+def finalise(key: str, c: Ctx = Depends(hr)):
+    p = get_p(c, key)
+    _editable(p)
+    compute_period(c.db, p, cascade=False)
+    p.status = "FINALISED"
+    p.finalised_at = datetime.now()
+    p.finalised_by = c.user.username
+    audit(c.db, c.user, "period.finalise", "period", p.key, ip=c.ip)
+    return redirect(f"/periods/{key}", f"{p.label} finalised and locked for payroll.")
+
+
+@router.post("/periods/{key}/reopen")
+def reopen(key: str, reason: str = Form(...), c: Ctx = Depends(admin)):
+    p = get_p(c, key)
+    if not reason.strip():
+        return redirect(f"/periods/{key}", "A reason is required to re-open.")
+    p.status = "DRAFT"
+    audit(c.db, c.user, "period.reopen", "period", p.key, {"reason": reason}, c.ip)
+    return redirect(f"/periods/{key}", f"{p.label} re-opened.")
+
+
+@router.get("/periods/{key}/employee/{emp_no}", response_class=HTMLResponse)
+def drill(key: str, emp_no: str, c: Ctx = Depends(viewer)):
+    p = get_p(c, key)
+    r = c.db.scalar(select(MonthResult).where(MonthResult.period_id == p.id, MonthResult.emp_no == emp_no))
+    if r is None:
+        raise HTTPException(404, "No result for this employee in this period")
+    emp = c.db.get(Employee, emp_no)
+    d_ovr = c.db.scalars(select(DayOverrideRow).where(DayOverrideRow.period_id == p.id, DayOverrideRow.emp_no == emp_no)
+                         .order_by(DayOverrideRow.day)).all()
+    m_ovr = c.db.scalars(select(MonthOverrideRow).where(MonthOverrideRow.period_id == p.id,
+                                                        MonthOverrideRow.emp_no == emp_no)).all()
+    opening = c.db.scalar(select(LeaveOpening).where(LeaveOpening.emp_no == emp_no, LeaveOpening.year == p.year,
+                                                     LeaveOpening.month == p.month))
+    history = MX.employee_history(c.db, emp_no)
+    # calendar grid (Mon-first weeks)
+    first = date(p.year, p.month, 1)
+    pad = first.weekday()
+    cells = [None] * pad + r.days
+    weeks = [cells[i:i + 7] for i in range(0, len(cells), 7)]
+    if weeks and len(weeks[-1]) < 7:
+        weeks[-1] += [None] * (7 - len(weeks[-1]))
+    raw_status = {m.day.isoformat(): (m.s1, m.s2) for m in c.db.scalars(
+        select(MusterRow).where(MusterRow.period_id == p.id, MusterRow.emp_no == emp_no))}
+    return render(c, "employee_month.html", period=p, r=r, d=r.data, emp=emp, weeks=weeks, d_ovr=d_ovr, m_ovr=m_ovr,
+                  opening=opening, history=history, override_labels=OVERRIDE_LABELS, raw_status=raw_status,
+                  day_types=[WORKDAY, WEEKLY_OFF, HOLIDAY], policy=get_policy(c.db),
+                  status_codes=sorted(get_policy(c.db).status_map.keys()))
+
+
+@router.post("/periods/{key}/employee/{emp_no}/day-override")
+def add_day_override(key: str, emp_no: str, day: str = Form(...), day_type: str = Form(""), s1: str = Form(""),
+                     s2: str = Form(""), work_hm: str = Form(""), reason: str = Form(...), c: Ctx = Depends(hr)):
+    p = get_p(c, key)
+    _editable(p)
+    if not reason.strip():
+        return redirect(f"/periods/{key}/employee/{emp_no}", "A reason is required for every manual change.")
+    d = date.fromisoformat(day)
+    if (d.year, d.month) != (p.year, p.month):
+        return redirect(f"/periods/{key}/employee/{emp_no}", "Date is outside this period.")
+    wm = None
+    if work_hm.strip():
+        try:
+            h, m = work_hm.strip().split(":")
+            wm = int(h) * 60 + int(m)
+        except ValueError:
+            return redirect(f"/periods/{key}/employee/{emp_no}", "Work hours must be HH:MM.")
+    if day_type and day_type not in (WORKDAY, WEEKLY_OFF, HOLIDAY):
+        return redirect(f"/periods/{key}/employee/{emp_no}", "Invalid day type.")
+    o = c.db.scalar(select(DayOverrideRow).where(DayOverrideRow.period_id == p.id, DayOverrideRow.emp_no == emp_no,
+                                                 DayOverrideRow.day == d))
+    if o is None:
+        o = DayOverrideRow(period_id=p.id, emp_no=emp_no, day=d, reason=reason)
+        c.db.add(o)
+    o.day_type, o.s1, o.s2, o.work_min, o.reason = day_type, s1.upper(), s2.upper(), wm, reason
+    o.created_by = c.user.username
+    o.created_at = datetime.now()
+    c.db.flush()
+    audit(c.db, c.user, "override.day", "employee", emp_no,
+          {"period": p.key, "day": day, "day_type": day_type, "s1": s1, "s2": s2, "work": work_hm, "reason": reason}, c.ip)
+    compute_period(c.db, p)
+    return redirect(f"/periods/{key}/employee/{emp_no}", f"Day override saved for {d:%d-%b}.")
+
+
+@router.post("/periods/{key}/employee/{emp_no}/day-override/{oid}/delete")
+def del_day_override(key: str, emp_no: str, oid: int, c: Ctx = Depends(hr)):
+    p = get_p(c, key)
+    _editable(p)
+    o = c.db.get(DayOverrideRow, oid)
+    if o and o.period_id == p.id:
+        audit(c.db, c.user, "override.day_removed", "employee", emp_no, {"period": p.key, "day": o.day.isoformat()}, c.ip)
+        c.db.delete(o)
+        c.db.flush()
+        compute_period(c.db, p)
+    return redirect(f"/periods/{key}/employee/{emp_no}", "Day override removed.")
+
+
+@router.post("/periods/{key}/employee/{emp_no}/month-override")
+def add_month_override(key: str, emp_no: str, field: str = Form(...), value: str = Form(...), reason: str = Form(...),
+                       c: Ctx = Depends(hr)):
+    p = get_p(c, key)
+    _editable(p)
+    if field not in MONTH_OVERRIDABLE:
+        return redirect(f"/periods/{key}/employee/{emp_no}", "Field cannot be overridden.")
+    if not reason.strip():
+        return redirect(f"/periods/{key}/employee/{emp_no}", "A reason is required for every manual change.")
+    if field == "exempt":
+        value = "true" if value.strip().lower() in ("1", "y", "yes", "true") else "false"
+    elif field != "remark":
+        try:
+            float(value)
+        except ValueError:
+            return redirect(f"/periods/{key}/employee/{emp_no}", "Value must be a number.")
+    o = c.db.scalar(select(MonthOverrideRow).where(MonthOverrideRow.period_id == p.id, MonthOverrideRow.emp_no == emp_no,
+                                                   MonthOverrideRow.field == field))
+    if o is None:
+        o = MonthOverrideRow(period_id=p.id, emp_no=emp_no, field=field, value=value, reason=reason)
+        c.db.add(o)
+    o.value, o.reason, o.created_by, o.created_at = value, reason, c.user.username, datetime.now()
+    c.db.flush()
+    audit(c.db, c.user, "override.month", "employee", emp_no, {"period": p.key, "field": field, "value": value,
+                                                               "reason": reason}, c.ip)
+    compute_period(c.db, p)
+    return redirect(f"/periods/{key}/employee/{emp_no}", f"{OVERRIDE_LABELS.get(field, field)} overridden.")
+
+
+@router.post("/periods/{key}/employee/{emp_no}/month-override/{oid}/delete")
+def del_month_override(key: str, emp_no: str, oid: int, c: Ctx = Depends(hr)):
+    p = get_p(c, key)
+    _editable(p)
+    o = c.db.get(MonthOverrideRow, oid)
+    if o and o.period_id == p.id:
+        audit(c.db, c.user, "override.month_removed", "employee", emp_no, {"period": p.key, "field": o.field}, c.ip)
+        c.db.delete(o)
+        c.db.flush()
+        compute_period(c.db, p)
+    return redirect(f"/periods/{key}/employee/{emp_no}", "Override removed.")
+
+
+@router.post("/periods/{key}/employee/{emp_no}/opening")
+def set_opening(key: str, emp_no: str, leave_balance: str = Form(""), compoff_balance: str = Form(""),
+                note: str = Form(""), c: Ctx = Depends(hr)):
+    p = get_p(c, key)
+    _editable(p)
+    lo = c.db.scalar(select(LeaveOpening).where(LeaveOpening.emp_no == emp_no, LeaveOpening.year == p.year,
+                                                LeaveOpening.month == p.month))
+    if lo is None:
+        lo = LeaveOpening(emp_no=emp_no, year=p.year, month=p.month)
+        c.db.add(lo)
+    try:
+        lo.leave_balance = float(leave_balance) if leave_balance.strip() else None
+        lo.compoff_balance = float(compoff_balance) if compoff_balance.strip() else None
+    except ValueError:
+        return redirect(f"/periods/{key}/employee/{emp_no}", "Balances must be numbers.")
+    lo.note, lo.created_by = note, c.user.username
+    c.db.flush()
+    audit(c.db, c.user, "leave.opening", "employee", emp_no, {"period": p.key, "leave": leave_balance,
+                                                              "compoff": compoff_balance, "note": note}, c.ip)
+    compute_period(c.db, p)
+    return redirect(f"/periods/{key}/employee/{emp_no}", "Opening balances saved.")

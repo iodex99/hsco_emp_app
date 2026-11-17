@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ e.name or 'New employee' }}{% endblock %}
+{% block content %}
+<div class="top"><h1>{{ e.name or 'New employee' }} {% if e.emp_no %}<span class="muted" style="font-weight:400">{{ e.emp_no }}</span>{% endif %}</h1>
+<span class="sp"></span>{% if history %}<a class="btn ghost" href="/periods/{{ history[-1].key }}/employee/{{ e.emp_no }}">Latest month drill-down</a>{% endif %}</div>
+<div class="grid g2">
+<form class="card" method="post" action="/employees/save">
+  <h2>Employee master</h2>
+  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="new" value="{{ '1' if new }}">
+  <fieldset {{ 'disabled' if not can_hr }} style="border:0;padding:0;margin:0">
+  <div class="row">
+    <div class="field"><label>Employee No</label><input name="emp_no" value="{{ e.emp_no }}" {{ 'readonly' if not new }} required></div>
+    <div class="field"><label>Name</label><input name="name" value="{{ e.name }}"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Group</label><input name="group" value="{{ e.group }}" list="groups"><datalist id="groups">{% for g in groups %}<option>{{ g }}</option>{% endfor %}</datalist></div>
+    <div class="field"><label>Location</label><input name="location" value="{{ e.location }}" list="locs"><datalist id="locs">{% for g in locations %}<option>{{ g }}</option>{% endfor %}</datalist></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Department</label><input name="department" value="{{ e.department }}"></div>
+    <div class="field"><label>Designation</label><input name="designation" value="{{ e.designation }}"></div>
+    <div class="field"><label>Email</label><input type="email" name="email" value="{{ e.email }}"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Date of joining</label><input type="date" name="doj" value="{{ e.doj or '' }}"></div>
+    <div class="field"><label>Date of leaving</label><input type="date" name="dol" value="{{ e.dol or '' }}"></div>
+  </div>
+  <h3>Working pattern</h3>
+  <div class="field"><label>Weekly-off pattern</label><select name="weekly_off" id="wo">{% for k,v in patterns.items() %}<option value="{{ k }}" {{ 'selected' if e.weekly_off == k }}>{{ v }}</option>{% endfor %}</select></div>
+  <div id="custom" class="{{ '' if e.weekly_off == 'CUSTOM' else 'hidden' }}">
+    <label>Weekly-off days</label>
+    <div class="badge-row" style="margin-bottom:8px">{% set offs = (e.off_weekdays or '').split(',') %}{% for n in weekday_names %}<label style="font-weight:400"><input type="checkbox" name="off_weekdays" value="{{ loop.index0 }}" {{ 'checked' if (loop.index0|string) in offs }}> {{ n }}</label>{% endfor %}</div>
+    <div class="field"><label>If Saturday is off, these Saturdays of the month are still working (e.g. 1 or 1,3)</label><input name="working_saturdays" value="{{ e.working_saturdays }}"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Required hours / day (blank = policy default)</label><input name="hours_per_day" value="{{ e.hours_per_day if e.hours_per_day else '' }}" inputmode="decimal"></div>
+    <div class="field"><label>Holiday calendar</label><select name="holiday_calendar_id"><option value="">Default / greytHR</option>{% for c in cals %}<option value="{{ c.id }}" {{ 'selected' if e.holiday_calendar_id == c.id }}>{{ c.name }}{{ ' (default)' if c.is_default }}</option>{% endfor %}</select></div>
+  </div>
+  <h3>Deduction rules</h3>
+  <div class="row">
+    <div class="field" style="flex:0"><label><input type="checkbox" name="exempt" value="1" {{ 'checked' if e.exempt }}> Exempt from shortfall deduction</label></div>
+    <div class="field"><label>Exemption reason</label><input name="exempt_reason" value="{{ e.exempt_reason }}" placeholder="e.g. Treated as Partner"></div>
+  </div>
+  <div class="field"><label><input type="checkbox" name="is_active" value="1" {{ 'checked' if e.is_active }}> Active</label></div>
+  <div class="field"><label>Notes</label><textarea name="notes" rows="2">{{ e.notes }}</textarea></div>
+  {% if can_hr %}<button class="btn">Save</button>{% endif %}
+  </fieldset>
+</form>
+<div class="card"><h2>Monthly history</h2>
+{% if history %}<div class="chartbox"><canvas id="cH"></canvas></div>
+<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Month</th><th class="num">Present</th><th class="num">PL</th><th class="num">Absent</th><th class="num">WFH</th><th class="num">Late</th><th class="num">+/− h</th><th class="num">Deduct</th><th class="num">Leave bal</th></tr></thead><tbody>
+{% for h in history %}<tr><td><a href="/periods/{{ h.key }}/employee/{{ e.emp_no }}">{{ h.label }}</a></td><td class="num">{{ h.days_present|n }}</td><td class="num">{{ h.pl_days|n }}</td><td class="num">{{ h.unauth_absent_days|n }}</td><td class="num">{{ h.wfh_days|n }}</td><td class="num">{{ h.late_days }}</td><td class="num {{ 'neg' if h.balance_hours and h.balance_hours < 0 }}">{{ h.balance_hours|n }}</td><td class="num">{{ h.deduction_days|n }}</td><td class="num">{{ h.leave_closing|n if h.leave_closing is not none else '—' }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}<p class="muted">No months computed for this employee yet.</p>{% endif %}
+</div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+document.getElementById('wo').onchange=e=>document.getElementById('custom').classList.toggle('hidden',e.target.value!=='CUSTOM');
+{% if history %}const H={{ history|tojson_safe }};
+HSCO.chart('cH',{type:'bar',data:{labels:H.map(x=>x.label),datasets:[{label:'Shortfall/excess h',data:H.map(x=>x.balance_hours),backgroundColor:H.map(x=>x.balance_hours<0?'#c53030':'#38a169')},{label:'Late days',type:'line',data:H.map(x=>x.late_days),borderColor:'#d69e2e'}]}});{% endif %}
+</script>{% endblock %}

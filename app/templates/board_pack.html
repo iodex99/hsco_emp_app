@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board Pack · {{ period.label }} · {{ org.org_name }}</title>
+<style>{{ css|safe }}
+.main{max-width:1400px;margin:0 auto}.hdr{background:var(--navy);color:#fff;padding:18px 28px}
+.hdr h1{margin:0;font-size:20px}.hdr p{margin:4px 0 0;color:#cbd5e1;font-size:12.5px}
+.tabs a{cursor:pointer}.modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;z-index:50;overflow:auto;padding:30px 12px}
+.modal .box{background:var(--bg);max-width:1150px;margin:0 auto;border-radius:12px;padding:20px 22px}
+.close{float:right}.clickable{cursor:pointer}.clickable:hover td{background:#eef4fb}
+</style></head>
+<body>
+<div class="hdr"><h1>{{ org.org_name }} — Attendance &amp; Leave Board Pack</h1>
+<p>{{ period.label }} · {{ period.status }} · generated {{ generated }} · confidential — contains employee data</p></div>
+<div class="main">
+<div class="tabs" id="tabs">
+  <a data-t="ov" class="on">Overview</a><a data-t="sheet">Payroll leave sheet</a><a data-t="flags">Exceptions</a>
+  <a data-t="people">People</a><a data-t="groups">Groups</a>
+</div>
+<section id="ov">
+  <div class="kpis" id="kpis"></div>
+  <div class="grid g2">
+    <div class="card"><h2>Where people worked (punches)</h2><div class="chartbox"><canvas id="cLoc"></canvas></div></div>
+    <div class="card"><h2>Arrival times</h2><div class="chartbox"><canvas id="cIn"></canvas></div></div>
+    <div class="card"><h2>Daily attendance</h2><div class="chartbox"><canvas id="cDaily"></canvas></div></div>
+    <div class="card"><h2>Hours: excess vs shortfall by employee</h2><div class="chartbox"><canvas id="cBal"></canvas></div></div>
+  </div>
+  <div class="grid g3" id="tops"></div>
+  <div class="card" id="trendcard" style="display:none"><h2>Trend</h2><div class="chartbox" style="height:300px"><canvas id="cTrend"></canvas></div></div>
+</section>
+<section id="sheet" class="hidden"><div class="card">
+  <div class="toolbar"><input type="search" id="q" placeholder="Search name, ID, group, remark…">
+  <select id="gf"><option value="">All groups</option></select>
+  <label style="font-weight:400"><input type="checkbox" id="onlyflag"> only with flags</label>
+  <span class="muted small" id="cnt"></span></div>
+  <div class="tablewrap"><table id="tbl"><thead><tr></tr></thead><tbody></tbody></table></div>
+  <p class="small muted">Click a column header to sort; click a row for the employee drill-down.</p></div></section>
+<section id="flags" class="hidden"><div class="card">
+  <div class="badge-row" id="flagchips" style="margin-bottom:10px"></div>
+  <div class="tablewrap"><table id="ftbl"><thead><tr><th>Severity</th><th>Employee</th><th>Group</th><th>Flag</th><th>Detail</th></tr></thead><tbody></tbody></table></div></div></section>
+<section id="people" class="hidden"><div class="grid g2" id="peoplebox"></div></section>
+<section id="groups" class="hidden"><div class="card"><div class="tablewrap"><table id="gtbl"><thead></thead><tbody></tbody></table></div></div></section>
+</div>
+<div class="modal" id="modal"><div class="box" id="mbox"></div></div>
+<script>{{ chart_js|safe }}</script>
+<script>
+const D = {{ data_json|safe }};
+const M = D.m, E = D.emps, P = ["#1f3a5f","#2b6cb0","#38a169","#d69e2e","#c53030","#6b46c1","#319795","#dd6b20","#718096","#b83280"];
+Chart.defaults.font.family='"Segoe UI",system-ui,Arial,sans-serif';Chart.defaults.font.size=11.5;Chart.defaults.maintainAspectRatio=false;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n=(v,d=2)=>v==null||v===''?'':(Number.isInteger(+v)?String(+v):(+v).toFixed(d));
+const hm=m=>m==null?'':String(Math.floor(Math.round(m)/60)).padStart(2,'0')+':'+String(Math.round(m)%60).padStart(2,'0');
+// tabs
+document.querySelectorAll('#tabs a').forEach(a=>a.onclick=()=>{document.querySelectorAll('#tabs a').forEach(x=>x.classList.toggle('on',x===a));
+ document.querySelectorAll('section').forEach(s=>s.classList.toggle('hidden',s.id!==a.dataset.t));});
+// KPIs
+const k=M.kpis;
+const kp=[[k.headcount,'Employees'],[k.new_joinees,'New joinees','good'],[k.exits,'Exits',k.exits?'warn':''],[k.attendance_rate+'%','Attendance rate'],
+[k.deduction_employees,'Leave deductions ('+n(k.deduction_days)+' days)',k.deduction_employees?'bad':''],[n(k.payroll_lop_days),'Payroll LOP days',k.payroll_lop_days?'bad':''],
+[k.wfh_over_limit,'Over WFH limit',k.wfh_over_limit?'warn':''],[k.persistent_late,'Persistently late',k.persistent_late?'warn':''],
+[k.persistent_regularisation,'Persistent regularisation',k.persistent_regularisation?'warn':''],[n(k.absent_days),'Unauthorised absent days',k.absent_days?'bad':''],
+[k.avg_work_hours,'Avg hours / present day'],[k.avg_in_time,'Avg in-time (out '+k.avg_out_time+')'],[n(k.extra_days),'Off-day / holiday work days'],[n(k.excess_hours,0),'Excess hours (shortfall '+n(k.shortfall_hours,0)+')']];
+document.getElementById('kpis').innerHTML=kp.map(x=>`<div class="kpi ${x[2]||''}"><div class="v">${esc(x[0])}</div><div class="l">${esc(x[1])}</div></div>`).join('');
+new Chart(cLoc,{type:'doughnut',data:{labels:M.location_mix.map(x=>x.label),datasets:[{data:M.location_mix.map(x=>x.count),backgroundColor:P}]},options:{plugins:{legend:{position:'right'}}}});
+new Chart(cIn,{type:'bar',data:{labels:M.in_time_hist.map(x=>x.bucket),datasets:[{label:'Arrivals',data:M.in_time_hist.map(x=>x.count),backgroundColor:M.in_time_hist.map(x=>x.bucket>'10:00'?'#d69e2e':'#2b6cb0')}]},options:{plugins:{legend:{display:false}}}});
+new Chart(cDaily,{type:'bar',data:{labels:M.daily.map(x=>x.date.slice(8)),datasets:[{label:'Present',data:M.daily.map(x=>x.present||0),backgroundColor:'#2b6cb0',stack:'a'},
+{label:'Leave',data:M.daily.map(x=>(x.leave||0)+(x.compoff||0)),backgroundColor:'#38a169',stack:'a'},{label:'Absent/LOP',data:M.daily.map(x=>(x.absent||0)+(x.lop||0)),backgroundColor:'#c53030',stack:'a'},
+{label:'WFH',data:M.daily.map(x=>x.wfh||0),type:'line',borderColor:'#6b46c1',backgroundColor:'#6b46c1'}]},options:{scales:{x:{stacked:true},y:{stacked:true}}}});
+const sb=[...E].sort((a,b)=>a.m.balance_hours-b.m.balance_hours);
+new Chart(cBal,{type:'bar',data:{labels:sb.map(e=>e.name),datasets:[{label:'Hours +/−',data:sb.map(e=>e.m.balance_hours),backgroundColor:sb.map(e=>e.m.balance_hours<0?'#c53030':'#38a169')}]},
+options:{plugins:{legend:{display:false}},scales:{x:{ticks:{display:false}}},onClick:(ev,el)=>{if(el.length)openEmp(sb[el[0].index].id)}}});
+const tops=[['Most often > 1 h late','late','days'],['Above WFH limit','wfh','days'],['Most regularisations','regularised','days'],['Missing punches','missing_punch','days'],['Unauthorised absence','absent','days'],['Most excess hours','excess_hours','h']];
+document.getElementById('tops').innerHTML=tops.map(([t,key,u])=>`<div class="card"><h2>${t}</h2><table><tbody>${(M.top[key]||[]).map(r=>`<tr class="clickable" onclick="openEmp('${esc(r.emp_no)}')"><td>${esc(r.name)} <span class="muted small">${esc(r.group)}</span></td><td class="num">${n(r.value)} ${u}</td></tr>`).join('')||'<tr><td class="muted">None</td></tr>'}</tbody></table></div>`).join('');
+if(M.trend.length>1){trendcard.style.display='';new Chart(cTrend,{type:'line',data:{labels:M.trend.map(x=>x.label),datasets:[{label:'Deduction days',data:M.trend.map(x=>x.deduction_days),borderColor:P[4]},{label:'Late days',data:M.trend.map(x=>x.late_days),borderColor:P[3]},{label:'WFH days',data:M.trend.map(x=>x.wfh_days),borderColor:P[5]},{label:'Absent days',data:M.trend.map(x=>x.absent_days),borderColor:P[0]}]}});}
+// sheet
+const cols=[['id','Emp No'],['name','Name'],['group','Group'],['total_week_days','Week days',1],['holidays','Hol',1],['leave_days','Leave',1],['absent_days','Abs',1],['days_present','Present',1],['wfh_days','WFH',1],['total_hours','Hours',1],['extra_hours','Off-day h',1],['actual_hours','Actual',1],['required_hours','Required',1],['balance_hours','+/−',1],['deduction_days','Deduct',1],['late_days','Late',1],['regularised_days','Reg.',1],['leave_closing','Leave bal',1],['remark','Remark'],['flags','⚑',1]];
+const val=(e,c)=>c==='id'||c==='name'||c==='group'?e[c]:c==='flags'?e.flags.filter(f=>f.severity!=='info').length:e.m[c];
+let sortc='id',sortd=1;
+const groups=[...new Set(E.map(e=>e.group))].sort();gf.innerHTML+=groups.map(g=>`<option>${esc(g)}</option>`).join('');
+function drawSheet(){const q=document.getElementById('q').value.toLowerCase(),g=gf.value,of=onlyflag.checked;
+ const rows=E.filter(e=>(!g||e.group===g)&&(!q||JSON.stringify([e.id,e.name,e.group,e.m.remark]).toLowerCase().includes(q))&&(!of||e.flags.some(f=>f.severity!=='info')))
+ .sort((a,b)=>{const x=val(a,sortc),y=val(b,sortc);return (x>y?1:x<y?-1:0)*sortd;});
+ tbl.tHead.rows[0].innerHTML=cols.map(c=>`<th class="sortable ${c[2]?'num':''}" data-c="${c[0]}">${c[1]}</th>`).join('');
+ tbl.tHead.querySelectorAll('th').forEach(th=>th.onclick=()=>{sortd=sortc===th.dataset.c?-sortd:1;sortc=th.dataset.c;drawSheet();});
+ tbl.tBodies[0].innerHTML=rows.map(e=>`<tr class="clickable" onclick="openEmp('${esc(e.id)}')">${cols.map(c=>{let v=val(e,c[0]);
+  if(c[0]==='total_hours')v=hm(v*60);else if(c[2])v=n(v);
+  const cls=(c[2]?'num ':'')+(c[0]==='balance_hours'&&e.m.balance_hours<0?'neg':'')+(c[0]==='wfh_days'&&e.m.wfh_days>D.policy.wfh_limit?'neg':'');
+  if(c[0]==='deduction_days'&&e.m.deduction_days)v=`<span class="pill critical">${v}</span>`;else v=esc(v);
+  return `<td class="${cls}">${v}</td>`;}).join('')}</tr>`).join('');
+ cnt.textContent=rows.length+' employees';}
+q.addEventListener('input',drawSheet);gf.addEventListener('change',drawSheet);onlyflag.addEventListener('change',drawSheet);drawSheet();
+// flags
+let fcode='';
+function drawFlags(){flagchips.innerHTML=`<a class="pill ${!fcode?'p-final':'info'}" onclick="fcode='';drawFlags()">All</a>`+M.flag_summary.map(f=>`<a class="pill p-${f.severity}" style="cursor:pointer;${fcode===f.code?'outline:2px solid #1f3a5f':''}" onclick="fcode='${f.code}';drawFlags()">${esc(f.label)} · ${f.count}</a>`).join('');
+ ftbl.tBodies[0].innerHTML=M.flags.filter(f=>!fcode||f.code===fcode).map(f=>`<tr class="clickable" onclick="openEmp('${esc(f.emp_no)}')"><td><span class="pill p-${f.severity}">${f.severity}</span></td><td>${esc(f.name)}</td><td>${esc(f.group)}</td><td>${esc(D.labels[f.code]||f.code)}</td><td>${esc(f.message)}</td></tr>`).join('');}
+drawFlags();
+// people
+const pl=(t,arr,f)=>`<div class="card"><h2>${t} (${arr.length})</h2><table><tbody>${arr.map(f).join('')||'<tr><td class="muted">None</td></tr>'}</tbody></table></div>`;
+peoplebox.innerHTML=pl('New joinees',M.people.joiners,e=>`<tr><td>${esc(e.name)}</td><td>${esc(e.group)}</td><td>${e.doj}</td></tr>`)+pl('Exits',M.people.exits,e=>`<tr><td>${esc(e.name)}</td><td>${esc(e.group)}</td><td>${e.dol}</td></tr>`)
++pl('Possible exits (in last month, not this month)',M.people.exit_candidates,e=>`<tr><td>${esc(e.name)}</td><td>${esc(e.group)}</td></tr>`)+pl('Work anniversaries',M.people.anniversaries,e=>`<tr><td>${esc(e.name)}</td><td>${e.years} yr</td></tr>`)
++pl('Joined in last 6 months',M.people.recent_joiners,e=>`<tr><td>${esc(e.name)}</td><td>${esc(e.group)}</td><td>${e.doj}</td></tr>`)
++`<div class="card"><h2>Tenure profile</h2><div class="chartbox"><canvas id="cTen"></canvas></div></div>`;
+new Chart(cTen,{type:'bar',data:{labels:M.people.tenure_buckets.map(x=>x.bucket),datasets:[{data:M.people.tenure_buckets.map(x=>x.count),backgroundColor:'#1f3a5f'}]},options:{indexAxis:'y',plugins:{legend:{display:false}}}});
+// groups
+const gc=[['group','Group'],['headcount','Headcount'],['days_present','Present days'],['pl_days','PL'],['cof_days','Comp-off'],['unauth_absent_days','Absent'],['lop_days','LOP'],['wfh_days','WFH'],['late_days','Late days'],['regularised_days','Regularised'],['deduction_days','Deduction days'],['hours_vs_required_pct','Hours vs req. %']];
+gtbl.tHead.innerHTML='<tr>'+gc.map(c=>`<th>${c[1]}</th>`).join('')+'</tr>';
+gtbl.tBodies[0].innerHTML=M.groups.map(g=>'<tr>'+gc.map((c,i)=>`<td class="${i?'num':''}">${i?n(g[c[0]],1):esc(g[c[0]])}</td>`).join('')+'</tr>').join('');
+// employee drill-down
+function openEmp(id){const e=E.find(x=>x.id===id);if(!e)return;const m=e.m;
+ const first=new Date(e.days.length?e.days[0].d:Date.now());const pad=(new Date(first.getFullYear(),first.getMonth(),1).getDay()+6)%7;
+ const byd={};e.days.forEach(d=>byd[+d.d.slice(8)]=d);const dim=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
+ let cal='<div class="cal">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(h=>`<div class="h">${h}</div>`).join('')+'<div></div>'.repeat(pad);
+ for(let i=1;i<=dim;i++){const d=byd[i];if(!d){cal+=`<div class="day muted"><div class="dn">${i}</div></div>`;continue;}
+  cal+=`<div class="day ${d.t} b-${d.b}" title="${esc(d.n.join('; '))}"><div class="dn">${i}</div><div class="st">${d.t==='WEEKLY_OFF'?'Off':d.t==='HOLIDAY'?'Hol':esc(d.s)}</div>${d.h?`<div class="hr">${hm(d.h)}</div>`:''}${d.i?`<div class="muted">${d.i}–${d.o}</div>`:''}<div class="tags">${d.late?'<span class="dot d-late"></span>':''}${d.wfh?'<span class="dot d-wfh"></span>':''}${d.miss?'<span class="dot d-miss"></span>':''}${d.reg?'<span class="dot d-reg"></span>':''}${d.x?'<span class="dot d-extra"></span>':''}${d.ov?'<span class="dot d-ovr"></span>':''}</div></div>`;}
+ cal+='</div><div class="legend"><span><i class="dot d-late"></i>Late</span><span><i class="dot d-wfh"></i>WFH</span><span><i class="dot d-miss"></i>Missing punch</span><span><i class="dot d-reg"></i>Regularised</span><span><i class="dot d-extra"></i>Off-day work</span><span><i class="dot d-ovr"></i>Override</span></div>';
+ const kv=[[n(m.days_present),'Days present'],[n(m.actual_hours,1)+' / '+n(m.required_hours,1),'Actual / required hours'],[n(m.balance_hours,1),'Shortfall / excess',m.balance_hours<0?'bad':'good'],[n(m.deduction_days),'Leave deduction'+(m.exempt?' (exempt)':''),m.deduction_days?'bad':''],
+ [n(m.pl_days)+' / '+n(m.cof_days),'PL / comp-off'],[n(m.unauth_absent_days)+' / '+n(m.lop_days),'Absent / LOP',m.unauth_absent_days?'bad':''],[n(m.wfh_days),'WFH days',m.wfh_days>D.policy.wfh_limit?'warn':''],[m.late_days,'Late (avg '+n(m.avg_late_min,0)+' min)',m.late_days>=D.policy.late_days?'warn':''],
+ [hm(m.avg_in_min),'Avg in (out '+hm(m.avg_out_min)+')'],[m.regularised_days,'Regularised days'],[m.missing_punch_days,'Missing punches'],[m.leave_closing==null?'—':n(m.leave_closing),'Leave balance']];
+ mbox.innerHTML=`<button class="btn ghost close" onclick="modal.style.display='none'">Close ✕</button><h2 style="margin-top:0">${esc(e.name)} <span class="muted" style="font-weight:400">${esc(e.id)} · ${esc(e.group)} · ${esc(e.loc)}</span></h2>
+ ${m.remark?`<div class="flash">${esc(m.remark)}</div>`:''}<div class="kpis">${kv.map(x=>`<div class="kpi ${x[2]||''}"><div class="v">${esc(x[0])}</div><div class="l">${esc(x[1])}</div></div>`).join('')}</div>
+ <div class="grid g2"><div class="card"><h2>Calendar</h2>${cal}</div><div class="card"><h2>Flags</h2><table><tbody>${e.flags.map(f=>`<tr><td><span class="pill p-${f.severity}">${f.severity}</span></td><td>${esc(f.message)}</td></tr>`).join('')||'<tr><td class="muted">None</td></tr>'}</tbody></table></div></div>
+ <div class="card"><h2>Day by day</h2><div class="tablewrap"><table><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Status</th><th>In</th><th>Out</th><th class="num">Hours</th><th class="num">Late</th><th>Where</th><th>Notes</th></tr></thead><tbody>
+ ${e.days.map(d=>`<tr><td>${d.d}</td><td>${d.w}</td><td class="small">${d.t}</td><td>${esc(d.s)}${d.wfh?' <span class="pill info">WFH</span>':''}${d.miss?' <span class="pill high">missing punch</span>':''}${d.reg?' <span class="pill info">regularised</span>':''}</td><td>${d.i}</td><td>${d.o}</td><td class="num">${hm(d.h)}</td><td class="num">${d.late||''}</td><td class="small">${esc([...new Set(d.locs)].join(', '))}</td><td class="small">${esc(d.n.join('; '))}</td></tr>`).join('')}
+ </tbody></table></div></div>`;
+ modal.style.display='block';modal.scrollTop=0;}
+modal.onclick=ev=>{if(ev.target===modal)modal.style.display='none';};
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape')modal.style.display='none';});
+</script>
+</body></html>

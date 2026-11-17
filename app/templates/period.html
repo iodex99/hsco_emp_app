@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Payroll leave sheet {{ period.label }}{% endblock %}
+{% block content %}
+<div class="top">
+  <h1>Payroll leave sheet — {{ period.label }}</h1>
+  <span class="pill {{ 'p-final' if period.status == 'FINALISED' else 'info' }}">{{ period.status }}{% if period.finalised_by %} · {{ period.finalised_by }} {{ period.finalised_at|dmy }}{% endif %}</span>
+  <span class="sp"></span>
+  <select data-nav aria-label="Period">{% for p in all_periods %}<option value="/periods/{{ p.key }}" {{ 'selected' if p.key == period.key }}>{{ p.label }}</option>{% endfor %}</select>
+  <a class="btn ghost" href="/exports/{{ period.key }}.xlsx">Download Excel</a>
+  {% if can_hr and period.status == 'DRAFT' %}
+  <form method="post" action="/periods/{{ period.key }}/recompute"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost">Recompute</button></form>
+  <form method="post" action="/periods/{{ period.key }}/finalise" data-confirm="Finalise {{ period.label }}? Imports and overrides will be locked."><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">Finalise for payroll</button></form>
+  {% endif %}
+  {% if can_admin and period.status == 'FINALISED' %}
+  <form method="post" action="/periods/{{ period.key }}/reopen" class="row"><input type="hidden" name="csrf" value="{{ csrf }}"><input name="reason" placeholder="Reason to re-open" required><button class="btn danger">Re-open</button></form>
+  {% endif %}
+</div>
+<div class="card">
+<div class="toolbar">
+  <input type="search" placeholder="Search name, ID, group, remark…" data-filter="#res" data-count="#cnt">
+  <select data-colfilter="#res" data-col="2"><option value="">All groups</option>{% for g in rows|map(attribute='group')|unique|sort %}<option>{{ g }}</option>{% endfor %}</select>
+  <span class="muted small"><span id="cnt">{{ rows|length }}</span> employees · required hours = days present × {{ policy.hours_per_day|n }} · ½ day per {{ policy.shortfall_block_hours|n }} h short · exempt: {{ policy.exempt_groups|join(', ') }}</span>
+</div>
+<div class="tablewrap"><table id="res" data-sortable>
+<thead><tr><th>Emp No</th><th>Name</th><th>Group</th><th class="num" title="Total week days (E)">Week days</th><th class="num" title="Holidays (F)">Hol</th><th class="num" title="Leaves taken (G)">Leave</th><th class="num" title="Absent (H)">Abs</th><th class="num" title="Days present (I)">Present</th><th class="num">WFH</th><th class="num" title="Total hours present">Hours</th><th class="num" title="Hours on weekly-off/holiday (excluded)">Off-day h</th><th class="num" title="Actual hours">Actual</th><th class="num" title="Required">Required</th><th class="num">+/−</th><th class="num">Deduct</th><th class="num" title="Leave closing balance">Leave bal</th><th class="num" title="Payroll LOP days">LOP</th><th>Remark</th><th class="num" title="Flags (high/medium)">⚑</th></tr></thead>
+<tbody>
+{% for r in rows %}{% set d = r.data %}
+<tr>
+  <td>{{ r.emp_no }}</td><td><a href="/periods/{{ period.key }}/employee/{{ r.emp_no }}">{{ r.name }}</a></td><td>{{ r.group }}</td>
+  <td class="num">{{ d.total_week_days|n }}</td><td class="num">{{ d.holidays|n }}</td><td class="num">{{ d.leave_days|n }}</td>
+  <td class="num">{{ d.absent_days|n }}</td><td class="num">{{ d.days_present|n }}</td>
+  <td class="num {{ 'neg' if d.wfh_days > policy.wfh_limit_days }}">{{ d.wfh_days|n }}</td>
+  <td class="num" data-v="{{ d.total_hours }}">{{ (d.total_hours*60)|hm }}</td><td class="num">{{ d.extra_hours|n }}</td>
+  <td class="num">{{ d.actual_hours|n }}</td><td class="num">{{ d.required_hours|n }}</td>
+  <td class="num {{ 'neg' if d.balance_hours < 0 else 'pos' }}">{{ d.balance_hours|n }}</td>
+  <td class="num">{% if d.deduction_days %}<span class="pill critical">{{ d.deduction_days|n }}</span>{% endif %}</td>
+  <td class="num">{{ d.leave_closing|n if d.leave_closing is not none else '—' }}</td>
+  <td class="num">{{ d.payroll_lop_days|n if d.payroll_lop_days else '' }}</td>
+  <td class="small">{{ d.remark }}{% if d.overrides %} <span class="pill medium" title="{{ d.overrides|tojson }}">override</span>{% endif %}</td>
+  <td class="num">{% if r.flag_count %}<span class="pill high">{{ r.flag_count }}</span>{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table></div>
+<p class="small muted">Click a column to sort. Click a name to drill down into the day-by-day record, punches, locations, flags and to make manual corrections.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Exceptions{% endblock %}
+{% block content %}
+<div class="top"><h1>Exceptions &amp; flags — {{ period.label }}</h1><span class="sp"></span>
+<select data-nav aria-label="Period">{% for p in all_periods %}<option value="/flags?period={{ p.key }}" {{ 'selected' if p.key == period.key }}>{{ p.label }}</option>{% endfor %}</select></div>
+<div class="card">
+<div class="badge-row" style="margin-bottom:12px">
+  <a class="pill {{ 'p-final' if not code else 'info' }}" href="/flags?period={{ period.key }}">All</a>
+  {% for f in summary %}<a class="pill p-{{ f.severity }}" style="{{ 'outline:2px solid #1f3a5f' if code == f.code }}" href="/flags?period={{ period.key }}&code={{ f.code }}">{{ f.label }} · {{ f.count }}</a>{% endfor %}
+</div>
+<div class="toolbar"><input type="search" placeholder="Search…" data-filter="#fl" data-count="#cnt"><span class="muted small"><span id="cnt">{{ rows|length }}</span> rows</span></div>
+<div class="tablewrap"><table id="fl" data-sortable><thead><tr><th>Severity</th><th>Employee</th><th>Group</th><th>Flag</th><th>Detail</th></tr></thead><tbody>
+{% for f in rows %}<tr><td data-v="{{ {'critical':0,'high':1,'medium':2,'info':3}[f.severity] }}"><span class="pill p-{{ f.severity }}">{{ f.severity }}</span></td>
+<td><a href="/periods/{{ period.key }}/employee/{{ f.emp_no }}">{{ f.name }}</a> <span class="muted small">{{ f.emp_no }}</span></td><td>{{ f.group }}</td><td>{{ labels.get(f.code, f.code) }}</td><td>{{ f.message }}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">No flags.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

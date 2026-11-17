@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top"><h1>Welcome</h1></div>
+<div class="card"><h2>No data yet</h2>
+<p>Start by importing the month's greytHR exports: <b>Attendance Muster Report</b>, <b>Employee Swipe Details</b>, <b>Date of Joining Report</b> and optionally the <b>Attendance Summary Report</b>.</p>
+<p>First time? Also import the <b>Employee master</b> (or last month's manual MIS sheet) so groups, exemptions and weekly-off patterns are known.</p>
+{% if can_hr %}<a class="btn" href="/imports">Import files</a>{% else %}<p class="muted">Ask HR to import the month's data.</p>{% endif %}
+</div>
+{% endblock %}
