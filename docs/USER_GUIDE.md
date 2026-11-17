@@ -16,6 +16,8 @@ Add more methods under **My security** (several phones, keys).
 - **Review queue**: every exception, grouped by type; mark each reviewed with a short note.
 - **Employees**: settings per person (group, working pattern, hours per day, exemption).
 - Press **/** anywhere to find an employee; use the **month switcher** (top right) to change month.
+- On an employee's page, click **legend items** under the calendar (several at once) to show only those days, e.g. Late + Missing punch.
+- In the **Review queue**, tick several rows (or the header box for all shown) and use the bar at the bottom to mark them reviewed in one go. *Review queue →* on an employee's Flags card shows only that person.
 - On an employee's page, **click a calendar day** to see its punches and correct it; the left/right arrow keys move
   to the previous/next employee.
 

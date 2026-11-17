@@ -236,3 +236,76 @@ def test_review_queue_employees_days_and_audit(page):
     assert re.search(r"\d+ entr", pg.inner_text("#audit-total"))
     pg.goto(pg.base + "/audit?user=nobody")
     assert "No entries" in pg.content()
+
+
+def test_bulk_review_legend_filter_and_flag_links(page):
+    pg = page
+    # ---- employee page: legend filters the calendar (multi-select = any of)
+    pg.goto(pg.base + "/periods/2026-10/employee/T004")
+    pg.wait_for_selector("#cal-legend")
+    total_wfh = pg.eval_on_selector_all(".cal .day[data-tags~='wfh']", "e => e.length")
+    total_late = pg.eval_on_selector_all(".cal .day[data-tags~='late']", "e => e.length")
+    assert total_wfh == 4 and total_late >= 15
+    pg.click("#cal-legend button[data-lg=wfh]")
+    assert pg.inner_text("#lg-n") == "4"
+    assert pg.eval_on_selector_all(".cal .day.match", "e => e.length") == 4
+    pg.click("#cal-legend button[data-lg=late]")
+    union = pg.eval_on_selector_all(".cal .day[data-day]",
+                                    "ds => ds.filter(d => { const t = d.dataset.tags.split(' '); return t.includes('wfh') || t.includes('late'); }).length")
+    assert pg.inner_text("#lg-n") == str(union)
+    assert pg.get_attribute("#cal-legend button[data-lg=late]", "aria-pressed") == "true"
+    pg.screenshot(path="test-results/legend_filter.png")
+    pg.click("#lg-clear")
+    assert pg.eval_on_selector_all(".cal.filtering", "e => e.length") == 0
+    # disabled when a mark never occurs (T004 has no holidays worked? at least one legend item may be disabled)
+    assert pg.eval_on_selector_all("#cal-legend button.lg", "bs => bs.every(b => b.disabled === (b.querySelector('.muted').textContent.trim() === '0'))")
+
+    # ---- flags card → review queue filtered to this employee
+    pg.click("#emp-queue")
+    pg.wait_for_selector("#emp-filter")
+    assert "Dev Mehta" in pg.inner_text("#emp-filter")
+    emps = pg.eval_on_selector_all("#fl tbody tr", "rs => [...new Set(rs.map(r => r.dataset.emp))]")
+    assert emps == ["T004"]
+    pg.go_back()
+    pg.click(".flag-link >> nth=0")
+    pg.wait_for_selector("#emp-filter")
+    assert "code=" in pg.url and "emp=T004" in pg.url
+
+    # ---- review queue: select rows → bulk mark reviewed with one note
+    pg.goto(pg.base + "/flags?period=2026-10&show=open")
+    pg.wait_for_selector(f"{bar(pg, '#fl')} .tt-count")
+    open_before = len(pg.query_selector_all("#fl tbody tr"))
+    assert pg.is_hidden("#bulk")
+    pg.check("#fl tbody tr:nth-child(1) input.sel")
+    pg.click("#fl tbody tr:nth-child(2) td:nth-child(5)")         # clicking the row toggles too
+    assert pg.inner_text("#bulk-n") == "2" and pg.is_visible("#bulk")
+    pg.screenshot(path="test-results/bulk_bar.png")
+    pg.click("#bulk-review")
+    pg.wait_for_selector("#rev.open")
+    assert "Mark 2 items reviewed" in pg.inner_text("#rv-title")
+    pg.click("#rev [data-note='No action needed']")
+    pg.click("#rv-save")
+    pg.wait_for_selector(".toast:has-text('2 items marked reviewed')")
+    assert len(pg.query_selector_all("#fl tbody tr")) == open_before - 2
+
+    # select-all only takes rows the filters show
+    add_filter(pg, "Severity", "#fl")
+    pg.check(".tt-pop .tt-vals input[value='High']")
+    pg.click(".tt-pop [data-done]")
+    shown = pg.eval_on_selector_all("#fl tbody tr", "rs => rs.filter(r => r.style.display !== 'none').length")
+    pg.check("#sel-all")
+    assert pg.inner_text("#bulk-n") == str(shown)
+    pg.click(f"{bar(pg, '#fl')} .tt-clear")                     # filter removed → hidden rows were never selected
+    assert pg.inner_text("#bulk-n") == str(shown)
+    assert pg.eval_on_selector("#sel-all", "e => e.indeterminate") is True
+    pg.click("#bulk-clear")
+    assert pg.is_hidden("#bulk")
+
+    # bulk re-open from the Reviewed tab
+    pg.goto(pg.base + "/flags?period=2026-10&show=reviewed")
+    n_rev = len(pg.query_selector_all("#fl tbody tr"))
+    pg.check("#sel-all")
+    pg.on("dialog", lambda d: d.accept())
+    pg.click("#bulk-reopen")
+    pg.wait_for_selector(".toast:has-text('re-opened')")
+    assert len(pg.query_selector_all("#fl tbody tr")) == 0 and n_rev >= 2

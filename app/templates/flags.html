@@ -2,47 +2,53 @@
 {% import "_ui.html" as ui with context %}
 {% block title %}Review queue{% endblock %}
 {% block content %}
+{% set base = '/flags?period=' ~ period.key ~ ('&emp=' ~ emp if emp else '') %}
 <div class="ph">
   <div><h1>Review queue</h1><div class="sub">{{ period.label }} · exceptions found by the app. Mark each one reviewed once you've dealt with it.</div></div>
   <div class="actions" style="min-width:260px">
-    <div style="flex:1"><div class="split small"><span class="strong">{{ reviewed }} of {{ total }} reviewed</span><span class="muted" id="pct">{{ ((reviewed / total * 100) if total else 100)|round|int }}%</span></div>
+    <div style="flex:1"><div class="split small"><span class="strong" id="prog-text">{{ reviewed }} of {{ total }} reviewed</span><span class="muted" id="pct">{{ ((reviewed / total * 100) if total else 100)|round|int }}%</span></div>
     <div class="bar {{ 'ok' if reviewed == total }}"><i id="pbar" style="width:{{ ((reviewed / total * 100) if total else 100)|round }}%"></i></div></div>
   </div>
 </div>
 
+{% if emp %}
+<div class="alert" id="emp-filter">{{ ui.icon('filter') }}<span>Showing only <b>{{ emp_name }}</b> ({{ emp }}).
+  <a href="/periods/{{ period.key }}/employee/{{ emp }}">Open their month</a></span><span class="spacer"></span>
+  <a class="btn sm sec" href="/flags?period={{ period.key }}{{ '&code=' ~ code if code }}&show={{ show }}">Show everyone ×</a></div>
+{% endif %}
+
 <div class="grid" style="grid-template-columns:270px minmax(0,1fr);align-items:start">
   <div class="card" style="position:sticky;top:76px"><div class="hd"><h2>By type</h2></div><div class="bd" style="padding:8px">
-    <a class="nav-item {{ 'on' if not code }}" href="/flags?period={{ period.key }}&show={{ show }}">All types<span class="r">{{ rows|selectattr('actionable')|list|length }}</span></a>
+    <a class="nav-item {{ 'on' if not code }}" href="{{ base }}&show={{ show }}">All types<span class="r">{{ rows|selectattr('actionable')|list|length }}</span></a>
     {% for g in summary if g.severity != 'info' %}
-    <a class="nav-item {{ 'on' if code == g.code }}" href="/flags?period={{ period.key }}&code={{ g.code }}&show={{ show }}">
+    <a class="nav-item {{ 'on' if code == g.code }}" href="{{ base }}&code={{ g.code }}&show={{ show }}">
       <span class="dot" style="background:{{ {'critical':'#f04438','high':'#f79009','medium':'#eaaa08'}[g.severity] }}"></span>{{ g.label }}
       <span class="r">{% if g.open %}{{ g.open }}{% else %}{{ ui.icon('check','sm') }}{% endif %}</span></a>
     {% endfor %}
     <div class="grp" style="padding:12px 10px 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4)">For information</div>
     {% for g in summary if g.severity == 'info' %}
-    <a class="nav-item {{ 'on' if code == g.code }}" href="/flags?period={{ period.key }}&code={{ g.code }}&show=all">{{ g.label }}<span class="r muted">{{ g.total }}</span></a>
-    {% endfor %}
+    <a class="nav-item {{ 'on' if code == g.code }}" href="{{ base }}&code={{ g.code }}&show=all">{{ g.label }}<span class="r muted">{{ g.total }}</span></a>
+    {% else %}<div class="muted small" style="padding:4px 10px">None</div>{% endfor %}
   </div></div>
 
   <div class="card flush">
     <div class="hd">
       <div class="seg">
-        <a href="/flags?period={{ period.key }}&code={{ code }}&show=open" class="{{ 'on' if show == 'open' }}">Open</a>
-        <a href="/flags?period={{ period.key }}&code={{ code }}&show=reviewed" class="{{ 'on' if show == 'reviewed' }}">Reviewed</a>
-        <a href="/flags?period={{ period.key }}&code={{ code }}&show=all" class="{{ 'on' if show == 'all' }}">All</a>
+        <a href="{{ base }}&code={{ code }}&show=open" class="{{ 'on' if show == 'open' }}">Open</a>
+        <a href="{{ base }}&code={{ code }}&show=reviewed" class="{{ 'on' if show == 'reviewed' }}">Reviewed</a>
+        <a href="{{ base }}&code={{ code }}&show=all" class="{{ 'on' if show == 'all' }}">All</a>
       </div>
-      <div class="tools">
-        {% if can_hr and code and show != 'reviewed' %}<button class="btn sm sec" type="button" id="review-all" data-code="{{ code }}">{{ ui.icon('check','sm') }} Mark all reviewed</button>{% endif %}
-      </div>
+      {% if can_hr %}<div class="tools small muted">Tick rows (or the box in the header) to review several at once</div>{% endif %}
     </div>
     <div data-table-for="#fl"></div>
     <div class="bd"><div class="tw" style="max-height:none"><table id="fl" data-table data-csv="review-queue-{{ period.key }}" data-default-hidden="group,status">
-      <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="sev" data-type="enum">Severity</th><th data-key="exc" data-type="enum">Exception</th><th data-key="detail" data-type="text">Detail</th><th data-key="status" data-type="enum">Status</th><th data-type="none" style="width:1%"></th></tr></thead><tbody>
+      <thead><tr><th data-key="emp" data-type="text" data-label="Employee">{% if can_hr %}<label class="selbox" title="Select all shown" onclick="event.stopPropagation()"><input type="checkbox" id="sel-all" aria-label="Select all shown"></label>{% endif %}Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="sev" data-type="enum">Severity</th><th data-key="exc" data-type="enum">Exception</th><th data-key="detail" data-type="text">Detail</th><th data-key="status" data-type="enum">Status</th><th data-type="none" style="width:1%"></th></tr></thead><tbody>
       {% set ns = namespace(n=0) %}
       {% for f in rows if (not code or f.code == code) and (f.actionable or code) and (show == 'all' or (show == 'open' and not f.reviewed) or (show == 'reviewed' and f.reviewed)) %}
       {% set ns.n = ns.n + 1 %}
-      <tr data-emp="{{ f.emp_no }}" data-code="{{ f.code }}" class="{{ 'is-rev' if f.reviewed }}">
-        <td data-v="{{ f.name }}" data-csv="{{ f.name }} ({{ f.emp_no }})">{{ ui.person(f.name, f.emp_no ~ ' · ' ~ f.group, '/periods/' ~ period.key ~ '/employee/' ~ f.emp_no) }}</td>
+      <tr data-emp="{{ f.emp_no }}" data-code="{{ f.code }}" data-reviewed="{{ '1' if f.reviewed else '' }}" class="{{ 'is-rev' if f.reviewed }}">
+        <td data-v="{{ f.name }}" data-csv="{{ f.name }} ({{ f.emp_no }})"><div class="selcell">{% if can_hr and f.actionable %}<label class="selbox"><input type="checkbox" class="sel" aria-label="Select {{ f.name }} – {{ labels.get(f.code, f.code) }}"></label>{% endif %}
+          {{ ui.person(f.name, f.emp_no ~ ' · ' ~ f.group, '/periods/' ~ period.key ~ '/employee/' ~ f.emp_no) }}</div></td>
         <td>{{ f.group }}</td>
         <td data-f="{{ f.severity|capitalize }}" data-s="{{ {'critical':0,'high':1,'medium':2,'info':3}[f.severity] }}">{{ ui.sev(f.severity) }}</td>
         <td class="strong small" style="min-width:150px">{{ labels.get(f.code, f.code) }}</td>
@@ -62,6 +68,16 @@
     </div></div>
   </div>
 </div>
+
+{% if can_hr %}
+<div class="bulkbar hidden" id="bulk" role="region" aria-label="Bulk actions">
+  <b><span id="bulk-n">0</span> selected</b>
+  <button class="btn sm" type="button" id="bulk-review">{{ ui.icon('check','sm') }} Mark reviewed</button>
+  <button class="btn sm sec" type="button" id="bulk-reopen">{{ ui.icon('undo-2','sm') }} Re-open</button>
+  <button class="btn sm ghost" type="button" id="bulk-clear">Clear</button>
+</div>
+{% endif %}
+
 <style>.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--text-2);font-size:13.5px;font-weight:500}
 .nav-item:hover{background:var(--surface-3);color:var(--text)}.nav-item.on{background:var(--brand-50);color:var(--brand-700)}.nav-item .r{margin-left:auto;font-weight:600;font-size:12.5px}
 tr.is-rev td{opacity:.7}</style>
@@ -71,27 +87,69 @@ tr.is-rev td{opacity:.7}</style>
   <div class="chips">{% for t in ['Approved by partner','Regularised in greytHR','Discussed with employee','Leave applied late — accepted','No action needed'] %}<button class="chip" type="button" data-note="{{ t }}">{{ t }}</button>{% endfor %}</div>
 </div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn" type="button" id="rv-save">{{ ui.icon('check','sm') }} Mark reviewed</button></div></aside><div class="scrim"></div>{% endif %}
 {% endblock %}
-{% block scripts %}<script>
+{% block scripts %}{% if can_hr %}<script>
 const PERIOD = {{ period.key|tojson }};
+const $ = (s) => document.querySelector(s), $$ = (s) => Array.from(document.querySelectorAll(s));
 let target = null;
-function progress(j){const pct=j.total?Math.round(j.reviewed/j.total*100):100;document.getElementById('pct').textContent=pct+'%';
- document.getElementById('pbar').style.width=pct+'%';document.querySelector('.ph .split .strong').textContent=j.reviewed+' of '+j.total+' reviewed';
+function progress(j){const pct=j.total?Math.round(j.reviewed/j.total*100):100;$('#pct').textContent=pct+'%';
+ $('#pbar').style.width=pct+'%';$('#prog-text').textContent=j.reviewed+' of '+j.total+' reviewed';
  const b=document.querySelector('.nav .count'); if(b){const n=j.total-j.reviewed; if(n>0)b.textContent=n; else b.remove();}}
-function fade(tr){tr.style.transition='opacity .3s';tr.style.opacity='0';setTimeout(()=>tr.remove(),300);}
-document.querySelectorAll('#rev [data-note]').forEach(c=>c.onclick=()=>{document.getElementById('rv-note').value=c.dataset.note;});
-document.querySelectorAll('#fl [data-act]').forEach(b=>b.addEventListener('click',async()=>{
-  const tr=b.closest('tr');
-  if(b.dataset.act==='reopen'){try{const j=await HSCO.post('/flags/review',{period:PERIOD,emp_no:tr.dataset.emp,code:tr.dataset.code,action:'reopen'});progress(j);fade(tr);HSCO.toast('Re-opened');}catch(e){alert(e.message);}return;}
+function fade(tr){tr.style.transition='opacity .3s';tr.style.opacity='0';setTimeout(()=>{tr.remove();updBulk();},300);}
+$$('#rev [data-note]').forEach(c=>c.onclick=()=>{$('#rv-note').value=c.dataset.note;});
+
+// ---------------- single-row actions
+$$('#fl [data-act]').forEach(b=>b.addEventListener('click',async(e)=>{
+  e.stopPropagation(); const tr=b.closest('tr');
+  if(b.dataset.act==='reopen'){try{const j=await HSCO.post('/flags/review',{period:PERIOD,emp_no:tr.dataset.emp,code:tr.dataset.code,action:'reopen'});progress(j);fade(tr);HSCO.toast('Re-opened');}catch(err){alert(err.message);}return;}
   target={emp:tr.dataset.emp,code:tr.dataset.code,tr};
-  document.getElementById('rv-title').textContent=tr.querySelector('.person b').textContent;
-  document.getElementById('rv-sub').textContent=tr.cells[3].textContent.trim();
-  document.getElementById('rv-msg').textContent=tr.cells[4].childNodes[0].textContent.trim();
-  document.getElementById('rv-note').value=''; HSCO.openDrawer('rev');}));
-const ra=document.getElementById('review-all'); if(ra) ra.onclick=()=>{target={emp:'*',code:ra.dataset.code};
-  document.getElementById('rv-title').textContent='Mark all open items reviewed';document.getElementById('rv-sub').textContent='';
-  document.getElementById('rv-msg').textContent='Every open item of this type in '+{{ period.label|tojson }}+' will be marked reviewed with the same note.';
-  document.getElementById('rv-note').value='';HSCO.openDrawer('rev');};
-const rvs=document.getElementById('rv-save'); if(rvs) rvs.onclick=async()=>{if(!target)return;
-  try{const j=await HSCO.post('/flags/review',{period:PERIOD,emp_no:target.emp,code:target.code,action:'review',note:document.getElementById('rv-note').value});
-    HSCO.closeDrawer(); if(target.emp==='*'){location.reload();return;} progress(j); fade(target.tr); HSCO.toast('Marked reviewed');}catch(e){alert(e.message);}};
-</script>{% endblock %}
+  $('#rv-title').textContent=tr.querySelector('.person b').textContent;
+  $('#rv-sub').textContent=tr.cells[3].textContent.trim();
+  $('#rv-msg').textContent=tr.cells[4].childNodes[0].textContent.trim();
+  $('#rv-save').innerHTML=$('#rv-save').innerHTML.replace(/Mark .*reviewed/,'Mark reviewed');
+  $('#rv-note').value=''; HSCO.openDrawer('rev');}));
+
+// ---------------- bulk selection (only rows currently shown by the table filters count)
+const sels=()=>$$('#fl tbody input.sel');
+const shown=(x)=>x.closest('tr').style.display!=='none';
+const picked=()=>sels().filter(x=>x.checked&&shown(x));
+function updBulk(){
+  const bar=$('#bulk'); if(!bar) return;
+  const p=picked(), vis=sels().filter(shown), all=$('#sel-all');
+  sels().forEach(x=>x.closest('tr').classList.toggle('sel-on',x.checked&&shown(x)));
+  $('#bulk-n').textContent=p.length; bar.classList.toggle('hidden',!p.length);
+  document.querySelector('.content').style.paddingBottom=p.length?'90px':'';
+  $('#bulk-reopen').disabled=!p.some(x=>x.closest('tr').dataset.reviewed);
+  $('#bulk-review').disabled=!p.some(x=>!x.closest('tr').dataset.reviewed);
+  if(all){all.checked=vis.length>0&&vis.every(x=>x.checked);all.indeterminate=p.length>0&&!all.checked;}
+}
+const all=$('#sel-all'); if(all) all.addEventListener('change',()=>{sels().filter(shown).forEach(x=>x.checked=all.checked);updBulk();});
+sels().forEach(x=>x.addEventListener('change',updBulk));
+const tb=$('#fl tbody'); if(tb) tb.addEventListener('click',(e)=>{
+  if(e.target.closest('a,button,input,label')) return;
+  const cb=e.target.closest('tr') && e.target.closest('tr').querySelector('input.sel'); if(cb){cb.checked=!cb.checked;updBulk();}});
+const fl=$('#fl'); if(fl) fl.addEventListener('tt:apply',updBulk);
+const items=()=>picked().map(x=>({emp_no:x.closest('tr').dataset.emp,code:x.closest('tr').dataset.code}));
+const bc=$('#bulk-clear'); if(bc) bc.onclick=()=>{sels().forEach(x=>x.checked=false);updBulk();};
+const br=$('#bulk-review'); if(br) br.onclick=()=>{
+  const it=items().filter((_,i)=>!picked()[i].closest('tr').dataset.reviewed);
+  const people=new Set(it.map(x=>x.emp_no)).size;
+  target={bulk:it};
+  $('#rv-title').textContent=`Mark ${it.length} item${it.length>1?'s':''} reviewed`;
+  $('#rv-sub').textContent=`${people} employee${people>1?'s':''}`;
+  $('#rv-msg').textContent='The same note is saved on each item.';
+  $('#rv-note').value=''; HSCO.openDrawer('rev');};
+const bo=$('#bulk-reopen'); if(bo) bo.onclick=async()=>{
+  const it=items().filter((_,i)=>picked()[i].closest('tr').dataset.reviewed);
+  if(!confirm(`Re-open ${it.length} reviewed item${it.length>1?'s':''}?`)) return;
+  try{await HSCO.post('/flags/review',{period:PERIOD,items:it,action:'reopen'});
+    sessionStorage.setItem('hsco-toast',`${it.length} item${it.length>1?'s':''} re-opened`);location.reload();}catch(e){alert(e.message);}};
+
+const rvs=$('#rv-save'); if(rvs) rvs.onclick=async()=>{if(!target)return;
+  const note=$('#rv-note').value;
+  try{
+    if(target.bulk){await HSCO.post('/flags/review',{period:PERIOD,items:target.bulk,action:'review',note});
+      sessionStorage.setItem('hsco-toast',`${target.bulk.length} item${target.bulk.length>1?'s':''} marked reviewed`);location.reload();return;}
+    const j=await HSCO.post('/flags/review',{period:PERIOD,emp_no:target.emp,code:target.code,action:'review',note});
+    HSCO.closeDrawer(); progress(j); fade(target.tr); HSCO.toast('Marked reviewed');}catch(e){alert(e.message);}};
+updBulk();
+</script>{% endif %}{% endblock %}

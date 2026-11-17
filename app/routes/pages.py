@@ -109,11 +109,18 @@ def _run_imports(c: Ctx, blobs, hint):
 
 
 @router.get("/flags", response_class=HTMLResponse)
-def flags_page(period: Optional[str] = None, code: str = "", show: str = "open", c: Ctx = Depends(viewer)):
+def flags_page(period: Optional[str] = None, code: str = "", show: str = "open", emp: str = "",
+               c: Ctx = Depends(viewer)):
     p = pick_period(c, period)
     if p is None:
         return render(c, "empty.html")
-    rows = WF.actionable_flags(c.db, p)
+    all_rows = WF.actionable_flags(c.db, p)
+    emp = emp.strip().upper()
+    rows = [f for f in all_rows if f["emp_no"] == emp] if emp else all_rows
+    emp_name = next((f["name"] for f in rows), "") if emp else ""
+    if emp and not emp_name:
+        e = c.db.get(Employee, emp)
+        emp_name = e.name if e else emp
     rows.sort(key=lambda f: (MX.SEV_ORDER.get(f["severity"], 9), f["code"], f["name"]))
     groups = {}
     for f in rows:
@@ -122,14 +129,16 @@ def flags_page(period: Optional[str] = None, code: str = "", show: str = "open",
         g["total"] += 1
         g["open"] += 0 if f["reviewed"] else 1
     summary = sorted(groups.values(), key=lambda g: (MX.SEV_ORDER.get(g["severity"], 9), -g["total"]))
-    act = [f for f in rows if f["actionable"]]
-    return render(c, "flags.html", period=p, rows=rows, summary=summary, code=code, show=show,
-                  total=len(act), reviewed=sum(1 for f in act if f["reviewed"]), labels=MX.FLAG_LABELS)
+    act = [f for f in all_rows if f["actionable"]]
+    return render(c, "flags.html", period=p, rows=rows, summary=summary, code=code, show=show, emp=emp,
+                  emp_name=emp_name, total=len(act), reviewed=sum(1 for f in act if f["reviewed"]),
+                  labels=MX.FLAG_LABELS)
 
 
 @router.post("/flags/review")
 async def review_flag(request: Request, c: Ctx = Depends(hr)):
-    """Mark one flag (or every open flag of a type with emp_no='*') as reviewed, or re-open it."""
+    """Mark flags reviewed / re-open them: one (emp_no + code), many (items=[{emp_no, code}, …]) or every open flag
+    of a type (emp_no='*')."""
     data = await request.json()
     return await anyio.to_thread.run_sync(_review, c, data)
 
@@ -138,7 +147,13 @@ def _review(c: Ctx, data: dict):
     p = pick_period(c, data.get("period"))
     code, emp, action, note = data.get("code", ""), data.get("emp_no", ""), data.get("action", "review"), data.get("note", "")[:500]
     targets = [(emp, code)]
-    if emp == "*":
+    items = data.get("items")
+    if isinstance(items, list):
+        valid = {(f["emp_no"], f["code"]) for f in WF.actionable_flags(c.db, p) if f["actionable"]}
+        targets = [(str(i.get("emp_no", "")), str(i.get("code", ""))) for i in items[:2000] if isinstance(i, dict)]
+        targets = [t for t in dict.fromkeys(targets) if t in valid]
+        emp, code = ("*bulk*", ",".join(sorted({t[1] for t in targets}))[:200])
+    elif emp == "*":
         targets = [(f["emp_no"], f["code"]) for f in WF.actionable_flags(c.db, p) if f["code"] == code and not f["reviewed"]]
     for e, cd in targets:
         c.db.execute(delete(FlagReview).where(FlagReview.period_id == p.id, FlagReview.emp_no == e, FlagReview.code == cd))

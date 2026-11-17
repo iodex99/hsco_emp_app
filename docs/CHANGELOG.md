@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1 — 2026-11-17
+- **Review queue bulk review:** a checkbox on every row and a select-all box in the header (selects only the rows the
+  current filters show); clicking a row toggles it. A floating bar shows "N selected · Mark reviewed · Re-open · Clear";
+  one note is saved on every item. API: `POST /flags/review` accepts `items: [{emp_no, code}]` (unknown items ignored).
+- **Review queue for one employee:** `/flags?emp=HS055`, with a "Showing only … · Show everyone" banner. The Flags card on
+  an employee's page links to it ("Review queue →"), and each flag line opens the queue on that flag for that person.
+- **Calendar legend filters:** click one or more legend items (Absent, Leave, Comp-off, Holiday, Late, WFH, Missing
+  punch, Regularised, Worked off-day, Corrected) to show only matching days (a day matches if it has any selected mark);
+  each item shows its count and is disabled when it never occurs that month; "Show all days" resets.
+- Fixed small scroll arrows that appeared next to tab bars.
+
 ## 1.3.0 — 2026-11-17 — sorting & filtering everywhere
 - New table toolkit (`app/static/table.js`) on every data table (payroll sheet, employees, review queue, import
   history, audit log, reconciliation, groups, an employee's day-by-day):

@@ -408,3 +408,27 @@ def test_viewer_cannot_review(loaded):
     r = c.post("/flags/review", json={"period": "2026-10", "emp_no": "T004", "code": "WFH_OVER_LIMIT"},
                headers={"X-CSRF-Token": csrf_of(c)})
     assert r.status_code == 403
+
+
+def test_bulk_review_and_employee_filter(loaded):
+    c = loaded
+    tok = csrf_of(c, "/flags")
+    page = c.get("/flags?period=2026-10&emp=T004&show=all").text
+    assert "Showing only <b>Dev Mehta</b>" in page and "Show everyone" in page
+    emps = set(re.findall(r'<tr data-emp="([^"]+)"', page))
+    assert emps == {"T004"}
+    codes = re.findall(r'<tr data-emp="T004" data-code="([^"]+)"', page)
+    assert len(codes) >= 2
+    items = [{"emp_no": "T004", "code": cd} for cd in codes[:2]] + [{"emp_no": "NOPE", "code": "X"}]   # bogus item ignored
+    j = c.post("/flags/review", json={"period": "2026-10", "items": items, "action": "review", "note": "bulk-ok"},
+               headers={"X-CSRF-Token": tok}).json()
+    assert j["count"] == 2
+    page = c.get("/flags?period=2026-10&emp=T004&show=reviewed").text
+    assert page.count("bulk-ok") == 2
+    j = c.post("/flags/review", json={"period": "2026-10", "items": items[:2], "action": "reopen"},
+               headers={"X-CSRF-Token": tok}).json()
+    assert j["count"] == 2 and "bulk-ok" not in c.get("/flags?period=2026-10&emp=T004&show=reviewed").text
+    # the employee page links into the filtered queue
+    html = c.get("/periods/2026-10/employee/T004").text
+    assert 'href="/flags?period=2026-10&amp;emp=T004&amp;show=all"' in html or 'href="/flags?period=2026-10&emp=T004&show=all"' in html
+    assert 'data-tags="' in html and 'data-lg="late"' in html

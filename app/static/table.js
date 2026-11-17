@@ -145,6 +145,7 @@
       const cnt = $(`[data-count="#${this.id}"]`); if (cnt) cnt.textContent = shown.length;
       if (this.chips) $$(".chip", this.chips).forEach((x) => x.classList.toggle("on", (x.dataset.chip || "") === (s.tag || "")));
       if (save) this.saveUrl();
+      this.t.dispatchEvent(new CustomEvent("tt:apply", { detail: { shown: shown.length } }));
     }
     renderGroups(shown) {
       const gc = this.byKey[this.state.g], collapsed = this._collapsed || (this._collapsed = new Set());

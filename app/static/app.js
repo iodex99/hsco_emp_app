@@ -31,6 +31,7 @@
     $("#toasts").appendChild(t); setTimeout(() => t.remove(), 6000);
   };
   $$("#toasts .toast").forEach((t) => setTimeout(() => t.remove(), 7000));
+  try { const m = sessionStorage.getItem("hsco-toast"); if (m) { sessionStorage.removeItem("hsco-toast"); setTimeout(() => H.toast(m), 50); } } catch (e) {}
 
   // ---------- global employee search ----------
   const qi = $("#q-global"), qr = $("#q-results");

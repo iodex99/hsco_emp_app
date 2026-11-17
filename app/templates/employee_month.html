@@ -39,7 +39,11 @@
     <div class="cal">{% for h in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<div class="h">{{ h }}</div>{% endfor %}
     {% for w in weeks %}{% for dd in w %}
       {% if dd %}{% set main_b = dd.b1 if dd.b1 != 'present' else dd.b2 %}
-      <button type="button" class="day {{ dd.type }} b-{{ main_b }}" data-day="{{ dd.date }}" title="{{ dd.notes|join('; ') }}">
+      {% set tags = [('absent', dd.b1 in ('absent','lop') or dd.b2 in ('absent','lop')), ('leave', dd.b1 == 'leave' or dd.b2 == 'leave'),
+                     ('compoff', dd.b1 == 'compoff' or dd.b2 == 'compoff'), ('holiday', dd.type == 'HOLIDAY'), ('late', dd.late),
+                     ('wfh', dd.wfh), ('missing', dd.missing), ('regularised', dd.regularised), ('extra', dd.extra),
+                     ('corrected', dd.overridden)]|selectattr(1)|map(attribute=0)|join(' ') %}
+      <button type="button" class="day {{ dd.type }} b-{{ main_b }}" data-day="{{ dd.date }}" data-tags="{{ tags }}" title="{{ dd.notes|join('; ') }}">
         <span class="dn">{{ dd.date[8:]|int }}</span>
         <span class="st">{% if dd.type == 'WEEKLY_OFF' %}Weekly off{% elif dd.type == 'HOLIDAY' %}{{ dd.holiday or 'Holiday' }}{% else %}{{ {'P':'Present','A':'Absent','PL':'Leave','COF':'Comp-off','LOP':'LOP'}.get(dd.s1, dd.s1) }}{% if dd.s2 != dd.s1 %} / {{ dd.s2 }}{% endif %}{% endif %}</span>
         {% if dd.in %}<span class="tm">{{ dd.in }}–{{ dd.out or '?' }}</span>{% endif %}
@@ -48,12 +52,21 @@
       </button>
       {% else %}<div class="day blank"></div>{% endif %}
     {% endfor %}{% endfor %}</div>
-    <div class="legend"><span><i class="sw" style="background:var(--bad-bg);border-color:var(--bad-bd)"></i>Absent</span><span><i class="sw" style="background:var(--info-bg);border-color:var(--info-bd)"></i>Leave</span><span><i class="sw" style="background:var(--teal-bg)"></i>Comp-off</span><span><i class="sw" style="background:var(--violet-bg)"></i>Holiday</span>
-      <span><i class="dot d-late"></i>Late</span><span><i class="dot d-wfh"></i>WFH</span><span><i class="dot d-miss"></i>Missing punch</span><span><i class="dot d-reg"></i>Regularised</span><span><i class="dot d-extra"></i>Worked off-day</span><span><i class="dot d-ovr"></i>Corrected</span></div>
+    <div class="legend" id="cal-legend" title="Click one or more to show only those days">
+      {% for key, label, mark in [('absent','Absent','<i class="sw" style="background:var(--bad-bg);border-color:var(--bad-bd)"></i>'),
+                                  ('leave','Leave','<i class="sw" style="background:var(--info-bg);border-color:var(--info-bd)"></i>'),
+                                  ('compoff','Comp-off','<i class="sw" style="background:var(--teal-bg)"></i>'),
+                                  ('holiday','Holiday','<i class="sw" style="background:var(--violet-bg)"></i>'),
+                                  ('late','Late','<i class="dot d-late"></i>'), ('wfh','WFH','<i class="dot d-wfh"></i>'),
+                                  ('missing','Missing punch','<i class="dot d-miss"></i>'), ('regularised','Regularised','<i class="dot d-reg"></i>'),
+                                  ('extra','Worked off-day','<i class="dot d-extra"></i>'), ('corrected','Corrected','<i class="dot d-ovr"></i>')] %}
+      <button type="button" class="lg" data-lg="{{ key }}" aria-pressed="false">{{ mark|safe }}{{ label }}</button>{% endfor %}
+      <span class="lg-info muted hidden" id="lg-info"><b id="lg-n">0</b> days match · <button type="button" class="tt-clear" id="lg-clear">Show all days</button></span>
+    </div>
   </div></div>
   <div>
-    <div class="card"><div class="hd"><h2>Flags</h2><div class="tools"><a class="btn sm ghost" href="/flags?period={{ period.key }}">Review queue</a></div></div><div class="bd" style="padding-top:4px;padding-bottom:4px"><ul class="list">
-      {% for f in r.flags|sort(attribute='severity') if f.severity != 'info' %}<li style="align-items:flex-start">{{ ui.sev(f.severity) }}<span class="small">{{ f.message }}</span></li>
+    <div class="card"><div class="hd"><h2>Flags</h2><div class="tools"><a class="btn sm ghost" id="emp-queue" href="/flags?period={{ period.key }}&emp={{ r.emp_no }}&show=all" title="Open the review queue showing only {{ r.name }}">Review queue {{ ui.icon('arrow-right','sm') }}</a></div></div><div class="bd" style="padding-top:4px;padding-bottom:4px"><ul class="list">
+      {% for f in r.flags|sort(attribute='severity') if f.severity != 'info' %}<li style="align-items:flex-start"><a class="flag-link" href="/flags?period={{ period.key }}&emp={{ r.emp_no }}&code={{ f.code }}&show=all" title="Review this in the queue">{{ ui.sev(f.severity) }}<span class="small">{{ f.message }}</span></a></li>
       {% else %}<li class="muted">{{ ui.icon('circle-check','sm') }} No exceptions.</li>{% endfor %}
       {% set infos = r.flags|selectattr('severity','equalto','info')|list %}
       {% if infos %}<li style="display:block"><details><summary class="small muted" style="cursor:pointer">{{ infos|length }} informational note{{ 's' if infos|length > 1 }}</summary>
@@ -194,6 +207,23 @@
 {% endblock %}
 
 {% block scripts %}<script>
+// calendar legend → show only matching days (several can be selected: a day matches if it has ANY selected mark)
+(function(){
+  const cal=document.querySelector('.cal'), lg=document.getElementById('cal-legend'); if(!cal||!lg) return;
+  const on=new Set();
+  function apply(){
+    let n=0;
+    cal.querySelectorAll('.day[data-day]').forEach(d=>{const t=(d.dataset.tags||'').split(' ');const m=[...on].some(k=>t.includes(k));d.classList.toggle('match',m);if(m)n++;});
+    cal.classList.toggle('filtering',on.size>0);
+    lg.querySelectorAll('button.lg').forEach(b=>b.setAttribute('aria-pressed',on.has(b.dataset.lg)));
+    document.getElementById('lg-info').classList.toggle('hidden',!on.size); document.getElementById('lg-n').textContent=n;
+  }
+  lg.querySelectorAll('button.lg').forEach(b=>b.addEventListener('click',()=>{on.has(b.dataset.lg)?on.delete(b.dataset.lg):on.add(b.dataset.lg);apply();}));
+  document.getElementById('lg-clear').addEventListener('click',()=>{on.clear();apply();});
+  // counts on each legend item, and hide marks that never occur this month
+  lg.querySelectorAll('button.lg').forEach(b=>{const c=cal.querySelectorAll('.day[data-tags~="'+b.dataset.lg+'"]').length;
+    b.insertAdjacentHTML('beforeend',' <span class="muted">'+c+'</span>'); if(!c){b.disabled=true;b.style.opacity=.45;b.style.cursor='default';}});
+})();
 const DAYS = {{ r.days|tojson_safe }};
 const byDate = Object.fromEntries(DAYS.map(d=>[d.date,d]));
 const esc = HSCO.esc, hm = m => m ? String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0') : '—';
