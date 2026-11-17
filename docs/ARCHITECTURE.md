@@ -18,8 +18,9 @@ app/db.py, app/models.py   engine/session, ORM schema
 app/cli.py                 create-admin, reset-mfa, backup, make-cert, import
 app/web.py                 per-request DB session, auth context, role guards + CSRF, render helpers
 app/engine/                PURE calculation engine (no DB/web): model.py (types, Policy), compute.py
-app/importers/             readers.py (xlsx/xls/csv → rows, filters ignored), parsers.py (detect + parse each format)
-app/services/              settings, audit, imports (pipeline), compute (DB→engine→results + ledgers), metrics, geo
+app/importers/             readers.py (xlsx/xls/csv → rows, filters ignored), parsers.py (universal recognition + parse)
+app/services/              settings, audit, imports (pipeline, remembered layouts, pending uploads), compute
+                           (DB→engine→results + ledgers), metrics, insights (scorecards, Bradford, heatmaps), geo
 app/security/              core.py (passwords, sessions, CSRF, TOTP, recovery, email OTP), passkeys.py (WebAuthn)
 app/reports/               excel.py (workbook), html_report.py (standalone board pack)
 app/routes/                auth, pages (dashboard/imports/flags/recon/audit), periods (sheet, drill-down, overrides,
@@ -107,3 +108,32 @@ Schema is created with `create_all` at start-up (additive). For future column ch
   BitLocker. `secret.key` lives in DATA_DIR — back it up with the DB (needed to decrypt TOTP secrets).
 - **Uploads**: size limit (40 MB), parsed in memory, never executed; unknown formats rejected.
 - Board pack HTML contains employee data — treat downloaded files as confidential.
+
+## Universal importer (v1.4)
+`parsers.F` lists every field (synonyms + value type: id, date, datetime, time, hours, number, status, lat, lon, coords,
+text); `parsers.SCHEMAS` lists each report kind's required fields (a tuple = any one of), optional fields and a
+specificity weight. `detect_sheet()`:
+1. header-row candidates = rows in the first 30 that are mostly short text with few digits (max 6);
+2. a remembered layout (`Setting import_layouts`, matched by `layout_signature()` of the normalised header set) wins;
+3. otherwise for each kind: score headers against synonyms (exact 1.0, whole-word containment ≈ 0.9, all words 0.82,
+   fuzzy ≥ 0.86 similarity; synonyms ≤ 3 chars only as whole words), weight by the share of sample values that fit the
+   field's type, assign greedily (one column per field); if ≥ 2 fields matched by header, a missing required
+   id/date/datetime/coords field is inferred from values (`inferred`);
+4. best score wins; `confidence` = mean score of required fields. `needs_review()` (confidence < 0.72 or anything
+   inferred) → not imported; the upload is stashed in `DATA_DIR/uploads/pending/<token>` (expires after 2 days) and the
+   user maps columns at `/imports/map/<token>` (pre-filled by `suggest()`, which also uses value patterns). The manual
+   mapping becomes a `DetectedSheet(source="manual")` and can be saved as a layout.
+`DetectedSheet.map` (field → column index) drives every `parse_*`; value normalisers: `parse_dt` (cached), `parse_time`,
+`parse_hhmm`, `status_codes`. Detection is memoised per sheet (`_FIT_CACHE`, `_fscore`).
+
+## Insights (v1.4)
+`services/insights.py` reads `MonthResult` rows (current month + the last 12 computed months for Bradford and FY
+leave) and returns KPIs, per-employee rows with the attention score, group comparison, arrival heatmap, hours histogram,
+employee × day matrix and a trend. Results are cached in-process keyed by (period, latest `computed_at`, latest settings
+change, employee count/last edit). Used by `/insights`, the employee Scorecard tab, Excel and the board pack.
+
+## Board pack (v1.4)
+`reports/html_report.py` renders `templates/board_pack.html` with the web app's Jinja environment and macros
+(`icon_base=""` so icons point to the inlined sprite). Inlined: `app.css` (+ Inter as base64), `icons.svg`,
+Chart.js, `table.js` (`window.HSCO_ICONS = ""`; `HSCO.Table` is exported so the drill-down's day table gets the toolkit).
+Tables are server-rendered; the per-employee drill-down is built in the browser from embedded JSON. No network access.

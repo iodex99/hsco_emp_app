@@ -15,7 +15,11 @@ mandatory multi-method two-factor authentication. All data stays on the firm's W
 - **Flag** what needs action: deductions, unauthorised absence, WFH > 2 days, persistently > 1 h late, repeated
   regularisations, missing punches, present-without-punch, leave exhausted, new joinees, exits …
 - **Report**: board dashboard, payroll leave sheet (same columns as the old manual MIS + ledger), per-employee
-  drill-down (calendar, punches with location names), Excel workbook with live formulas, single-file HTML board pack.
+  drill-down (calendar, punches with location names worked out offline from GPS coordinates), Insights (attention
+  score, Bradford factor, punctuality, utilisation, heatmaps, groups compared, attrition), Excel workbook with live
+  formulas, and a single-file offline HTML board pack with full sorting, filtering, grouping and drill-down.
+- **Import anything**: columns may be moved, renamed or come from another system — fields are recognised by meaning
+  and checked against their values; a report the app can't place is mapped once and remembered.
 - **Correct** anything manually (reason mandatory, audit-logged), **finalise** the month for payroll.
 - **Reconcile** against the manual MIS during the parallel run (Oct-2026: 91 of 97 employees identical; the rest are
   explained inconsistencies in the manual sheet).

@@ -8,7 +8,8 @@
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const icon = (n) => `<svg class="ic sm" aria-hidden="true"><use href="/static/icons.svg#i-${n}"></use></svg>`;
+  // icon sprite location: the app serves it; the standalone board pack inlines it (window.HSCO_ICONS = "")
+  const icon = (n) => `<svg class="ic sm" aria-hidden="true"><use href="${window.HSCO_ICONS ?? "/static/icons.svg"}#i-${n}"></use></svg>`;
   const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
   const OPS = {
     text: [["contains", "contains"], ["ncontains", "does not contain"], ["eq", "is exactly"], ["empty", "is empty"], ["nempty", "is not empty"]],
@@ -358,6 +359,7 @@
   }
   window.HSCO = window.HSCO || {};
   HSCO.tables = {};
+  HSCO.Table = Table;          // for tables created later (e.g. the board pack's employee drill-down)
   $$("table[data-table]").forEach((t) => (HSCO.tables[t.id || ""] = new Table(t)));
   Object.keys(HSCO.tables).forEach((k) => { const T = HSCO.tables[k]; HSCO.tables[T.id] = T; });
 })();

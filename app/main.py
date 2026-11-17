@@ -1,6 +1,8 @@
 """FastAPI application factory."""
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException as FastHTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -66,6 +68,9 @@ def create_app() -> FastAPI:
 
     from app import updater
     updater.start_background_checker()
+    if not os.environ.get("HSCO_DISABLE_GEO_WARMUP"):
+        from app.services import geo
+        geo.warm_up()
 
     app.add_middleware(SecurityHeaders)
 

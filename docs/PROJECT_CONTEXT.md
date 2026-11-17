@@ -19,6 +19,10 @@ assistants), Trainee. HR software: **greytHR** (biometric device "Astra" + greyt
 - **2FA, with multiple 2FA methods configurable.**
 - Maintain `.md` files for the complete project as persistent memory; update after every change.
 - Commit & push to GitHub repo `iodex99/hsco_emp_app` (**public** → no client data in git).
+- (2026-11-17, v1.4) Location names must come **automatically** from coordinates — users won't type locations; use a
+  free package/data set. The importer must be **universal**: interchanged columns or a different report must still be
+  understood. **More employee KPIs.** The HTML board pack must be "much, much better" with all the interactions,
+  sorts and filters.
 
 ## Scope delivered (v1.0.0)
 See CHANGELOG. In short: importers for all 4 greytHR exports + manual MIS + templates; policy engine; leave & comp-off
@@ -39,6 +43,9 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 | WFH counted as distinct days | HR's swipes ÷ 2 gives half-days for mixed days |
 | Offline gazetteer + geofences for place names; online OSM off by default | "Data stays on the server" |
 | 2FA mandatory by default | Requirement; admin can relax in Settings |
+| Place names from a bundled GeoNames India gazetteer (566k places, offline) rather than an online API | Automatic, free (CC-BY), and no coordinates leave the server |
+| Importer matches fields by meaning + checks values; unsure → user maps once, layout remembered | Never import a misread file silently; never ask twice for the same layout |
+| Attention score is a transparent weighted sum with listed reasons, Bradford for absence | Board needs "who to talk to and why", explainable in one sentence (METRICS "Insights") |
 
 ## Open questions for HR / partners (assumptions in force until answered)
 1. **HS207**: should auto-marked hours on holidays count? (app says no → 0.5 day deduction for Oct.)

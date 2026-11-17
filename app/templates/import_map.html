@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}Map columns{% endblock %}
+{% block content %}
+<div class="ph"><div><div class="crumbs"><a href="/imports">Import files</a> {{ ui.icon('chevron-right','sm') }} Map columns</div>
+  <h1>Tell the app what each column means</h1>
+  <div class="sub"><b>{{ filename }}</b> — check the guesses below, fix anything wrong and import. Tick “remember” and files with the same columns are recognised automatically from then on.</div></div></div>
+
+{% if error %}<div class="alert bad">{{ ui.icon('circle-x') }}<span>{{ error }}</span></div>{% endif %}
+
+<form class="card" method="get" action="/imports/map/{{ token }}" id="mapnav">
+  <div class="bd map-top">
+    {% if sheets|length > 1 %}<div class="field"><label>Sheet</label><select name="sheet" onchange="this.form.submit()">
+      {% for n in sheets %}<option value="{{ n }}" {{ 'selected' if n == sheet }}>{{ n }}</option>{% endfor %}</select></div>
+    {% else %}<input type="hidden" name="sheet" value="{{ sheet }}">{% endif %}
+    <div class="field"><label>This file is a…</label><select name="kind" id="kind" onchange="this.form.submit()">
+      {% for k, l in kind_labels.items() %}<option value="{{ k }}" {{ 'selected' if k == kind }}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="field" style="max-width:150px"><label>Column titles are on row</label><input type="number" name="row" min="1" value="{{ hr_row + 1 }}" onchange="this.form.submit()"></div>
+    {% if auto %}<div class="small muted" style="align-self:end;padding-bottom:9px">{{ ui.icon('sparkles','sm') }} Auto-detected: {{ kind_labels[auto.kind] }}, {{ (auto.confidence * 100)|round|int }}% sure</div>{% endif %}
+  </div>
+</form>
+
+<form method="post" action="/imports/map/{{ token }}" id="mapform">
+  {{ ui.csrf_field() }}
+  <input type="hidden" name="sheet" value="{{ sheet }}"><input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="row" value="{{ hr_row + 1 }}">
+  <div class="grid g-2-1 mb">
+    <div class="card"><div class="hd"><h2>Fields</h2><span class="sub">{{ kind_labels[kind] }}</span></div><div class="bd">
+      <div class="map-grid">
+      {% for f in fields %}
+        <label for="f_{{ f.key }}" class="map-lbl">{{ f.label }}{% if f.required and not f.alt %} <span class="badge b-warn">required</span>{% elif f.alt %} <span class="badge b-info" title="One of: {{ f.alt }}">one of</span>{% endif %}</label>
+        <select name="f_{{ f.key }}" id="f_{{ f.key }}" class="map-sel" data-field="{{ f.key }}">
+          <option value="">— not in this file —</option>
+          {% for c in cols %}<option value="{{ c.i }}" {{ 'selected' if mapping.get(f.key) == c.i }}>{{ c.name }}</option>{% endfor %}
+        </select>
+      {% endfor %}
+      </div>
+      {% if missing %}<div class="alert warn mt">{{ ui.icon('triangle-alert') }}<span>Still needed: {{ missing|join(', ') }}</span></div>{% endif %}
+    </div></div>
+    <div class="card"><div class="hd"><h2>Import</h2></div><div class="bd stack">
+      <label class="check"><input type="checkbox" name="remember" value="1" checked> Remember this layout for next time</label>
+      <div class="field"><label>Month (only if the file has no dates)</label><input type="month" name="period"></div>
+      <button class="btn lg" id="mapgo">{{ ui.icon('upload','sm') }} Import with these columns</button>
+      <a class="btn ghost" href="/imports">Cancel</a>
+      {% if title_rows %}<div class="small muted mt"><div class="strong" style="margin-bottom:4px">Title lines above the columns</div>
+        {% for t in title_rows %}<div>{{ t|join(' · ') }}</div>{% endfor %}</div>{% endif %}
+    </div></div>
+  </div>
+</form>
+
+<div class="card flush"><div class="hd"><h2>Preview</h2><span class="sub">first rows under the column titles — highlighted columns are used</span></div>
+<div class="bd"><div class="tw"><table class="compact" id="mapprev"><thead><tr>
+  {% for c in cols %}<th data-col="{{ c.i }}">{{ c.name }}<div class="map-tag small" data-tag="{{ c.i }}"></div></th>{% endfor %}</tr></thead>
+  <tbody>{% for r in preview %}<tr>{% for v in r %}<td data-col="{{ loop.index0 }}" class="small">{{ v }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="{{ cols|length }}" class="muted">No rows under this header row.</td></tr>{% endfor %}</tbody>
+</table></div></div></div>
+{% endblock %}
+{% block scripts %}<script>
+(function(){
+  const sels=[...document.querySelectorAll('.map-sel')];
+  function paint(){
+    const used={};
+    sels.forEach(s=>{if(s.value!=='')(used[s.value]=used[s.value]||[]).push(s.previousElementSibling.textContent.replace(/required|one of/g,'').trim());});
+    document.querySelectorAll('#mapprev [data-col]').forEach(td=>td.classList.toggle('map-on',td.dataset.col in used));
+    document.querySelectorAll('#mapprev [data-tag]').forEach(t=>{const u=used[t.dataset.tag];t.textContent=u?'→ '+u.join(', '):'';t.classList.toggle('dup',!!(u&&u.length>1));});
+  }
+  sels.forEach(s=>s.addEventListener('change',paint)); paint();
+  document.getElementById('mapform').addEventListener('submit',()=>{document.getElementById('mapgo').innerHTML='Importing…';});
+})();
+</script>{% endblock %}

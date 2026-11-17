@@ -87,3 +87,103 @@ def test_real_exports_detected():
     # 1,048,550-row used range is trimmed
     s = read_path(REF / "MIS Report October 2026_Manual.xlsx")
     assert len(s["Reference"]) < 200
+
+
+# ---------------------------------------------------------------- universal importer: layout-independent recognition
+
+def _muster_rows(fixtures):
+    s = read_path(fixtures["muster"])
+    return s["OG"], P.detect(s)[0]
+
+
+def test_columns_shuffled_and_renamed(fixtures):
+    """Same data with columns in reverse order and renamed headers → identical parse."""
+    rows, ds = _muster_rows(fixtures)
+    base, _ = P.parse_muster(rows, ds)
+    hr = ds.header_row
+    rename = {"employee no": "Emp Code", "attendance date": "Date", "session1 status": "First Half",
+              "session2 status": "Second Half", "in time": "Check-In", "out time": "Check-Out",
+              "total work hours": "Hours Worked", "name": "Employee Name"}
+    head = [rename.get(P.norm(h), h) for h in rows[hr]]
+    shuffled = rows[:hr] + [list(reversed(head))] + [list(reversed(r)) for r in rows[hr + 1:]]
+    d2 = P.detect({"x": shuffled})
+    assert [x.kind for x in d2] == ["muster"] and not P.needs_review(d2[0])
+    again, _ = P.parse_muster(shuffled, d2[0])
+    key = lambda m: (m.emp_no, m.day, m.s1, m.s2, m.in_time, m.out_time, m.work_min)
+    assert sorted(map(key, again)) == sorted(map(key, base))
+
+
+def test_other_vendor_attendance_register():
+    """A different system's register: single status column with words, separate time-only in/out, decimal hours."""
+    rows = [["Monthly attendance register", "", "", "", "", ""],
+            ["Period: 01-Oct-2026 to 31-Oct-2026", "", "", "", "", ""],
+            [],
+            ["Staff ID", "Staff Name", "Day", "Status", "Clock In", "Clock Out", "Worked (hrs)"],
+            ["A12", "Asha", "2026-10-01", "Present", "09:58", "19:05", 9.12],
+            ["A12", "Asha", "2026-10-02", "Week Off", "", "", ""],
+            ["A12", "Asha", "2026-10-03", "Half Day", "10:00", "14:00", 4],
+            ["A12", "Asha", "2026-10-05", "PL/P", "14:00", "19:00", "5h 0m"],
+            ["B7", "Ravi", "02/10/2026", "Absent", "", "", ""],
+            ["B7", "Ravi", "03/10/2026", "WFH", "21:00", "02:30", ""]]
+    d = P.detect({"att": rows})
+    assert [x.kind for x in d] == ["muster"]
+    assert P.detect_period(d[0], rows) == (2026, 10)
+    recs, warn = P.parse_muster(rows, d[0])
+    by = {(r.emp_no, r.day.day): r for r in recs}
+    assert by[("A12", 1)].s1 == "P" and by[("A12", 1)].work_min == 547
+    assert by[("A12", 1)].in_time == datetime(2026, 10, 1, 9, 58)
+    assert (by[("A12", 2)].s1, by[("A12", 2)].s2) == ("OFF", "OFF")
+    assert (by[("A12", 3)].s1, by[("A12", 3)].s2) == ("P", "A")
+    assert (by[("A12", 5)].s1, by[("A12", 5)].s2, by[("A12", 5)].work_min) == ("PL", "P", 300)
+    assert by[("B7", 2)].s1 == "A"
+    night = by[("B7", 3)]
+    assert night.s1 == "WFH" and night.out_time == datetime(2026, 10, 4, 2, 30) and night.work_min == 330
+
+
+def test_biometric_log_with_split_date_time_and_coordinates():
+    rows = [["Device", "Date", "Time", "Direction", "User ID", "Name", "Lat", "Lng"],
+            ["Astra-1", "01/10/2026", "09:41:10", "IN", "HS9", "Kiran", "18.9442", "72.8236"],
+            ["Astra-1", "01/10/2026", "18:02:00", "OUT", "HS9", "Kiran", "", ""],
+            ["Phone", "02/10/2026", "10:05", "IN", "HS9", "Kiran", "19.1145", "72.8712"]]
+    d = P.detect({"log": rows})
+    assert [x.kind for x in d] == ["swipes"]
+    sw, names, _ = P.parse_swipes(rows, d[0])
+    assert [s.ts for s in sw] == [datetime(2026, 10, 1, 9, 41, 10), datetime(2026, 10, 1, 18, 2), datetime(2026, 10, 2, 10, 5)]
+    assert sw[0].door == "Astra-1" and sw[0].lat == 18.9442 and sw[1].lat is None and names["HS9"] == "Kiran"
+    assert sw[0].swipe_type == "Punch IN"
+
+
+def test_inferred_column_needs_review_and_manual_mapping():
+    """No usable header for the employee column → it is inferred from values, flagged for review; a manual
+    mapping then parses exactly and the layout can be recognised from memory."""
+    rows = [["Col A", "Attendance Date", "Session1 Status", "Session2 Status"],
+            ["HS001", "01 Oct 2026", "P", "P"], ["HS002", "01 Oct 2026", "A", "A"], ["HS003", "01 Oct 2026", "P", "PL"]]
+    d = P.detect({"s": rows})
+    assert d and d[0].kind == "muster" and "emp_no" in d[0].inferred and P.needs_review(d[0])
+    ds = P.manual_sheet("s", rows, "muster", 0, {"emp_no": 0, "date": 1, "s1": 2, "s2": 3})
+    recs, _ = P.parse_muster(rows, ds)
+    assert [(r.emp_no, r.s2) for r in recs] == [("HS001", "P"), ("HS002", "A"), ("HS003", "PL")]
+    lay = {"signature": P.layout_signature(rows[0]), "kind": "muster",
+           "map": {"emp_no": "Col A", "date": "Attendance Date", "s1": "Session1 Status", "s2": "Session2 Status"}}
+    d2 = P.detect({"s": rows}, [lay])
+    assert d2[0].source == "layout" and not P.needs_review(d2[0]) and d2[0].map == ds.map
+    assert P.missing_required("muster", {"emp_no": 0}) and not P.missing_required("muster", ds.map)
+
+
+def test_value_normalisation():
+    assert P.status_codes("PL/P") == ("PL", "P") and P.status_codes("Week Off") == ("OFF", "OFF")
+    assert P.status_codes("present") == ("P", "P") and P.status_codes("LWP") == ("LWP", "LWP")
+    assert P.parse_hhmm("8h 29m") == 509 and P.parse_hhmm("45m") == 45 and P.parse_hhmm(9.5) == 570
+    assert P.parse_time(0.5) == datetime(2026, 1, 1, 12, 0).time() and P.parse_time("7:05 PM").hour == 19
+    assert P.parse_date("2026-10-05") == date(2026, 10, 5) and P.parse_date("Oct 5, 2026") == date(2026, 10, 5)
+    assert P.parse_dt("05/10/2026 7:05 PM") == datetime(2026, 10, 5, 19, 5)
+
+
+def test_mapping_suggestions_from_values():
+    """When headers are meaningless, the mapping screen is pre-filled from what the values look like."""
+    rows = [["Monthly register"], [], ["Ref", "Dt", "AM", "PM", "Came", "Went"]] + \
+        [["HS014", f"{d:02d}-10-2026", "P", "PL", "09:58", "19:05"] for d in range(1, 8)]
+    assert P.suggest(rows, 2, "muster") == {"emp_no": 0, "date": 1, "s1": 2, "s2": 3, "in_time": 4, "out_time": 5}
+    rows2 = [["A", "B", "C"], ["HS1", "01/10/2026", "Present"], ["HS2", "01/10/2026", "Week Off"], ["HS3", "02/10/2026", "Absent"]]
+    assert P.suggest(rows2, 0, "muster") == {"emp_no": 0, "date": 1, "status": 2}
+    assert P.guess_header_row(rows) == 2

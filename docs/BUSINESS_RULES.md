@@ -105,9 +105,15 @@ but absent from the latest DOJ (active list). Work anniversaries listed. Headcou
 ## 9. Location names for coordinates
 Swipe importer captures coordinates from `Latitude/Longitude` (any similar header) or a `lat, long` pair in any text
 cell. Naming order: (1) admin **geofences** (name, lat, lon, radius m, category Office/Client/Home/Other);
-(2) **offline gazetteer** of Indian places bundled in `app/data/in_places.csv` (nearest within 15 km → "near Andheri,
-Maharashtra"); (3) optional **online OSM Nominatim** lookup — off by default because it sends coordinates outside the
-server; results cached. Unnamed clusters are suggested to admin for naming.
+(2) **offline gazetteer** bundled in `app/data/in_places.csv.gz` (GeoNames, CC-BY 4.0: 566,055 Indian towns, villages,
+neighbourhoods, localities, stations and landmarks with district and state), indexed on first start into
+`DATA_DIR/geo/places-*.sqlite` (≈ 0.05° grid). The nearest place within `geocode_max_km` (15 km) is used; a named
+neighbourhood is preferred when it is within max(1.5 km, 1.6 × the nearest place's distance); a landmark within 600 m is
+appended. Label: `Place, District, State`, prefixed "near … (x km)" when ≥ 1 km away, suffixed "· by <landmark>".
+No user input and nothing leaves the server. (3) optional **online OSM Nominatim** lookup — off by default because it
+sends coordinates outside the server. Results are cached (`geo_cache`). When the gazetteer version changes
+(`geo.NAMES_VERSION`), cached offline names are dropped once, stored swipes renamed and draft months recalculated.
+Unnamed clusters are suggested to admin for naming.
 
 ## 10. Period lifecycle
 `DRAFT` (imports, auto‑compute) → `FINALISED` (locked: no imports/overrides; ledgers posted; exports stamped).

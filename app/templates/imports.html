@@ -2,7 +2,7 @@
 {% import "_ui.html" as ui with context %}
 {% block title %}Import files{% endblock %}
 {% block content %}
-<div class="ph"><div><h1>Import files</h1><div class="sub">Upload the month's greytHR exports exactly as downloaded — filters, pivots and extra sheets are fine.</div></div></div>
+<div class="ph"><div><h1>Import files</h1><div class="sub">Upload the month's exports exactly as downloaded — filters, pivots, extra sheets, re-ordered or renamed columns are fine. Reports the app can't place are mapped once and remembered.</div></div></div>
 
 {% if results or errors %}
 <div class="card"><div class="hd"><h2>{% if errors and not results %}Import failed{% else %}Import result{% endif %}</h2>
@@ -10,8 +10,17 @@
 <div class="bd">
 {% for e in errors or [] %}<div class="alert bad">{{ ui.icon('circle-x') }}<span><b>{{ e.file }}</b> — {{ e.error }}</span></div>{% endfor %}
 {% for r in results %}{% for s in r.sheets %}
+  {% if s.kind == 'needs_mapping' %}
+  <div class="alert warn" style="align-items:flex-start">{{ ui.icon('columns-3') }}<div style="flex:1"><b>{{ r.file }}</b>{% if s.sheet %} · sheet “{{ s.sheet }}”{% endif %} — not imported yet
+    <div class="small mt-s">{{ s.reason }}</div></div>
+    <a class="btn sm" href="/imports/map/{{ s.token }}?sheet={{ s.sheet|urlencode }}{% if s.guess %}&kind={{ s.guess }}{% endif %}">Map columns {{ ui.icon('arrow-right','sm') }}</a></div>
+  {% else %}
   <div class="alert ok" style="align-items:flex-start">{{ ui.icon('circle-check') }}<div><b>{{ r.file }}</b> → {{ s.label }}{% if s.period %} · {{ s.period }}{% endif %} · {{ s.rows }} rows
+    {% if s.source == 'layout' %}<span class="badge b-info">remembered layout</span>{% elif s.source == 'manual' %}<span class="badge b-info">your mapping</span>{% endif %}
+    {% if s.mapping %}<details class="small mt-s"><summary style="cursor:pointer" class="muted">Columns used ({{ s.mapping|length }})</summary><div class="map-sum">
+      {% for m in s.mapping %}<span><b>{{ m.label }}</b> ← “{{ m.column }}”{% if m.inferred %} <i class="muted">(inferred from values)</i>{% endif %}</span>{% endfor %}</div></details>{% endif %}
     {% for w in s.warnings %}<div class="small" style="color:var(--warn);margin-top:3px">{{ ui.icon('triangle-alert','sm') }} {{ w }}</div>{% endfor %}</div></div>
+  {% endif %}
 {% endfor %}{% endfor %}
 </div></div>{% endif %}
 
@@ -44,6 +53,12 @@
   </div>
 </div></div>
 </div>
+
+{% if layouts %}<div class="card flush"><div class="hd"><h2>Remembered file layouts</h2><span class="sub">reports you mapped by hand — recognised automatically</span></div><div class="bd"><div class="tw"><table class="compact" id="lays" data-table data-toolbar="none">
+<thead><tr><th data-key="kind" data-type="enum">Recognised as</th><th data-key="file" data-type="text">First seen in</th><th data-key="cols" data-type="text">Columns</th><th data-key="saved" data-type="date">Saved</th><th data-type="none"></th></tr></thead><tbody>
+{% for l in layouts %}<tr><td>{{ kind_labels.get(l.kind, l.kind) }}</td><td class="small">{{ l.label }}</td><td class="small muted">{{ l.map.values()|list|join(', ') }}</td><td class="small" data-v="{{ l.saved }}">{{ l.saved }}</td>
+<td><form method="post" action="/imports/layouts/{{ l.signature }}/delete" onsubmit="return confirm('Forget this layout? The next file like it will ask for the columns again.')">{{ ui.csrf_field() }}<button class="btn sm ghost" title="Forget this layout">{{ ui.icon('trash-2','sm') }}</button></form></td></tr>{% endfor %}
+</tbody></table></div></div></div>{% endif %}
 
 <div class="card"><div class="hd"><h2>Every month, export these from greytHR</h2></div><div class="bd">
   <div class="grid g4">

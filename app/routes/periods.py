@@ -15,6 +15,7 @@ from app.models import (
 from app.services import metrics as MX
 from app.services.audit import audit
 from app.services.compute import compute_period
+from app.services import insights as INS
 from app.services.settings import get_policy
 from app.web import Ctx, admin, hr, redirect, render, viewer
 
@@ -115,7 +116,8 @@ def drill(key: str, emp_no: str, c: Ctx = Depends(viewer)):
                   prev_emp=prev_emp, next_emp=next_emp,
                   opening=opening, history=history, override_labels=OVERRIDE_LABELS, raw_status=raw_status,
                   day_types=[WORKDAY, WEEKLY_OFF, HOLIDAY], policy=get_policy(c.db),
-                  status_codes=sorted(get_policy(c.db).status_map.keys()))
+                  status_codes=sorted(get_policy(c.db).status_map.keys()),
+                  sc=INS.employee_scorecard(INS.insights(c.db, p, with_matrix=False), emp_no))
 
 
 @router.post("/periods/{key}/employee/{emp_no}/day-override")

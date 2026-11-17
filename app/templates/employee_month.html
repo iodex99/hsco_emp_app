@@ -28,6 +28,7 @@
 <div class="tabs" data-tabs id="emp-tabs">
   <button class="on" data-tab="month">Month</button>
   <button data-tab="days">Day by day</button>
+  {% if sc %}<button data-tab="score">Scorecard</button>{% endif %}
   <button data-tab="corr">Corrections {% if d_ovr or m_ovr %}<span class="n">{{ d_ovr|length + m_ovr|length }}</span>{% endif %}</button>
   <button data-tab="ledger">Leave &amp; comp-off</button>
   {% if history|length > 1 %}<button data-tab="hist">History</button>{% endif %}
@@ -88,6 +89,27 @@
   </div>
 </div>
 </section>
+
+{% if sc %}{% set me = sc.row %}
+<section class="pane" data-pane="score">
+<div class="grid g-2-1">
+  <div class="card"><div class="hd"><h2>Compared with others</h2><span class="sub">{{ me.group or 'no group' }} average and firm average, {{ period.label }}</span></div><div class="bd" style="padding-top:4px">
+    <table class="cmp" id="cmp"><thead><tr><th>Measure</th><th>{{ r.name.split(' ')[0] }}</th><th>{{ me.group or 'Group' }}</th><th>Firm</th><th></th></tr></thead><tbody>
+    {% for m in sc.metrics %}<tr><td>{{ m.label }}</td><td class="me">{{ m.me|n(1) }}{{ m.unit if m.me is not none }}</td><td>{{ m.group|n(1) }}{{ m.unit if m.group is not none }}</td><td>{{ m.firm|n(1) }}{{ m.unit if m.firm is not none }}</td>
+      <td class="small v-{{ m.verdict }}">{{ {'better':'▲ better','worse':'▼ needs attention','typical':'≈ typical'}.get(m.verdict, '') }}</td></tr>{% endfor %}
+    </tbody></table></div></div>
+  <div class="card"><div class="hd"><h2>Attention score</h2></div><div class="bd">
+    <div class="minis" style="grid-template-columns:1fr 1fr">
+      <div class="mini {{ 'bad' if me.attention >= 50 else 'warn' if me.attention >= 25 }}"><div class="v">{{ me.attention }}<small class="muted"> / 100</small></div><div class="l">#{{ sc.rank }} of {{ sc.of }} this month</div></div>
+      <div class="mini"><div class="v">{% if me.bradford %}<span class="badge b-{{ me.bradford_tone }}">{{ me.bradford }}</span>{% else %}0{% endif %}</div><div class="l">Bradford · {{ me.bradford_band }} ({{ me.bradford_spells }} spells, {{ me.bradford_days|n }} d, {{ me.bradford_months }} month{{ "s" if me.bradford_months != 1 }})</div></div>
+    </div>
+    <ul class="list mt-s">{% for k, v in me.attention_parts.items() %}<li><span>{{ {'bradford':'Unplanned absence (Bradford)','punctuality':'Late arrivals','utilisation':'Hours below required','regularisation':'Regularisations','wfh':'WFH over the limit','missing':'Missing punches'}[k] }}</span>
+      <span class="r"><span class="score {{ 'bad' if v >= 10 else 'warn' if v >= 5 else 'ok' }}"><i style="width:{{ (100 * v / sc.weights[k])|round if sc.weights[k] else 0 }}%"></i><b>{{ v|n(1) }}/{{ sc.weights[k] }}</b></span></span></li>{% endfor %}</ul>
+    <p class="small muted mt-s">Higher = more to talk about. <a href="/insights?period={{ period.key }}">See everyone on Insights</a>.</p>
+  </div></div>
+</div>
+</section>
+{% endif %}
 
 {% set DT = r.days %}
 <section class="pane" data-pane="days"><div class="card flush">

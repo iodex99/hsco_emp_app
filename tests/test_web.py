@@ -187,7 +187,7 @@ def test_all_pages_render(loaded):
     c = loaded
     pages = ["/", "/?period=2026-10", "/periods/2026-10", "/employees", "/employees/T001", "/employees/new", "/flags",
              "/flags?code=WFH_OVER_LIMIT", "/reconciliation", "/imports", "/settings", "/users", "/audit", "/exports",
-             "/security", "/security/enrol"]
+             "/security", "/security/enrol", "/insights", "/insights?period=2026-10"]
     pages += [f"/periods/2026-10/employee/T00{i}" for i in range(1, 7)]
     for p in pages:
         r = c.get(p)
@@ -291,7 +291,7 @@ def test_exports(loaded):
     wb = load_workbook(io.BytesIO(r.content))
     assert wb.sheetnames[:3] == ["Payroll Leave Sheet", "Board Summary", "Flags"]
     for s in ("Late & Punctuality", "WFH & Locations", "Regularisation & Punches", "Leave & Comp-off Ledger",
-              "People Movement", "Daily Detail", "Rules Applied"):
+              "People Movement", "Daily Detail", "Rules Applied", "Scorecard", "Groups Compared"):
         assert s in wb.sheetnames
     ws = wb["Payroll Leave Sheet"]
     hdr = [c_.value for c_ in ws[5]]
@@ -311,7 +311,9 @@ def test_exports(loaded):
     r = c.get("/exports/2026-10.html")
     assert r.status_code == 200
     html = r.text
-    assert "Board Pack" in html and "Dev Mehta" in html and "Chart" in html
+    assert "board pack" in html.lower() and "Dev Mehta" in html and "Chart" in html
+    for marker in ('data-pane="sheet"', 'id="res"', 'id="sc"', 'id="hm"', 'id="fl"', 'id="gc"', "HSCO.Table", 'id="i-printer"'):
+        assert marker in html, marker
     assert not re.search(r"""(src|href)=["']?(https?:)?//""", html), "board pack must not load external resources"
     assert "data:font/woff2;base64," in html  # font embedded for offline use
     # templates
@@ -432,3 +434,103 @@ def test_bulk_review_and_employee_filter(loaded):
     html = c.get("/periods/2026-10/employee/T004").text
     assert 'href="/flags?period=2026-10&amp;emp=T004&amp;show=all"' in html or 'href="/flags?period=2026-10&emp=T004&show=all"' in html
     assert 'data-tags="' in html and 'data-lg="late"' in html
+
+
+def test_unrecognised_file_mapped_by_hand_and_remembered(loaded):
+    """A report the app cannot place is not imported blindly: HR maps the columns once, the import runs with that
+    mapping, and the next file with the same columns is recognised automatically."""
+    from openpyxl import Workbook
+    c = loaded
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Ref", "Dt", "AM", "PM", "Came", "Went"])          # meaningless headers
+    for d in range(1, 4):
+        ws.append(["T001", f"0{d}-10-2026", "P", "P", f"0{d}-10-2026 09:30", f"0{d}-10-2026 19:00"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    csrf = csrf_of(c, "/imports")
+    r = c.post("/imports", data={"csrf": csrf}, files=[("files", ("odd_report.xlsx", buf.getvalue(), "application/octet-stream"))])
+    assert r.status_code == 200 and "not imported yet" in r.text and "Map columns" in r.text
+    link = re.search(r'href="(/imports/map/[0-9a-f]{32}[^"]*)"', r.text).group(1).replace("&amp;", "&")
+    token = link.split("/")[3].split("?")[0]
+    page = c.get(link + ("&" if "?" in link else "?") + "kind=muster")
+    assert page.status_code == 200 and "Tell the app what each column means" in page.text and "Came" in page.text
+    # missing required fields → shown again with a message, nothing imported
+    r = c.post(f"/imports/map/{token}", data={"csrf": _csrf(page.text), "sheet": "Sheet", "kind": "muster", "row": "1",
+                                              "f_emp_no": "0"})
+    assert "Still needed" in r.text
+    # same column twice → rejected
+    r = c.post(f"/imports/map/{token}", data={"csrf": _csrf(page.text), "sheet": "Sheet", "kind": "muster", "row": "1",
+                                              "f_emp_no": "0", "f_date": "1", "f_s1": "1"})
+    assert "same column" in r.text
+    r = c.post(f"/imports/map/{token}", data={"csrf": _csrf(page.text), "sheet": "Sheet", "kind": "muster", "row": "1",
+                                              "f_emp_no": "0", "f_date": "1", "f_s1": "2", "f_s2": "3", "f_in_time": "4",
+                                              "f_out_time": "5", "remember": "1"})
+    assert r.status_code == 200 and "your mapping" in r.text and "3 rows" in r.text, r.text[-1500:]
+    assert "Remembered file layouts" in r.text
+    # second upload of the same layout → recognised from memory, imported without asking
+    csrf = csrf_of(c, "/imports")
+    r = c.post("/imports", data={"csrf": csrf}, files=[("files", ("odd_report_nov.xlsx", buf.getvalue(), "application/octet-stream"))])
+    assert "remembered layout" in r.text and "not imported yet" not in r.text
+    # expired / bogus tokens are handled
+    assert c.get("/imports/map/" + "0" * 32, follow_redirects=False).status_code == 303
+    assert c.get("/imports/map/../../etc", follow_redirects=False).status_code in (303, 404)
+    # forget the layout
+    from app.db import session_scope
+    from app.services.imports import get_layouts
+    with session_scope() as db:
+        sig = get_layouts(db)[0]["signature"]
+    r = c.post(f"/imports/layouts/{sig}/delete", data={"csrf": csrf_of(c, "/imports")}, follow_redirects=True)
+    assert "Remembered file layouts" not in r.text
+
+
+def test_place_names_upgraded_once(loaded):
+    """Swipes named by an older gazetteer are renamed once (draft months recalculated); later runs do nothing."""
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import Period, SwipeRow
+    from app.services import geo
+    with session_scope() as db:
+        pid = db.scalar(select(Period.id))
+        sw = SwipeRow(period_id=pid, emp_no="T001", ts=__import__("datetime").datetime(2026, 10, 1, 10), lat=19.1145,
+                      lon=72.8712, place="Mumbai (old name)")
+        db.add(sw)
+    assert geo.upgrade_place_names() >= 1
+    with session_scope() as db:
+        places = {s.place for s in db.scalars(select(SwipeRow).where(SwipeRow.lat == 19.1145))}
+    assert places and all("Andheri" in p for p in places), places
+    assert geo.upgrade_place_names() == 0
+
+
+def test_insights_kpis_and_scorecard(loaded):
+    """Insights numbers follow the definitions in METRICS.md on the synthetic month."""
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import Period
+    from app.services import insights as INS
+    with session_scope() as db:
+        p = db.scalar(select(Period).where(Period.year == 2026, Period.month == 10))
+        I = INS.insights(db, p)
+        assert INS.insights(db, p) is I                       # cached until something is recalculated
+        rows = {r["emp_no"]: r for r in I["rows"]}
+        k = I["kpis"]
+        assert k["headcount"] == len(rows) and 0 <= k["absenteeism_pct"] <= 100 and 0 <= k["punctuality_pct"] <= 100
+        for r in rows.values():
+            assert 0 <= r["attention"] <= 100
+            assert r["bradford"] == round(r["bradford_spells"] ** 2 * r["bradford_days"])
+        assert sum(b["count"] for b in I["bradford_bands"]) == len(rows)
+        assert len(I["matrix"]["rows"]) == len(rows) and all(len(m["s"]) == len(I["matrix"]["dates"]) for m in I["matrix"]["rows"])
+        sc = INS.employee_scorecard(I, "T001")
+        assert sc["row"]["emp_no"] == "T001" and 1 <= sc["rank"] <= sc["of"] and len(sc["metrics"]) == 10
+    # spells: Fri absent + Mon absent with a weekend between = 1 spell, 2 days; a present day breaks the spell
+    days = [{"date": "2026-10-02", "type": "WORKDAY", "b1": "absent", "b2": "absent"},
+            {"date": "2026-10-03", "type": "WEEKLY_OFF", "b1": "off", "b2": "off"},
+            {"date": "2026-10-05", "type": "WORKDAY", "b1": "lop", "b2": "lop"},
+            {"date": "2026-10-06", "type": "WORKDAY", "b1": "present", "b2": "present"},
+            {"date": "2026-10-07", "type": "WORKDAY", "b1": "present", "b2": "absent"}]
+    assert INS._spells(days) == (2, 2.5)
+    assert INS.bradford_band(0)[0] == "None" and INS.bradford_band(125)[0] == "Monitor" and INS.bradford_band(500)[0] == "Serious"
+    html = loaded.get("/insights").text
+    assert "Employee scorecard" in html and "Bradford" in html and 'id="hm"' in html
+    html = loaded.get("/periods/2026-10/employee/T001").text
+    assert 'data-tab="score"' in html and "Compared with others" in html

@@ -14,6 +14,9 @@ Add more methods under **My security** (several phones, keys).
 - **Overview**: the month at a glance, with a **month-end checklist** that tells you the next step.
 - **Payroll leave sheet**: everyone's figures; chips filter to deductions, loss of pay, WFH over limit, flags and more.
 - **Review queue**: every exception, grouped by type; mark each reviewed with a short note.
+- **Insights**: who needs a conversation and why — scorecard with an attention score (0–100) and its reasons,
+  Bradford factor, on-time arrivals, hours vs required, an employee × day heatmap, arrival times, groups compared.
+  An employee's **Scorecard** tab compares them with their group and the firm.
 - **Employees**: settings per person (group, working pattern, hours per day, exemption).
 - Press **/** anywhere to find an employee; use the **month switcher** (top right) to change month.
 - On an employee's page, click **legend items** under the calendar (several at once) to show only those days, e.g. Late + Missing punch.
@@ -35,8 +38,13 @@ Add more methods under **My security** (several phones, keys).
 ## Month end (≈ 10 minutes)
 1. In greytHR export for the month: **Attendance Muster Report**, **Employee Swipe Details**,
    **Date Of Joining Report** (and optionally **Attendance Summary Report**). No need to remove filters or extra sheets.
-2. **Import exports** → select all files → *Import & calculate*. The app recognises each file and the month.
+2. **Import exports** → select all files → *Import & calculate*. The app recognises each file and the month, even if
+   columns were moved or renamed (expand *Columns used* to see how each column was read).
    Warnings show possible exits (people missing from the active list) and missing coordinates.
+   If a file says **not imported yet · Map columns**, the app wasn't sure what it is: choose the report type, check the
+   column for each field (its guesses are pre-filled; the preview highlights the columns used) and *Import*. Leave
+   *Remember this layout* ticked and the same kind of file imports automatically from then on (remembered layouts are
+   listed at the bottom of Import files, with a bin to forget one).
 3. **Review queue**: work through the exceptions (shortfall deductions, unauthorised absence, WFH over limit,
    present-without-punch, leave exhausted). Mark each one reviewed; pick a reason or type a note.
 4. Click an employee to open the **drill-down**: calendar, every punch with place, flags, ledger. Correct if needed:
@@ -46,7 +54,9 @@ Add more methods under **My security** (several phones, keys).
    - *Opening balances* — first month only (or bulk via the Leave opening template).
 5. **Payroll leave sheet** → *Finalise for payroll* (locks the month) → **Download Excel** for payroll.
    Columns E–S mirror the old MIS sheet; extra columns give deduction days, leave ledger and payroll LOP days.
-6. Share the **Interactive board pack** (.html) with partners — opens offline in any browser.
+6. Share the **Interactive board pack** (.html) with partners — one file that opens offline in any browser, with the
+   same sorting, filters, grouping, column choice and CSV as the app; click anyone for their month (← → for the next
+   person, Esc to close); *Print / PDF* prints every section.
 
 ## Permanent employee settings (Employees → name)
 Group, location, DOJ/DOL, weekly-off pattern (greytHR / standard 1st-Saturday / all Saturdays off / Sunday only /

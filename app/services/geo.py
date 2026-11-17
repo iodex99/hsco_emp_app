@@ -1,7 +1,9 @@
 """Coordinates → human place names, without sending data off the server by default.
 
 Order (docs/BUSINESS_RULES.md §9): admin geofences → offline GeoNames gazetteer (app/data/in_places.csv.gz,
-CC-BY 4.0 geonames.org) → optional online OSM Nominatim (off by default) → raw coordinates.
+CC-BY 4.0 geonames.org: 566k Indian places — towns, villages, neighbourhoods, localities, railway stations, airports —
+with district and state; indexed into DATA_DIR/geo on first use) → optional online OSM Nominatim (off by default) →
+raw coordinates. Nothing is sent off the server unless online lookup is switched on.
 """
 from __future__ import annotations
 
@@ -9,6 +11,8 @@ import csv
 import gzip
 import json
 import math
+import os
+import sqlite3
 import threading
 import urllib.parse
 import urllib.request
@@ -22,9 +26,10 @@ from app.config import APP_DIR
 from app.models import GeoCache, Geofence
 from app.services.settings import get_general
 
-_GAZ = None
 _LOCK = threading.Lock()
-CELL = 0.1  # degrees
+CELL = 0.05  # degrees (~5.5 km) — grid used to index the gazetteer
+_DB: Optional[str] = None
+SRC = APP_DIR / "data" / "in_places.csv.gz"
 
 
 def haversine_m(lat1, lon1, lat2, lon2) -> float:
@@ -35,39 +40,138 @@ def haversine_m(lat1, lon1, lat2, lon2) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
-def _gazetteer():
-    global _GAZ
+def gazetteer_db() -> Optional[str]:
+    """Path to an indexed SQLite copy of the bundled gazetteer (built once in DATA_DIR/geo, ~10 s)."""
+    global _DB
+    if _DB:
+        return _DB
     with _LOCK:
-        if _GAZ is None:
-            grid = defaultdict(list)
-            path = APP_DIR / "data" / "in_places.csv.gz"
-            if path.exists():
-                with gzip.open(path, "rt", encoding="utf-8") as f:
-                    rd = csv.reader(f)
-                    next(rd, None)
-                    for name, state, lat, lon in rd:
-                        la, lo = float(lat), float(lon)
-                        grid[(int(la // CELL), int(lo // CELL))].append((la, lo, name, state))
-            _GAZ = grid
-    return _GAZ
+        if _DB:
+            return _DB
+        if not SRC.exists():
+            return None
+        from app.config import get_config
+        st = SRC.stat()
+        d = get_config().data_dir / "geo"
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / f"places-{st.st_size}-{int(st.st_mtime)}.sqlite"
+        if not path.exists():
+            tmp = path.with_suffix(".building")
+            tmp.unlink(missing_ok=True)
+            con = sqlite3.connect(tmp)
+            con.execute("create table p(gx int, gy int, lat real, lon real, name text, district text, state text, kind text)")
+            with gzip.open(SRC, "rt", encoding="utf-8") as f:
+                rd = csv.reader(f)
+                next(rd, None)
+                batch = []
+                for name, district, state, lat, lon, kind in rd:
+                    la, lo = float(lat), float(lon)
+                    batch.append((int(la // CELL), int(lo // CELL), la, lo, name, district, state, kind))
+                    if len(batch) >= 20000:
+                        con.executemany("insert into p values (?,?,?,?,?,?,?,?)", batch)
+                        batch = []
+                con.executemany("insert into p values (?,?,?,?,?,?,?,?)", batch)
+            con.execute("create index ix_p on p(gx, gy)")
+            con.commit()
+            con.close()
+            os.replace(tmp, path)
+            for old in d.glob("places-*.sqlite"):
+                if old != path:
+                    old.unlink(missing_ok=True)
+        _DB = str(path)
+        return _DB
+
+
+NAMES_VERSION = 2   # bump when the offline gazetteer changes so cached/stored names are refreshed once
+
+
+def warm_up() -> None:
+    """Background start-up job: build the gazetteer index (so the first import with coordinates is fast), then — once
+    per gazetteer version — refresh place names stored by older versions and recalculate draft months."""
+    def run():
+        import logging
+        try:
+            gazetteer_db()
+            upgrade_place_names()
+        except Exception:  # noqa: BLE001
+            logging.getLogger("hsco.geo").exception("gazetteer warm-up failed")
+    threading.Thread(target=run, name="gazetteer", daemon=True).start()
+
+
+def upgrade_place_names() -> int:
+    from sqlalchemy import delete
+    from app.db import session_scope
+    from app.models import Period, Setting, SwipeRow
+    from app.services.compute import compute_period
+    with session_scope() as db:
+        st = db.get(Setting, "geo_names_version")
+        if st and (st.value or {}).get("v", 0) >= NAMES_VERSION:
+            return 0
+        db.execute(delete(GeoCache).where(GeoCache.source == "offline"))
+        namer = Namer(db)
+        n = 0
+        for sw in db.scalars(select(SwipeRow).where(SwipeRow.lat.is_not(None))):
+            new = namer.name(sw.lat, sw.lon)
+            if new != sw.place:
+                sw.place = new
+                n += 1
+        if n:
+            for per in db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))):
+                compute_period(db, per, cascade=False)
+        if st is None:
+            db.add(Setting(key="geo_names_version", value={"v": NAMES_VERSION}))
+        else:
+            st.value = {"v": NAMES_VERSION}
+        return n
+
+
+def _nearby(lat: float, lon: float, max_km: float) -> list:
+    db = gazetteer_db()
+    if not db:
+        return []
+    rng = max(1, int(math.ceil(max_km / (CELL * 111))))
+    gx, gy = int(lat // CELL), int(lon // CELL)
+    con = sqlite3.connect(db)
+    try:
+        rows = con.execute("select lat, lon, name, district, state, kind from p where gx between ? and ? and gy between ? and ?",
+                           (gx - rng, gx + rng, gy - rng, gy + rng)).fetchall()
+    finally:
+        con.close()
+    out = [(haversine_m(lat, lon, r[0], r[1]), *r[2:]) for r in rows]
+    return sorted((x for x in out if x[0] <= max_km * 1000), key=lambda x: x[0])
+
+
+def describe(lat: float, lon: float, max_km: float = 15) -> Optional[dict]:
+    """Structured offline place for a coordinate: nearest locality/neighbourhood, district, state, landmark."""
+    near = _nearby(lat, lon, max_km)
+    places = [x for x in near if x[4] != "S"]
+    if not places:
+        return None
+    # prefer a named neighbourhood/locality if it is almost as close as the nearest village/town
+    best = places[0]
+    hood = next((x for x in places if x[4].endswith("X")), None)
+    if hood and hood[0] <= max(1500, best[0] * 1.6):
+        best = hood
+    land = next((x for x in near if x[4] == "S" and x[0] <= 600), None)
+    return {"place": best[1], "district": best[2], "state": best[3], "km": round(best[0] / 1000, 1),
+            "landmark": land[1] if land else "", "landmark_m": int(land[0]) if land else None}
 
 
 def offline_name(lat: float, lon: float, max_km: float = 15) -> Optional[str]:
-    grid = _gazetteer()
-    ci, cj = int(lat // CELL), int(lon // CELL)
-    best = None
-    rng = max(1, int(math.ceil(max_km / 11)))
-    for di in range(-rng, rng + 1):
-        for dj in range(-rng, rng + 1):
-            for la, lo, name, state in grid.get((ci + di, cj + dj), ()):
-                d = haversine_m(lat, lon, la, lo)
-                if best is None or d < best[0]:
-                    best = (d, name, state)
-    if best and best[0] <= max_km * 1000:
-        dist = best[0] / 1000
-        prefix = "" if dist < 1.0 else "near "
-        return f"{prefix}{best[1]}, {best[2]}".strip(", ")
-    return None
+    d = describe(lat, lon, max_km)
+    if not d:
+        return None
+    parts = [d["place"]]
+    if d["district"] and d["district"].lower() not in d["place"].lower():
+        parts.append(d["district"])
+    if d["state"]:
+        parts.append(d["state"])
+    label = ", ".join(parts)
+    if d["km"] >= 1.0:
+        label = f"near {label} ({d['km']:g} km)"
+    if d["landmark"] and d["landmark"].lower() != d["place"].lower():
+        label += f" · by {d['landmark']}"
+    return label
 
 
 def online_name(lat: float, lon: float) -> Optional[str]:  # pragma: no cover - network, disabled by default

@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.4.0 — 2026-11-17 — universal importer, automatic place names, Insights, new board pack
+- **Universal importer** (`app/importers/parsers.py` rewritten): reports are recognised by *meaning*, not by exact
+  layout. Each report type is described by fields with synonyms; headers are matched exactly, by whole words or fuzzily,
+  in any order, on any of the first 30 rows; the values under each column are checked (dates must be dates, IDs look
+  like IDs, coordinates are in range) and a required column with an unhelpful header is inferred from its values.
+  Values are normalised: dates in any common format or Excel serials, times with or without a date (night shifts
+  crossing midnight), hours as `08 : 29` / `8:29` / `8.5` / `8h 29m` (or computed from in/out), status as codes or
+  words (`Present`, `Week Off`, `Half Day`, `PL/P`…) in one column or two session columns, swipes with one date-time
+  column or separate date + time (+ IN/OUT direction), coordinates in one cell or two columns. Detection of the
+  real exports is 40× faster (≈ 0.3 s instead of ≈ 11 s).
+- **Map columns once, remembered forever:** a sheet recognised with low confidence (or a file nothing matches) is *not*
+  imported blindly — the result says "not imported yet · Map columns". The mapping screen pre-fills its guesses
+  (from headers and values), shows a live preview with the chosen columns highlighted, refuses missing required
+  fields or one column used twice, and imports. "Remember this layout" stores it (settings `import_layouts`, by header
+  signature) so the next file like it imports automatically; remembered layouts are listed (and can be forgotten) on
+  Import files. Each import result lists the columns used ("Employee number ← 'Emp Code'").
+- **Location names straight from coordinates, offline:** bundled GeoNames gazetteer of 566,055 Indian places (towns,
+  villages, neighbourhoods, localities, stations, landmarks) with district and state, indexed on first start into
+  `DATA_DIR/geo` (≈ 4 s, background). Names like "Andheri East, Mumbai Suburban, Maharashtra", "near Thane,
+  Maharashtra (1.3 km)" or "Girgaum, Mumbai, Maharashtra · by Marine Lines". Nothing leaves the server. Swipes named by
+  the older city list are renamed once automatically and draft months recalculated.
+- **Insights page** (new sidebar item) and per-employee **Scorecard** tab: unplanned absence rate, Bradford factor
+  (rolling 12 months, bands), on-time arrivals, hours vs required, overtime/shortfall, long days, WFH share,
+  regularisation and missing-punch rates, leave used this FY, leave & comp-off liability, attrition (12 months),
+  average tenure, and a 0–100 **attention score** with its main reasons. Tabs: scorecard (full table toolkit),
+  employee × day **attendance heatmap** with legend highlighting, arrivals heatmap (weekday × half hour) and working-day
+  length histogram, Bradford list & bands, groups compared, trend. The employee page compares the person with their
+  group and the firm. Excel gains *Scorecard* and *Groups Compared* sheets.
+- **Board pack rebuilt:** same look and the same table toolkit as the app, fully offline in one file (stylesheet, font,
+  icons, Chart.js, toolkit inlined; no network requests). Tabs: Overview (KPIs, daily attendance, needs-attention list
+  that jumps to the exceptions, charts, top lists), Payroll leave sheet (chips, search, filters, multi-sort, group-by,
+  columns, views, CSV, live totals), Scorecard, Attendance heatmap, Exceptions, Absence & hours, Groups, People, Trend.
+  Clicking any person opens a drill-down with KPIs, calendar with multi-select legend filters, flags, attention
+  breakdown, comparison with group and firm, and a sortable/filterable day-by-day table; ← → step through the people in
+  the order of the table you came from; Esc closes. Print / PDF prints every section.
+
 ## 1.3.1 — 2026-11-17
 - **Review queue bulk review:** a checkbox on every row and a select-all box in the header (selects only the rows the
   current filters show); clicking a row toggles it. A floating bar shows "N selected · Mark reviewed · Re-open · Clear";

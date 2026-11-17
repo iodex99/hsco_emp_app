@@ -181,13 +181,18 @@ def test_full_browser_journey(server):
         bp = ctx.new_page()
         bp.on("pageerror", lambda e: errors.append(f"boardpack: {e}"))
         bp.goto(pack.as_uri())
-        bp.wait_for_selector("#kpis .kpi")
+        bp.wait_for_selector(".kpis .kpi")
         bp.screenshot(path=str(OUT / "06_boardpack.png"), full_page=True)
-        bp.click("#tabs a[data-t=sheet]")
-        bp.fill("#q", emp_name)
-        bp.click(f"#tbl tbody tr:has-text('{emp_name}')")
-        bp.wait_for_selector("#modal .cal")
+        bp.click("#bp-tabs [data-tab=sheet]")
+        bp.fill("[data-table-for='#res'] .tt-search input", emp_name)
+        bp.click(f"#res tbody tr:has-text('{emp_name}')")
+        bp.wait_for_selector("#modal.on .cal")
         assert emp_name in bp.inner_text("#mbox")
+        bp.click("#m-days thead th[data-key='h']")               # toolkit works inside the drill-down
+        bp.keyboard.press("Escape")
+        for tab in ("score", "heat", "exc", "abs", "groups", "people"):
+            bp.click(f"#bp-tabs [data-tab={tab}]")
+            assert bp.locator(f".pane[data-pane={tab}]").is_visible()
         bp.screenshot(path=str(OUT / "07_boardpack_drill.png"), full_page=True)
         bp.close()
 

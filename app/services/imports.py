@@ -2,7 +2,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import re
+import secrets
+import time as _time
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import delete, select
@@ -10,9 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.importers import parsers as P
 from app.importers.readers import read_workbook
+from app.config import get_config
 from app.models import (
-    Employee, Holiday, HolidayCalendar, ImportBatch, LeaveOpening, ManualMisRow, MusterRow, Period, SummaryRow, SwipeRow,
-    User,
+    Employee, Holiday, HolidayCalendar, ImportBatch, LeaveOpening, ManualMisRow, MusterRow, Period, Setting, SummaryRow,
+    SwipeRow, User,
 )
 from app.services.audit import audit
 from app.services.compute import compute_period, get_period
@@ -21,6 +27,75 @@ from app.services.geo import Namer
 
 class ImportError_(Exception):
     pass
+
+
+# ----------------------------------------------------------------------------- remembered layouts & pending files
+
+def get_layouts(db: Session) -> list:
+    s = db.get(Setting, "import_layouts")
+    return list((s.value or {}).get("layouts", [])) if s else []
+
+
+def save_layout(db: Session, ds: "P.DetectedSheet", label: str = "") -> None:
+    raw = getattr(ds, "raw_headers", ds.headers)
+    sig = P.layout_signature(raw)
+    lay = {"signature": sig, "kind": ds.kind, "label": label, "map": {f: raw[i] for f, i in ds.map.items() if i < len(raw)},
+           "saved": date.today().isoformat()}
+    layouts = [x for x in get_layouts(db) if x.get("signature") != sig] + [lay]
+    s = db.get(Setting, "import_layouts")
+    if s is None:
+        db.add(Setting(key="import_layouts", value={"layouts": layouts}))
+    else:
+        s.value = {"layouts": layouts}
+
+
+def delete_layout(db: Session, signature: str) -> bool:
+    s = db.get(Setting, "import_layouts")
+    if not s:
+        return False
+    before = get_layouts(db)
+    after = [x for x in before if x.get("signature") != signature]
+    s.value = {"layouts": after}
+    return len(after) != len(before)
+
+
+_TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _pending_dir() -> Path:
+    d = get_config().data_dir / "uploads" / "pending"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def stash_pending(data: bytes, filename: str) -> str:
+    d = _pending_dir()
+    for old in d.glob("*"):                      # keep the folder tidy: unmapped uploads expire after 2 days
+        try:
+            if _time.time() - old.stat().st_mtime > 2 * 86400:
+                old.unlink()
+        except OSError:
+            pass
+    token = secrets.token_hex(16)
+    (d / f"{token}.bin").write_bytes(data)
+    (d / f"{token}.json").write_text(json.dumps({"filename": filename}), encoding="utf-8")
+    return token
+
+
+def load_pending(token: str) -> Optional[tuple[bytes, str]]:
+    if not _TOKEN_RE.match(token or ""):
+        return None
+    d = _pending_dir()
+    b, m = d / f"{token}.bin", d / f"{token}.json"
+    if not b.exists() or not m.exists():
+        return None
+    return b.read_bytes(), json.loads(m.read_text(encoding="utf-8")).get("filename", "upload.xlsx")
+
+
+def drop_pending(token: str) -> None:
+    if _TOKEN_RE.match(token or ""):
+        for ext in (".bin", ".json"):
+            (_pending_dir() / f"{token}{ext}").unlink(missing_ok=True)
 
 
 def _period_for(db: Session, ym: Optional[tuple], fallback: Optional[tuple]) -> Period:
@@ -47,17 +122,38 @@ def _ensure_employee(db: Session, cache: dict, emp_no: str, name: str = "", sour
 
 
 def import_file(db: Session, data: bytes, filename: str, user: Optional[User], period_hint: Optional[tuple] = None,
-                ip: str = "") -> list[dict]:
+                ip: str = "", manual: Optional[dict] = None) -> list[dict]:
+    """Import every recognised sheet. Sheets recognised with low confidence (or a file where nothing is recognised) are
+    not imported: they come back as `needs_mapping` items so HR can confirm the columns (manual={sheet, kind,
+    header_row, map} re-runs the import with that mapping)."""
     try:
         sheets = read_workbook(data, filename)
     except Exception as ex:  # noqa: BLE001
         raise ImportError_(f"Could not read {filename}: {ex}") from ex
-    dets = P.detect(sheets)
-    if not dets:
-        raise ImportError_(f"{filename}: no recognised sheet. Expected a greytHR muster, swipe, summary or DOJ export, "
-                           "or one of the templates (Employee master / Leave opening / Holidays).")
-    sha = hashlib.sha256(data).hexdigest()
     results, touched = [], set()
+    if manual:
+        if manual["sheet"] not in sheets:
+            raise ImportError_(f"{filename}: sheet '{manual['sheet']}' not found")
+        dets = [P.manual_sheet(manual["sheet"], sheets[manual["sheet"]], manual["kind"], int(manual["header_row"]),
+                               manual["map"])]
+    else:
+        found = P.detect(sheets, get_layouts(db))
+        dets = [d for d in found if not P.needs_review(d)]
+        unsure = [d for d in found if P.needs_review(d)]
+        if not found or unsure:
+            token = stash_pending(data, filename)
+            if not found:
+                results.append({"kind": "needs_mapping", "token": token, "sheet": "", "label": "Not recognised",
+                                "reason": "None of the sheets looked like a known report. Tell the app which columns "
+                                          "hold what — it will remember this layout next time.", "rows": 0,
+                                "period": "", "warnings": []})
+            for d in unsure:
+                results.append({"kind": "needs_mapping", "token": token, "sheet": d.sheet, "guess": d.kind,
+                                "label": P.KIND_LABELS[d.kind], "rows": 0, "period": "", "warnings": [],
+                                "reason": f"Looks like {P.KIND_LABELS[d.kind]} ({int(d.confidence * 100)}% sure"
+                                          + (", some columns were inferred from their values" if d.inferred else "")
+                                          + "). Please confirm the columns before importing."})
+    sha = hashlib.sha256(data).hexdigest()
     emp_cache: dict = {}
     for ds in dets:
         rows = sheets[ds.sheet]
@@ -204,7 +300,8 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                            sheet=ds.sheet, rows=n, warnings=warnings[:50], uploaded_by=user.username if user else ""))
         audit(db, user, "import", kind, period.key if period else "", {"file": filename, "sheet": ds.sheet, "rows": n}, ip)
         results.append({"kind": kind, "label": P.KIND_LABELS[kind], "sheet": ds.sheet, "rows": n,
-                        "period": period.label if period else "", "warnings": warnings[:20]})
+                        "period": period.label if period else "", "warnings": warnings[:20],
+                        "mapping": ds.describe(), "source": ds.source, "confidence": ds.confidence})
     db.flush()
     for p in sorted((db.get(Period, pid) for pid in touched), key=lambda x: (x.year, x.month) if x else (0, 0)):
         if p and p.status == "DRAFT" and db.scalar(select(MusterRow.id).where(MusterRow.period_id == p.id).limit(1)):

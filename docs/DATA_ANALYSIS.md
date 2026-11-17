@@ -144,3 +144,11 @@ manual sheet is internally inconsistent:
 - HS055 punches once a day while greytHR auto-fills 10:00–18:30 — his hours are not real.
 - 6 employees exceeded the 2‑day WFH limit (HS016 6 days, HS045 4, HS179 4, HS020/HS093/HS195 3).
 - greytHR's own "Total Week Days" is wrong for 18 employees (Summary vs muster).
+
+## Importer robustness (v1.4)
+The importer no longer depends on these exact layouts: reordered or renamed columns, title rows, extra columns, other
+vendors' registers (single status column with words, time-only in/out, decimal hours) and biometric logs (separate date
+and time, IN/OUT direction, latitude/longitude columns) are recognised — see ARCHITECTURE "Universal importer".
+Measured on the October-2026 exports: all five recognised with confidence 1.0 (DOJ 0.996); detection ≈ 0.1–0.3 s each.
+Synonyms for the greytHR headers above are in `parsers.F`. October's swipe export has **no GPS coordinates**
+(only Location Type), so place names apply when the mobile-app export includes them.

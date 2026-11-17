@@ -12,14 +12,19 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import delete, select
 
 from app.models import AuditLog, Employee, FlagReview, ImportBatch, MonthResult, Period
+from app.services import insights as INS
 from app.services import metrics as MX
 from app.services import workflow as WF
 from app.services.audit import audit
 from app.services.settings import get_policy
+from app.importers import parsers as P
+from app.importers.readers import read_workbook
+from app.services import imports as IMP
 from app.services.imports import ImportError_, import_file
 from app.web import Ctx, hr, periods, redirect, render, viewer
 
 router = APIRouter()
+re_period = __import__('re').compile(r"^\d{4}-\d{2}$")
 
 
 def pick_period(c: Ctx, key: Optional[str]) -> Optional[Period]:
@@ -42,6 +47,17 @@ def dashboard(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     data = MX.period_metrics(c.db, p)
     wf = WF.status(c.db, p)
     return render(c, "dashboard.html", period=p, m=data, labels=MX.FLAG_LABELS, wf=wf, policy=get_policy(c.db))
+
+
+@router.get("/insights", response_class=HTMLResponse)
+def insights_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
+    p = pick_period(c, period)
+    if p is None:
+        return render(c, "empty.html")
+    data = INS.insights(c.db, p)
+    chart = {"hours_hist": data["hours_hist"], "bands": data["bradford_bands"], "groups": data["groups"],
+             "trend": data["trend"]}
+    return render(c, "insights.html", period=p, I=data, chart=chart, policy=get_policy(c.db))
 
 
 @router.get("/api/employees")
@@ -67,7 +83,8 @@ def imports_page(c: Ctx = Depends(hr)):
     batches = c.db.scalars(select(ImportBatch).order_by(ImportBatch.uploaded_at.desc()).limit(100)).all()
     pmap = {p.id: p for p in periods(c.db)}
     cur = pick_period(c, None)
-    return render(c, "imports.html", batches=batches, pmap=pmap, results=None, wf=WF.status(c.db, cur) if cur else None)
+    return render(c, "imports.html", batches=batches, pmap=pmap, results=None, wf=WF.status(c.db, cur) if cur else None,
+                  layouts=IMP.get_layouts(c.db), kind_labels=P.KIND_LABELS)
 
 
 @router.post("/imports", response_class=HTMLResponse)
@@ -86,14 +103,21 @@ async def do_import(request: Request, files: list[UploadFile] = File(...), perio
     return await anyio.to_thread.run_sync(_run_imports, c, blobs, hint)
 
 
-def _run_imports(c: Ctx, blobs, hint):
+def _run_imports(c: Ctx, blobs, hint, manual=None, remember=False, token=""):
     results, errors = [], []
     for _, name, data in sorted(blobs, key=lambda x: x[0]):
         if not data:
             continue
         try:
-            res = import_file(c.db, data, name, c.user, hint, c.ip)
+            res = import_file(c.db, data, name, c.user, hint, c.ip, manual=manual)
+            if manual and remember:
+                rows = read_workbook(data, name)[manual["sheet"]]
+                IMP.save_layout(c.db, P.manual_sheet(manual["sheet"], rows, manual["kind"], manual["header_row"],
+                                                     manual["map"]), name)
+                audit(c.db, c.user, "import_layout_saved", manual["kind"], name, {"sheet": manual["sheet"]}, c.ip)
             c.db.commit()
+            if token:
+                IMP.drop_pending(token)
             results.append({"file": name, "sheets": res})
         except ImportError_ as ex:
             c.db.rollback()
@@ -105,7 +129,97 @@ def _run_imports(c: Ctx, blobs, hint):
     pmap = {p.id: p for p in periods(c.db)}
     cur = pick_period(c, None)
     return render(c, "imports.html", batches=batches, pmap=pmap, results=results, errors=errors,
-                  wf=WF.status(c.db, cur) if cur else None)
+                  wf=WF.status(c.db, cur) if cur else None, layouts=IMP.get_layouts(c.db), kind_labels=P.KIND_LABELS)
+
+
+def _map_context(c: Ctx, token: str, sheet: str, kind: str, hr_row: Optional[int], chosen: Optional[dict] = None,
+                 error: str = ""):
+    pend = IMP.load_pending(token)
+    if not pend:
+        return None
+    data, filename = pend
+    sheets = read_workbook(data, filename)
+    names = [n for n, rows in sheets.items() if rows]
+    if sheet not in sheets:
+        found = P.detect(sheets, IMP.get_layouts(c.db))
+        sheet = found[0].sheet if found else (names[0] if names else "")
+    rows = sheets.get(sheet, [])
+    auto = P.detect_sheet(sheet, rows) if rows else None
+    if hr_row is None:
+        hr_row = auto.header_row if auto else P.guess_header_row(rows)
+    hr_row = max(0, min(hr_row, max(0, len(rows) - 1)))
+    if kind not in P.SCHEMAS:
+        kind = auto.kind if auto else "muster"
+    mapping = chosen if chosen is not None else (
+        dict(auto.map) if auto and auto.kind == kind and auto.header_row == hr_row else P.suggest(rows, hr_row, kind))
+    header = rows[hr_row] if rows else []
+    width = max([len(r or []) for r in rows[hr_row: hr_row + 8]] + [len(header)])
+    cols = [{"i": i, "name": (str(header[i]).strip() if i < len(header) and header[i] not in (None, "") else f"Column {i + 1}")}
+            for i in range(width)]
+    req, opt, _ = P.SCHEMAS[kind]
+    req_fields = [f for r in req for f in (r if isinstance(r, tuple) else (r,))]
+    fields = [{"key": f, "label": P.FIELD_LABELS.get(f, f), "required": f in req_fields,
+               "alt": next((" / ".join(P.FIELD_LABELS.get(a, a) for a in r) for r in req
+                            if isinstance(r, tuple) and f in r), "")} for f in P.schema_fields(kind)]
+    preview = [[("" if v is None else str(v))[:40] for v in (r or [])] + [""] * (width - len(r or [])) for r in rows[hr_row + 1: hr_row + 7]]
+    return dict(token=token, filename=filename, sheets=names, sheet=sheet, kind=kind, hr_row=hr_row, cols=cols,
+                fields=fields, mapping=mapping, preview=preview, kind_labels=P.KIND_LABELS, error=error,
+                missing=P.missing_required(kind, mapping), auto=auto, title_rows=[[("" if v is None else str(v))[:60] for v in (r or []) if v not in (None, "")]
+                                                                                for r in rows[:hr_row]][:6])
+
+
+@router.get("/imports/map/{token}", response_class=HTMLResponse)
+def map_page(token: str, sheet: str = "", kind: str = "", row: Optional[int] = None, c: Ctx = Depends(hr)):
+    ctx = _map_context(c, token, sheet, kind, (row - 1) if row else None)
+    if ctx is None:
+        return redirect("/imports", "That upload has expired — please upload the file again.")
+    return render(c, "import_map.html", **ctx)
+
+
+@router.post("/imports/map/{token}", response_class=HTMLResponse)
+async def map_submit(token: str, request: Request, c: Ctx = Depends(hr)):
+    form = await request.form()
+    sheet, kind = str(form.get("sheet", "")), str(form.get("kind", ""))
+    try:
+        hr_row = max(0, int(form.get("row", "1")) - 1)
+    except ValueError:
+        hr_row = 0
+    mapping = {}
+    for k, v in form.items():
+        if k.startswith("f_") and str(v).strip().isdigit():
+            mapping[k[2:]] = int(v)
+    period = str(form.get("period", ""))
+    remember = form.get("remember") == "1"
+
+    def run():
+        if kind not in P.SCHEMAS:
+            return redirect(f"/imports/map/{token}", "Choose what kind of report this is.")
+        clean = {f: i for f, i in mapping.items() if f in P.schema_fields(kind)}
+        if len(set(clean.values())) != len(clean):
+            ctx = _map_context(c, token, sheet, kind, hr_row, clean, "The same column is chosen for two different fields.")
+            return render(c, "import_map.html", **ctx) if ctx else redirect("/imports", "Upload expired.")
+        miss = P.missing_required(kind, clean)
+        if miss:
+            ctx = _map_context(c, token, sheet, kind, hr_row, clean, "Still needed: " + ", ".join(miss))
+            return render(c, "import_map.html", **ctx) if ctx else redirect("/imports", "Upload expired.")
+        pend = IMP.load_pending(token)
+        if not pend:
+            return redirect("/imports", "That upload has expired — please upload the file again.")
+        data, filename = pend
+        hint = None
+        if re_period.match(period):
+            y, m = period.split("-")
+            hint = (int(y), int(m))
+        return _run_imports(c, [(0, filename, data)], hint, manual={"sheet": sheet, "kind": kind, "header_row": hr_row,
+                                                                    "map": clean}, remember=remember, token=token)
+    return await anyio.to_thread.run_sync(run)
+
+
+@router.post("/imports/layouts/{sig}/delete")
+def delete_layout(sig: str, c: Ctx = Depends(hr)):
+    if IMP.delete_layout(c.db, sig):
+        audit(c.db, c.user, "import_layout_deleted", "layout", sig, {}, c.ip)
+    return redirect("/imports", "Saved layout removed.")
 
 
 @router.get("/flags", response_class=HTMLResponse)

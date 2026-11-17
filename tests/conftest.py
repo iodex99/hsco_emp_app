@@ -3,6 +3,7 @@ import sys
 
 # tests must never call GitHub: no background update checks
 os.environ.setdefault("HSCO_DISABLE_UPDATE_THREAD", "1")
+os.environ.setdefault("HSCO_DISABLE_GEO_WARMUP", "1")
 from pathlib import Path
 
 import pyotp

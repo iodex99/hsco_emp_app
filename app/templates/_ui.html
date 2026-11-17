@@ -1,7 +1,7 @@
 {# Shared UI macros. Import with: {% import "_ui.html" as ui %} #}
 
 {% macro icon(name, cls="") -%}
-<svg class="ic {{ cls }}" aria-hidden="true"><use href="/static/icons.svg#i-{{ name }}"></use></svg>
+<svg class="ic {{ cls }}" aria-hidden="true"><use href="{{ icon_base if icon_base is defined else '/static/icons.svg' }}#i-{{ name }}"></use></svg>
 {%- endmacro %}
 
 {% macro initials(name) -%}
