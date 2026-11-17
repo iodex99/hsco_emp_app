@@ -6,6 +6,7 @@ get back one EmployeeMonth per employee with MIS figures, behaviour metrics, fla
 from __future__ import annotations
 
 import math
+import functools
 import re
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
@@ -33,6 +34,12 @@ def parse_shift(name: str, policy: Policy) -> tuple[time, time]:
         return policy.shift_overrides[name]
     if not name:
         return policy.default_shift_start, policy.default_shift_end
+    hit = _shift_times(name)
+    return hit if hit else (policy.default_shift_start, policy.default_shift_end)
+
+
+@functools.lru_cache(maxsize=512)
+def _shift_times(name: str) -> Optional[tuple[time, time]]:
     found = []
     for m in _TIME_RE.finditer(name):
         h = int(m.group(1))
@@ -48,7 +55,7 @@ def parse_shift(name: str, policy: Policy) -> tuple[time, time]:
             break
     if len(found) == 2 and found[1] > found[0]:
         return found[0], found[1]
-    return policy.default_shift_start, policy.default_shift_end
+    return None
 
 
 def nth_weekday_of_month(d: date) -> int:

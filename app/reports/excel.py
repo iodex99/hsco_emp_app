@@ -25,7 +25,30 @@ AMBER = PatternFill("solid", fgColor="FFE5B4")
 GREEN = PatternFill("solid", fgColor="D4EDDA")
 GREY = PatternFill("solid", fgColor="EEF1F5")
 THIN = Border(bottom=Side(style="thin", color="D0D7E2"))
+TEXT_COLS = {1, 2, 3, 4, 19, 34}   # payroll sheet columns holding imported text (never formulas)
 SEV_FILL = {"critical": RED, "high": AMBER, "medium": PatternFill("solid", fgColor="FFF7D6"), "info": GREY}
+
+
+def _thin(cell) -> None:
+    """Same as cell.border = THIN, but registers the border once per workbook instead of hashing a Border object for
+    every cell (the dominant cost on large sheets)."""
+    wb = cell.parent.parent
+    bid = getattr(wb, "_hsco_thin_id", None)
+    if bid is None:
+        bid = wb._hsco_thin_id = wb._borders.add(THIN)
+    if not cell._style:
+        from openpyxl.styles.cell_style import StyleArray
+        cell._style = StyleArray()
+    cell._style.borderId = bid
+
+
+def _put(ws, row: int, col: int, value, text: bool = False):
+    """Write a bordered cell. text=True: imported text is never turned into a formula (=, +, -, @ prefixes)."""
+    c = ws.cell(row=row, column=col, value=value)
+    if text and isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+        c.data_type = "s"
+    _thin(c)
+    return c
 
 
 def _title(ws, org: dict, title: str, ncols: int):
@@ -55,7 +78,7 @@ def _table(ws, title_row: int, headers: list, rows: list[list], widths=None, org
     _header(ws, title_row, headers, widths)
     for r_i, r in enumerate(rows, start=title_row + 1):
         for c_i, v in enumerate(r, start=1):
-            ws.cell(row=r_i, column=c_i, value=v).border = THIN
+            _put(ws, r_i, c_i, v, text=True)
     if rows:
         ws.auto_filter.ref = f"A{title_row}:{get_column_letter(len(headers))}{title_row + len(rows)}"
 
@@ -111,8 +134,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
         if (r.emp_no, "deduction_days") in ovr:
             vals[22] = d["deduction_days"]
         for col, v in vals.items():
-            c = ws.cell(row=i, column=col, value=v)
-            c.border = THIN
+            c = _put(ws, i, col, v, text=col in TEXT_COLS)
             if col in (15, 16, 17, 18, 14):
                 c.number_format = "0.00"
         for (emp, field), o in ovr.items():
@@ -156,8 +178,8 @@ def build_workbook(db: Session, period: Period) -> bytes:
           ("Shortfall hours (sum)", k["shortfall_hours"]), ("Late-sitting days (after 21:00)", k["late_sitting_days"])]
     _header(ws, 5, ["Metric", "Value"], [44, 14])
     for i, (a, b) in enumerate(kp, start=6):
-        ws.cell(row=i, column=1, value=a).border = THIN
-        ws.cell(row=i, column=2, value=b).border = THIN
+        _put(ws, i, 1, a, text=True)
+        _put(ws, i, 2, b, text=True)
     r0 = 6 + len(kp) + 2
     ws.cell(row=r0, column=1, value="By group").font = Font(bold=True, size=12)
     gh = ["Group", "Headcount", "Present days", "PL", "Comp-off", "Absent", "LOP", "WFH", "Late days", "Regularised",
@@ -169,7 +191,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
         for i, key in enumerate(["group", "headcount", "days_present", "pl_days", "cof_days", "unauth_absent_days",
                                  "lop_days", "wfh_days", "late_days", "regularised_days", "deduction_days",
                                  "deduction_emps", "hours_vs_required_pct"], start=1):
-            ws.cell(row=j, column=i, value=g.get(key)).border = THIN
+            _put(ws, j, i, g.get(key), text=True)
     for i in range(3, 14):
         ws.column_dimensions[get_column_letter(i)].width = 12
 
@@ -278,7 +300,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
         row += 1
         for p in m["people"][key]:
             for i, kk in enumerate(["emp_no", "name", "group", "location", "doj", "dol", "years"], start=1):
-                ws.cell(row=row, column=i, value=p.get(kk, "")).border = THIN
+                _put(ws, row, i, p.get(kk, ""), text=True)
             row += 1
         row += 1
     for i, w in enumerate([10, 26, 10, 10, 12, 12, 7], start=1):

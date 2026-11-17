@@ -534,3 +534,208 @@ def test_insights_kpis_and_scorecard(loaded):
     assert "Employee scorecard" in html and "Bradford" in html and 'id="hm"' in html
     html = loaded.get("/periods/2026-10/employee/T001").text
     assert 'data-tab="score"' in html and "Compared with others" in html
+
+
+# ---------------------------------------------------------------- v1.4.1 review & performance regressions
+
+def test_attention_counts_zero_percent_as_zero():
+    from app.services import insights as INS
+    from app.services.settings import get_policy
+    from app.db import session_scope
+    with session_scope() as db:
+        pol = get_policy(db)
+    base = {"behaviour": True, "bradford": 0, "regularised_days": 0, "wfh_days": 0, "missing_punch_days": 0}
+    worst = INS._attention({**base, "punctuality_pct": 0.0, "utilisation_pct": 0.0}, pol)
+    best = INS._attention({**base, "punctuality_pct": 100.0, "utilisation_pct": 100.0}, pol)
+    assert worst["attention"] == 40 and best["attention"] == 0
+
+
+def test_stored_month_stats_match_day_detail(loaded):
+    """Insights computed from the compact stored summaries equal the ones computed from the full day detail."""
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import MonthResult, Period
+    from app.services import attendance_stats as AS
+    from app.services import insights as INS
+    with session_scope() as db:
+        p = db.scalar(select(Period).where(Period.year == 2026, Period.month == 10))
+        res = list(db.scalars(select(MonthResult).where(MonthResult.period_id == p.id)))
+        assert res and all(r.data.get("_ins") == AS.month_stats(r.days) for r in res)
+        stored = INS._insights(db, p)
+        for r in res:                                       # pretend the month was calculated by an old version
+            d = dict(r.data); d.pop("_ins"); r.data = d
+        db.flush()
+        legacy = INS._insights(db, p)
+        key = lambda I: [(x["emp_no"], x["bradford"], x["unplanned_days"], x["punctuality_pct"]) for x in I["rows"]]
+        assert key(stored) == key(legacy) and stored["trend"] == legacy["trend"]
+        db.rollback()
+    # a spell running from one month's last working day into the next month's first counts once
+    a = {"sp": 1, "un": 1, "sa": False, "ea": True}
+    b = {"sp": 2, "un": 3, "sa": True, "ea": False}
+    assert AS.join_spells([((2026, 9), a), ((2026, 10), b)]) == (2, 4)
+    assert AS.join_spells([((2026, 8), a), ((2026, 10), b)]) == (3, 4)     # not adjacent months → separate
+
+
+def test_doj_list_with_leaving_dates(loaded):
+    from openpyxl import Workbook
+    from app.db import session_scope
+    from app.models import Employee
+    c = loaded
+    wb = Workbook(); ws = wb.active
+    ws.append(["Employee Number", "Employee Name", "Joined On", "Date of Leaving"])
+    ws.append(["T001", "Asha Rao", "03 APR 2023", "28 OCT 2026"])
+    ws.append(["T002", "Bilal Khan", "01 JUL 2024", None])
+    buf = io.BytesIO(); wb.save(buf)
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=[("files", ("joiners_leavers.xlsx", buf.getvalue(), "application/octet-stream"))])
+    assert r.status_code == 200 and "Unexpected" not in r.text
+    with session_scope() as db:
+        e = db.get(Employee, "T001")
+        assert str(e.dol) == "2026-10-28" and e.is_active is False
+        assert db.get(Employee, "T002").dol is None
+
+
+def test_two_unsure_sheets_can_both_be_mapped(loaded):
+    from openpyxl import Workbook
+    c = loaded
+    wb = Workbook(); a = wb.active; a.title = "A"; b = wb.create_sheet("B")
+    for ws in (a, b):                                   # employee column has no usable header → inferred → review
+        ws.append(["Col A", "Attendance Date", "Session1 Status", "Session2 Status"])
+        for i, d in enumerate(range(1, 4)):
+            ws.append([f"T00{i + 1}", f"0{d} Oct 2026", "P", "P"])
+    buf = io.BytesIO(); wb.save(buf)
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=[("files", ("two.xlsx", buf.getvalue(), "application/octet-stream"))])
+    links = re.findall(r'href="(/imports/map/[0-9a-f]{32}\?sheet=[AB][^"]*)"', r.text)
+    assert len(links) == 2, r.text[-800:]
+    token = links[0].split("/")[3].split("?")[0]
+    form = {"kind": "muster", "row": "1", "f_emp_no": "0", "f_date": "1", "f_s1": "2", "f_s2": "3"}
+    page = c.get(links[0].replace("&amp;", "&"))
+    r1 = c.post(f"/imports/map/{token}", data={"csrf": _csrf(page.text), "sheet": "A", **form})
+    assert "your mapping" in r1.text
+    page = c.get(f"/imports/map/{token}?sheet=B")
+    assert page.status_code == 200 and "Tell the app" in page.text            # still available after mapping A
+    r2 = c.post(f"/imports/map/{token}", data={"csrf": _csrf(page.text), "sheet": "B", **form})
+    assert "your mapping" in r2.text
+    assert c.get(f"/imports/map/{token}?sheet=B", follow_redirects=False).status_code == 303   # now cleaned up
+
+
+def test_data_month_beats_wrong_title(loaded):
+    from openpyxl import Workbook
+    c = loaded
+    wb = Workbook(); ws = wb.active
+    ws.append(["Attendance Register November 2026"])
+    ws.append(["Employee No", "Attendance Date", "Session1 Status", "Session2 Status"])
+    for d in range(1, 6):
+        ws.append(["T001", f"0{d} Oct 2026", "P", "P"])
+    buf = io.BytesIO(); wb.save(buf)
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=[("files", ("register.xlsx", buf.getvalue(), "application/octet-stream"))])
+    assert "October 2026" in r.text and "title mentions November 2026" in r.text
+
+
+def test_one_recalculation_per_upload(loaded, fixtures, monkeypatch):
+    from app.services import imports as IMP
+    calls = []
+    orig = IMP.compute_period
+    monkeypatch.setattr(IMP, "compute_period", lambda db, p, cascade=True: calls.append(p.key) or orig(db, p, cascade=False))
+    c = loaded
+    files = [("files", (fixtures[k].name, fixtures[k].read_bytes(), "application/octet-stream")) for k in ("muster", "swipes")]
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=files)
+    assert r.status_code == 200 and calls == ["2026-10"], calls
+
+
+def test_board_pack_and_excel_resist_injected_text(loaded):
+    from openpyxl import load_workbook
+    from app.db import session_scope
+    from app.models import Employee
+    from app.services.compute import compute_period, get_period
+    with session_scope() as db:
+        db.get(Employee, "T001").name = '</script><!--<script>alert(1)</script> =HYPERLINK("http://x")'
+        compute_period(db, get_period(db, 2026, 10), cascade=False)
+    html = loaded.get("/exports/2026-10.html").text
+    data = html.split("const D = ", 1)[1].split("\n", 1)[0]
+    assert "<" not in data and "\\u003c/script" in data   # escaped, never raw
+    wb = load_workbook(io.BytesIO(loaded.get("/exports/2026-10.xlsx").content))
+    ws = wb["Payroll Leave Sheet"]
+    vals = [c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str) and "HYPERLINK" in c.value]
+    assert vals and all(not v.startswith("=") for v in vals)
+
+
+def test_place_name_upgrade_skips_finalised_months(loaded):
+    import datetime as dt
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import Period, Setting, SwipeRow
+    from app.services import geo
+    with session_scope() as db:
+        p = db.scalar(select(Period))
+        p.status = "FINALISED"
+        db.add(SwipeRow(period_id=p.id, emp_no="T001", ts=dt.datetime(2026, 10, 1, 10), lat=19.1145, lon=72.8712, place="frozen"))
+        s = db.get(Setting, "geo_names_version")
+        if s:
+            db.delete(s)
+    geo.upgrade_place_names()
+    with session_scope() as db:
+        assert db.scalar(select(SwipeRow.place).where(SwipeRow.lat == 19.1145)) == "frozen"
+
+
+def test_partial_file_updates_only_its_people(loaded, fixtures):
+    """A correction file for one person must not wipe everyone else's month; a full export still replaces it."""
+    from openpyxl import Workbook
+    from sqlalchemy import func, select
+    from app.db import session_scope
+    from app.models import MusterRow
+    c = loaded
+
+    def counts():
+        with session_scope() as db:
+            return dict(db.execute(select(MusterRow.emp_no, func.count()).group_by(MusterRow.emp_no)).all())
+    before = counts()
+    wb = Workbook(); ws = wb.active
+    ws.append(["Employee No", "Attendance Date", "Session1 Status", "Session2 Status"])
+    ws.append(["T001", "05 Oct 2026", "PL", "PL"])
+    buf = io.BytesIO(); wb.save(buf)
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=[("files", ("fix.xlsx", buf.getvalue(), "x"))])
+    assert "only their attendance days were replaced" in r.text
+    after = counts()
+    assert after["T001"] == 1 and all(after[e] == n for e, n in before.items() if e != "T001")
+    # the full export again restores everything
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")},
+               files=[("files", (fixtures["muster"].name, fixtures["muster"].read_bytes(), "x"))])
+    assert counts() == before and "only their" not in r.text.split("Import history")[0]
+
+
+def test_content_decides_file_type(tmp_path):
+    from openpyxl import Workbook
+    from app.importers.readers import read_workbook
+    wb = Workbook(); wb.active.append(["a", "b"]); buf = io.BytesIO(); wb.save(buf)
+    assert read_workbook(buf.getvalue(), "export.xls")["Sheet"][0] == ["a", "b"]       # xlsx named .xls
+    assert read_workbook(buf.getvalue(), "export.csv")["Sheet"][0] == ["a", "b"]       # xlsx named .csv
+
+
+def test_far_future_month_warns(loaded):
+    from openpyxl import Workbook
+    c = loaded
+    wb = Workbook(); ws = wb.active
+    ws.append(["Employee No", "Attendance Date", "Session1 Status", "Session2 Status"])
+    ws.append(["T001", "01 Jan 2099", "P", "P"])
+    buf = io.BytesIO(); wb.save(buf)
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=[("files", ("typo.xlsx", buf.getvalue(), "x"))])
+    assert "January 2099" in r.text and "months ahead of today" in r.text and "Check the dates" in r.text
+    assert c.get("/periods/2099-01").status_code == 404              # no phantom month was created
+
+
+def test_admin_can_delete_a_mistaken_month(loaded):
+    from app.db import session_scope
+    from app.models import AuditLog, MusterRow, Period
+    from sqlalchemy import select
+    c = loaded
+    page = c.get("/periods/2026-10").text
+    assert 'id="delmonth"' in page
+    csrf = csrf_of(c, "/periods/2026-10")
+    r = c.post("/periods/2026-10/delete", data={"csrf": csrf, "reason": "oops", "confirm": "Oct 2026"}, follow_redirects=True)
+    assert "type the month name exactly" in r.text and c.get("/periods/2026-10").status_code == 200
+    r = c.post("/periods/2026-10/delete", data={"csrf": csrf, "reason": "wrong file", "confirm": "October 2026"}, follow_redirects=True)
+    assert "October 2026 deleted" in r.text
+    assert c.get("/periods/2026-10").status_code == 404
+    with session_scope() as db:
+        assert db.scalar(select(MusterRow.id).limit(1)) is None and db.scalar(select(Period.id)) is None
+        assert db.scalar(select(AuditLog).where(AuditLog.action == "period.delete")) is not None

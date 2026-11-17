@@ -3,7 +3,7 @@
 {% block title %}Insights {{ period.label }}{% endblock %}
 {% block content %}
 {% set k = I.kpis %}{% set key = period.key %}
-{% macro pct(v) %}{% if v is not none %}{{ v|n(1) }}%{% endif %}{% endmacro %}
+{% macro pct(v, dash=False) %}{% if v is not none %}{{ v|n(1) }}%{% elif dash %}—{% endif %}{% endmacro %}
 <div class="ph">
   <div><h1>Workforce insights</h1>
     <div class="sub">{{ period.label }} · {{ k.headcount }} employees · absence, punctuality, hours, leave liability and retention — each person scored against the firm</div></div>
@@ -14,12 +14,12 @@
 </div>
 
 <div class="kpis k8">
-  {{ ui.kpi('Unplanned absence', pct(k.absenteeism_pct), 'calendar-x', 'bad' if (k.absenteeism_pct or 0) >= 5 else '', none, k.unplanned_spells ~ ' spells · absent + LOP ÷ working days') }}
-  {{ ui.kpi('On-time arrivals', pct(k.punctuality_pct), 'alarm-clock', 'warn' if (k.punctuality_pct or 100) < 70 else 'good', none, 'median first punch ' ~ k.median_in) }}
-  {{ ui.kpi('Hours vs required', pct(k.utilisation_pct), 'timer', 'good' if (k.utilisation_pct or 0) >= 100 else 'warn', none, '+' ~ (k.overtime_hours|n(0)) ~ ' h over · −' ~ (k.shortfall_hours|n(0)) ~ ' h short') }}
+  {{ ui.kpi('Unplanned absence', pct(k.absenteeism_pct, True), 'calendar-x', 'bad' if (k.absenteeism_pct or 0) >= 5 else '', none, k.unplanned_spells ~ ' spells · absent + LOP ÷ working days') }}
+  {{ ui.kpi('On-time arrivals', pct(k.punctuality_pct, True), 'alarm-clock', 'warn' if (100 if k.punctuality_pct is none else k.punctuality_pct) < 70 else 'good', none, 'median first punch ' ~ (k.median_in or '—')) }}
+  {{ ui.kpi('Hours vs required', pct(k.utilisation_pct, True), 'timer', 'good' if (k.utilisation_pct or 0) >= 100 else 'warn', none, '+' ~ (k.overtime_hours|n(0)) ~ ' h over · −' ~ (k.shortfall_hours|n(0)) ~ ' h short') }}
   {{ ui.kpi('Bradford: monitor or worse', I.bradford_bands[2:]|sum(attribute='count'), 'activity', 'warn' if k.bradford_warning else '', none, k.bradford_warning ~ ' at warning (≥ 201) · rolling 12 months') }}
   {{ ui.kpi('Leave liability', k.leave_liability_days|n ~ ' d', 'briefcase', '', none, 'closing balances · comp-off ' ~ (k.compoff_liability_days|n) ~ ' d') }}
-  {{ ui.kpi('Attrition (12 months)', pct(k.attrition_pct), 'user-minus', 'warn' if (k.attrition_pct or 0) >= 15 else '', none, k.exits_12m ~ ' exits · ' ~ k.joiners_12m ~ ' joiners') }}
+  {{ ui.kpi('Attrition (12 months)', pct(k.attrition_pct, True), 'user-minus', 'warn' if (k.attrition_pct or 0) >= 15 else '', none, k.exits_12m ~ ' exits · ' ~ k.joiners_12m ~ ' joiners') }}
   {{ ui.kpi('Average tenure', (k.avg_tenure_years|n(1) ~ ' yrs') if k.avg_tenure_years is not none else '—', 'award', '', none, 'active employees with a joining date') }}
   {{ ui.kpi('Need a conversation', k.attention_high, 'message-circle-warning', 'bad' if k.attention_high else 'good', '#scorecard', 'attention score ≥ 50 of 100') }}
 </div>
@@ -63,11 +63,11 @@
     <td class="num" data-v="{{ r.attendance_pct }}">{{ pct(r.attendance_pct) }}</td>
     <td class="num {{ 'neg' if (r.absence_pct or 0) >= 10 }}" data-v="{{ r.absence_pct }}">{{ pct(r.absence_pct) }}</td>
     <td class="num" data-v="{{ r.bradford }}">{% if r.bradford %}<span class="badge b-{{ r.bradford_tone }}" title="{{ r.bradford_spells }} spells, {{ r.bradford_days|n }} days in {{ r.bradford_months }} month(s)">{{ r.bradford }} · {{ r.bradford_band }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
-    <td class="num {{ 'neg' if r.behaviour and (r.punctuality_pct or 100) < 50 }}" data-v="{{ r.punctuality_pct }}">{{ pct(r.punctuality_pct) }}</td>
+    <td class="num {{ 'neg' if r.behaviour and (100 if r.punctuality_pct is none else r.punctuality_pct) < 50 }}" data-v="{{ r.punctuality_pct }}">{{ pct(r.punctuality_pct) }}</td>
     <td class="num" data-v="{{ r.avg_in_min or '' }}">{{ r.avg_in }}</td><td class="num" data-v="{{ r.avg_out_min or '' }}">{{ r.avg_out }}</td>
     <td class="num" data-v="{{ r.very_late_days }}">{{ r.very_late_days or '' }}</td>
     <td class="num" data-v="{{ r.avg_hours or '' }}">{{ r.avg_hours|n(2) }}</td>
-    <td class="num" data-v="{{ r.utilisation_pct }}"><span class="{{ 'neg' if (r.utilisation_pct or 100) < 100 else 'pos' }}">{{ pct(r.utilisation_pct) }}</span></td>
+    <td class="num" data-v="{{ r.utilisation_pct }}"><span class="{{ 'neg' if (100 if r.utilisation_pct is none else r.utilisation_pct) < 100 else 'pos' }}">{{ pct(r.utilisation_pct) }}</span></td>
     <td class="num {{ 'neg' if r.balance_hours < 0 else 'pos' if r.balance_hours > 0 }}" data-v="{{ r.balance_hours }}">{{ r.balance_hours|n(1) }}</td>
     <td class="num" data-v="{{ r.long_days }}">{{ r.long_days or '' }}</td><td class="num" data-v="{{ r.late_sitting_days }}">{{ r.late_sitting_days or '' }}</td>
     <td class="num {{ 'neg' if r.wfh_days > policy.wfh_limit_days }}" data-v="{{ r.wfh_days }}">{{ r.wfh_days|n or '' }}</td>
@@ -118,11 +118,11 @@
   </div>
   <div class="minis">
     <div class="mini"><div class="v">{{ k.median_in }}</div><div class="l">Median first punch</div></div>
-    <div class="mini {{ 'warn' if (k.punctuality_pct or 100) < 70 }}"><div class="v">{{ pct(k.punctuality_pct) }}</div><div class="l">On time (within {{ policy.late_grace_min }} min of shift start)</div></div>
+    <div class="mini {{ 'warn' if (100 if k.punctuality_pct is none else k.punctuality_pct) < 70 }}"><div class="v">{{ pct(k.punctuality_pct, True) }}</div><div class="l">On time (within {{ policy.late_grace_min }} min of shift start)</div></div>
     <div class="mini"><div class="v">{{ k.long_days }}</div><div class="l">Long days (2 h+ over required)</div></div>
     <div class="mini"><div class="v">{{ k.late_sitting_days }}</div><div class="l">Late-sitting days</div></div>
-    <div class="mini"><div class="v">{{ pct(k.regularisation_pct) }}</div><div class="l">Present days regularised</div></div>
-    <div class="mini"><div class="v">{{ pct(k.missing_punch_pct) }}</div><div class="l">Present days with a missing punch</div></div>
+    <div class="mini"><div class="v">{{ pct(k.regularisation_pct, True) }}</div><div class="l">Present days regularised</div></div>
+    <div class="mini"><div class="v">{{ pct(k.missing_punch_pct, True) }}</div><div class="l">Present days with a missing punch</div></div>
   </div>
 </section>
 
@@ -137,9 +137,9 @@
       <p class="small muted mt-s">Bands: 1–50 low · 51–200 monitor · 201–449 warning (informal talk) · 450+ serious. Many short absences score far higher than one long one — 5 one-day absences = 125, one 5-day absence = 5.</p></div></div>
   </div>
   <div class="minis mt">
-    <div class="mini {{ 'bad' if (k.absenteeism_pct or 0) >= 5 }}"><div class="v">{{ pct(k.absenteeism_pct) }}</div><div class="l">Unplanned absence rate</div></div>
+    <div class="mini {{ 'bad' if (k.absenteeism_pct or 0) >= 5 }}"><div class="v">{{ pct(k.absenteeism_pct, True) }}</div><div class="l">Unplanned absence rate</div></div>
     <div class="mini"><div class="v">{{ k.unplanned_spells }}</div><div class="l">Absence spells this month</div></div>
-    <div class="mini"><div class="v">{{ pct(k.leave_used_fy_pct) }}</div><div class="l">Annual leave used, {{ k.fy_label }}</div></div>
+    <div class="mini"><div class="v">{{ pct(k.leave_used_fy_pct, True) }}</div><div class="l">Annual leave used, {{ k.fy_label }}</div></div>
     <div class="mini"><div class="v">{{ k.leave_liability_days|n }}</div><div class="l">Leave balance owed (days)</div></div>
     <div class="mini"><div class="v">{{ k.encashment_days|n }}</div><div class="l">Encashable days</div></div>
     <div class="mini"><div class="v">{{ k.compoff_liability_days|n }}</div><div class="l">Comp-off balance (days)</div></div>
@@ -154,7 +154,7 @@
     <th data-key="brad" data-type="num" class="num">Avg Bradford</th><th data-key="attn" data-type="num" class="num">Avg attention</th><th data-key="ded" data-type="num" class="num" data-sum>Deduction days</th></tr></thead><tbody>
   {% for g in I.groups %}<tr><td class="strong">{{ g.group }}</td><td class="num" data-v="{{ g.headcount }}">{{ g.headcount }}</td>
     <td class="num" data-v="{{ g.attendance_pct }}">{{ pct(g.attendance_pct) }}</td><td class="num" data-v="{{ g.absenteeism_pct }}">{{ pct(g.absenteeism_pct) }}</td>
-    <td class="num" data-v="{{ g.punctuality_pct }}">{{ pct(g.punctuality_pct) }}</td><td class="num" data-v="{{ g.utilisation_pct }}"><span class="{{ 'neg' if (g.utilisation_pct or 100) < 100 else 'pos' }}">{{ pct(g.utilisation_pct) }}</span></td>
+    <td class="num" data-v="{{ g.punctuality_pct }}">{{ pct(g.punctuality_pct) }}</td><td class="num" data-v="{{ g.utilisation_pct }}"><span class="{{ 'neg' if (100 if g.utilisation_pct is none else g.utilisation_pct) < 100 else 'pos' }}">{{ pct(g.utilisation_pct) }}</span></td>
     <td class="num" data-v="{{ g.avg_hours }}">{{ g.avg_hours|n(2) }}</td><td class="num" data-v="{{ g.wfh_pct }}">{{ pct(g.wfh_pct) }}</td><td class="num" data-v="{{ g.regularisation_pct }}">{{ pct(g.regularisation_pct) }}</td>
     <td class="num" data-v="{{ g.bradford_avg }}">{{ g.bradford_avg|n(1) }}</td><td class="num" data-v="{{ g.attention_avg }}">{{ g.attention_avg|n(1) }}</td>
     <td class="num" data-v="{{ g.deduction_days }}">{{ g.deduction_days|n }}</td></tr>{% endfor %}

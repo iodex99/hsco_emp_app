@@ -92,3 +92,7 @@ groups. "Main reasons" lists the parts worth ≥ 5 points. ≥ 50 counts as "nee
 **Employee comparison** (Scorecard tab): the person's value, their group's average and the firm's average for ten
 measures; verdict "better / needs attention" when the gap to the firm exceeds 5 % points (percentages) or 10 % of the
 firm value (others), otherwise "typical".
+
+*v1.4.1:* the attention score uses 0 % as 0 % (previously a 0 % on-time or hours share was mistaken for "no data").
+History-based measures (Bradford, FY leave used, trend) are computed from the stored month summaries; a spell that runs
+from one month's last working day into the next month's first working day counts once.

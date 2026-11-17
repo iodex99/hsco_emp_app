@@ -46,10 +46,18 @@ def _editable(p: Period):
         raise HTTPException(409, f"{p.label} is finalised. An admin must re-open it before changes.")
 
 
+@router.get("/periods")
+def periods_index(c: Ctx = Depends(viewer)):
+    """Bare /periods → the latest calculated month's payroll sheet (or the overview when there is none)."""
+    from app.web import periods as all_periods
+    ps = [p for p in all_periods(c.db) if p.computed_at]
+    return redirect(f"/periods/{ps[0].key}" if ps else "/")
+
+
 @router.get("/periods/{key}", response_class=HTMLResponse)
 def period_results(key: str, c: Ctx = Depends(viewer)):
     p = get_p(c, key)
-    rows = MX.results_for(c.db, p)
+    rows = MX.results_for(c.db, p, with_days=False)
     policy = get_policy(c.db)
     return render(c, "period.html", period=p, rows=rows, policy=policy)
 
@@ -83,6 +91,30 @@ def reopen(key: str, reason: str = Form(...), c: Ctx = Depends(admin)):
     p.status = "DRAFT"
     audit(c.db, c.user, "period.reopen", "period", p.key, {"reason": reason}, c.ip)
     return redirect(f"/periods/{key}", f"{p.label} re-opened.")
+
+
+@router.post("/periods/{key}/delete")
+def delete_month(key: str, reason: str = Form(""), confirm: str = Form(""), c: Ctx = Depends(admin)):
+    """Remove a month imported by mistake (e.g. a typo'd date). Draft months only; reason required; audit-logged.
+    Everything belonging to the month goes (imports, results, corrections, reviews); later draft months are
+    recalculated because leave balances carry forward."""
+    from sqlalchemy import delete as sql_delete
+    from app.services.imports import recompute_from
+    p = get_p(c, key)
+    if p.status == "FINALISED":
+        return redirect(f"/periods/{key}", "A finalised month can't be deleted. Re-open it first.")
+    if not reason.strip() or confirm.strip().lower() != p.label.lower():
+        return redirect(f"/periods/{key}", f"To delete, give a reason and type the month name exactly ({p.label}).")
+    label, ym = p.label, (p.year, p.month)
+    audit(c.db, c.user, "period.delete", "period", key, {"reason": reason.strip()}, c.ip)
+    c.db.execute(sql_delete(Period).where(Period.id == p.id))      # rows of the month go with it (ON DELETE CASCADE)
+    c.db.flush()
+    later = {q.id for q in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None)))
+             if (q.year, q.month) > ym}
+    c.db.commit()
+    if later:
+        recompute_from(c.db, later, commit_each=True)
+    return redirect("/", f"{label} deleted.")
 
 
 @router.get("/periods/{key}/employee/{emp_no}", response_class=HTMLResponse)

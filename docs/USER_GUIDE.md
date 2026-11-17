@@ -45,6 +45,11 @@ Add more methods under **My security** (several phones, keys).
    column for each field (its guesses are pre-filled; the preview highlights the columns used) and *Import*. Leave
    *Remember this layout* ticked and the same kind of file imports automatically from then on (remembered layouts are
    listed at the bottom of Import files, with a bin to forget one).
+   **Correction files:** a file with only a few people (e.g. a corrected muster for one person) updates just those
+   people; everyone else's month is kept. The full export replaces the whole month.
+   A file dated well in the future is refused — check the year in the file.
+   **Imported the wrong month by mistake?** An admin can delete a draft month: Payroll leave sheet → bin icon → give a
+   reason and type the month name.
 3. **Review queue**: work through the exceptions (shortfall deductions, unauthorised absence, WFH over limit,
    present-without-punch, leave exhausted). Mark each one reviewed; pick a reason or type a note.
 4. Click an employee to open the **drill-down**: calendar, every punch with place, flags, ledger. Correct if needed:

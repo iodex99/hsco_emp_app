@@ -187,3 +187,81 @@ def test_mapping_suggestions_from_values():
     rows2 = [["A", "B", "C"], ["HS1", "01/10/2026", "Present"], ["HS2", "01/10/2026", "Week Off"], ["HS3", "02/10/2026", "Absent"]]
     assert P.suggest(rows2, 0, "muster") == {"emp_no": 0, "date": 1, "status": 2}
     assert P.guess_header_row(rows) == 2
+
+
+# ---------------------------------------------------------------- regression tests for the v1.4 review findings
+
+def test_numeric_employee_codes_are_not_dates():
+    rows = [["Code", "Name", "Attendance Date", "Status"], [50123, "A", "01/10/2026", "P"], [50124, "B", "01/10/2026", "A"],
+            [50125, "C", "02/10/2026", "P"]]
+    d = P.detect({"s": rows})[0]
+    assert d.kind == "muster" and d.map["emp_no"] == 0 and d.map["date"] == 2 and not P.needs_review(d)
+    recs, _ = P.parse_muster(rows, d)
+    assert [r.emp_no for r in recs] == ["50123", "50124", "50125"]
+    # with an unhelpful date header the numeric code column is never inferred as the date
+    rows2 = [["Code", "Name", "Col", "Status"]] + rows[1:]
+    d2 = P.detect({"s": rows2})[0]
+    assert d2.map.get("date") == 2 and P.needs_review(d2)
+
+
+def test_status_words_and_codes():
+    assert P.status_codes("Half Day Leave") == ("PL", "P") and P.status_codes("Half Day CL") == ("CL", "P")
+    assert P.status_codes("Half Day Absent") == ("A", "P") and P.status_codes("Half Day") == ("P", "A")
+    assert P.status_codes("P(HD)") == ("P", "A") and P.status_codes("PL (HD)") == ("PL", "P") and P.status_codes("hd") == ("P", "A")
+    # short codes are kept exactly (an admin may map PH / AB / WO themselves)
+    assert P.status_codes("PH") == ("PH", "PH") and P.status_codes("ab") == ("AB", "AB") and P.status_codes("WO") == ("WO", "WO")
+
+
+def test_hours_and_time_edge_cases():
+    from datetime import timedelta
+    assert P.parse_hhmm(timedelta(days=1, hours=2, minutes=5)) == 1565 and P.parse_hhmm("1 day, 2:05:00") == 1565
+    assert P.parse_time("9.5") is None and P.parse_time(8.5) is None and P.parse_time("9.30").minute == 30
+
+
+def test_warning_rows_are_spreadsheet_rows():
+    rows = [["Employee No", "Attendance Date", "Session1 Status", "Session2 Status"], ["E1", "01 Oct 2026", "P", "P"],
+            [None, None, None, None], ["", "bad", "P", "P"], ["E2", "02 Oct 2026", "P", "P"]]
+    _, warn = P.parse_muster(rows, P.detect({"s": rows})[0])
+    assert warn == ["row 4: missing employee/date — skipped"]
+
+
+def test_period_title_prefers_from_to_and_skips_print_dates():
+    rows = [["Acme Ltd"], ["Printed 02-Nov-2026"], ["Attendance Register October 2026"],
+            ["Employee No", "Attendance Date", "Session1 Status", "Session2 Status"], ["E1", "01 Oct 2026", "P", "P"]]
+    d = P.detect({"s": rows})[0]
+    assert P.detect_period(d, rows) == (2026, 10)
+
+
+def test_remembered_layout_replay_is_validated():
+    rows = [["Emp", "", "Date", "", "Status"], ["E1", "x", "01 Oct 2026", "y", "P"], ["E2", "x", "01 Oct 2026", "y", "A"]]
+    lay = {"signature": P.layout_signature(rows[0]), "kind": "muster",
+           "map": {"emp_no": {"i": 0, "h": "Emp"}, "name": {"i": 1, "h": ""}, "date": {"i": 2, "h": "Date"},
+                   "status": {"i": 4, "h": "Status"}}}
+    d = P.detect({"s": rows}, [lay])[0]
+    assert d.source == "layout" and d.map == {"emp_no": 0, "name": 1, "date": 2, "status": 4}
+    # same header set, columns moved → the layout no longer fits and is not used blindly
+    moved = [["Status", "", "Date", "", "Emp"], ["P", "x", "01 Oct 2026", "y", "E1"], ["A", "x", "01 Oct 2026", "y", "E2"]]
+    d2 = P.detect({"s": moved}, [lay])
+    assert not d2 or d2[0].source != "layout"
+    # an old-style layout (header text only) with a duplicate header is not replayed
+    old = {"signature": P.layout_signature(rows[0]), "kind": "muster", "map": {"emp_no": "Emp", "date": "Date", "status": "Status", "name": ""}}
+    d3 = P.detect({"s": rows}, [old])
+    assert not d3 or d3[0].source != "layout"
+
+
+def test_detection_is_thread_safe():
+    import threading
+    s = read_path(__import__("tests.fixtures.make_fixtures", fromlist=["x"]).write_all(
+        __import__("pathlib").Path(__import__("tempfile").mkdtemp()))["muster"])
+    errors = []
+
+    def work():
+        try:
+            for _ in range(15):
+                assert P.detect(s)[0].kind == "muster"
+        except Exception as ex:  # noqa: BLE001
+            errors.append(ex)
+    ts = [threading.Thread(target=work) for _ in range(6)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert not errors

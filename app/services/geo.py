@@ -12,6 +12,7 @@ import gzip
 import json
 import math
 import os
+import pathlib
 import sqlite3
 import threading
 import urllib.parse
@@ -86,20 +87,18 @@ NAMES_VERSION = 2   # bump when the offline gazetteer changes so cached/stored n
 
 
 def warm_up() -> None:
-    """Background start-up job: build the gazetteer index (so the first import with coordinates is fast), then — once
-    per gazetteer version — refresh place names stored by older versions and recalculate draft months."""
-    def run():
-        import logging
-        try:
-            gazetteer_db()
-            upgrade_place_names()
-        except Exception:  # noqa: BLE001
-            logging.getLogger("hsco.geo").exception("gazetteer warm-up failed")
-    threading.Thread(target=run, name="gazetteer", daemon=True).start()
+    """Background start-up job (see app/services/maintenance.py)."""
+    from app.services import maintenance
+    maintenance.start()
 
 
 def upgrade_place_names() -> int:
-    from sqlalchemy import delete
+    """Once per gazetteer version: re-name swipes stored with older offline names, then recalculate draft months.
+
+    Never holds the database write lock for long: names are worked out first (reads only, offline gazetteer and
+    geofences only — no online lookups), then written in short batches; each draft month is recalculated in its own
+    transaction. Finalised months are left untouched (their results are frozen)."""
+    from sqlalchemy import delete, update
     from app.db import session_scope
     from app.models import Period, Setting, SwipeRow
     from app.services.compute import compute_period
@@ -107,44 +106,89 @@ def upgrade_place_names() -> int:
         st = db.get(Setting, "geo_names_version")
         if st and (st.value or {}).get("v", 0) >= NAMES_VERSION:
             return 0
+        drafts = {p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT"))}
+        fences = db.scalars(select(Geofence)).all()
+        max_km = float(get_general(db).get("geocode_max_km") or 15)
+        rows = db.execute(select(SwipeRow.id, SwipeRow.period_id, SwipeRow.lat, SwipeRow.lon, SwipeRow.place)
+                          .where(SwipeRow.lat.is_not(None), SwipeRow.period_id.in_(drafts or {-1}))).all()
+    names: dict = {}
+    changes: list = []
+    touched: set = set()
+    for rid, pid, lat, lon, place in rows:
+        key = f"{lat:.4f},{lon:.4f}"
+        if key not in names:
+            fence = _fence_name(fences, lat, lon)
+            names[key] = fence or offline_name(lat, lon, max_km) or f"{lat:.5f}, {lon:.5f}"
+        if names[key] != place:
+            changes.append({"i": rid, "p": names[key]})
+            touched.add(pid)
+    from sqlalchemy import bindparam
+    for i in range(0, len(changes), 2000):
+        with session_scope() as db:
+            db.execute(update(SwipeRow.__table__).where(SwipeRow.__table__.c.id == bindparam("i")).values(place=bindparam("p")),
+                       changes[i:i + 2000])
+    with session_scope() as db:
         db.execute(delete(GeoCache).where(GeoCache.source == "offline"))
-        namer = Namer(db)
-        n = 0
-        for sw in db.scalars(select(SwipeRow).where(SwipeRow.lat.is_not(None))):
-            new = namer.name(sw.lat, sw.lon)
-            if new != sw.place:
-                sw.place = new
-                n += 1
-        if n:
-            for per in db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))):
+    for pid in sorted(touched):
+        with session_scope() as db:
+            per = db.get(Period, pid)
+            if per is not None and per.status == "DRAFT" and per.computed_at:
                 compute_period(db, per, cascade=False)
+    with session_scope() as db:
+        st = db.get(Setting, "geo_names_version")
         if st is None:
             db.add(Setting(key="geo_names_version", value={"v": NAMES_VERSION}))
         else:
             st.value = {"v": NAMES_VERSION}
-        return n
+    return len(changes)
+
+
+def _fence_name(fences, lat: float, lon: float) -> Optional[str]:
+    best = None
+    for f in fences:
+        d = haversine_m(lat, lon, f.lat, f.lon)
+        if d <= f.radius_m and (best is None or d < best[0]):
+            best = (d, f)
+    return f"{best[1].name} ({best[1].category})" if best else None
+
+
+_TL = threading.local()
+
+
+def _con() -> Optional[sqlite3.Connection]:
+    """One read-only connection per thread (keeps the gazetteer's pages cached between lookups)."""
+    db = gazetteer_db()
+    if not db:
+        return None
+    con = getattr(_TL, "con", None)
+    if con is None or getattr(_TL, "path", None) != db:
+        con = sqlite3.connect(f"file:{pathlib.Path(db).as_posix()}?mode=ro", uri=True)
+        _TL.con, _TL.path = con, db
+    return con
 
 
 def _nearby(lat: float, lon: float, max_km: float) -> list:
-    db = gazetteer_db()
-    if not db:
+    """Places within max_km, nearest first: (metres, name, district, state, kind)."""
+    con = _con()
+    if con is None:
         return []
-    rng = max(1, int(math.ceil(max_km / (CELL * 111))))
-    gx, gy = int(lat // CELL), int(lon // CELL)
-    con = sqlite3.connect(db)
-    try:
-        rows = con.execute("select lat, lon, name, district, state, kind from p where gx between ? and ? and gy between ? and ?",
-                           (gx - rng, gx + rng, gy - rng, gy + rng)).fetchall()
-    finally:
-        con.close()
+    dlat = max_km / 111.0
+    dlon = max_km / (111.0 * max(0.2, math.cos(math.radians(lat))))   # full radius east-west at any latitude
+    rows = con.execute("select lat, lon, name, district, state, kind from p where gx between ? and ? and gy between ? and ?",
+                       (int((lat - dlat) // CELL), int((lat + dlat) // CELL),
+                        int((lon - dlon) // CELL), int((lon + dlon) // CELL))).fetchall()
     out = [(haversine_m(lat, lon, r[0], r[1]), *r[2:]) for r in rows]
     return sorted((x for x in out if x[0] <= max_km * 1000), key=lambda x: x[0])
 
 
 def describe(lat: float, lon: float, max_km: float = 15) -> Optional[dict]:
     """Structured offline place for a coordinate: nearest locality/neighbourhood, district, state, landmark."""
-    near = _nearby(lat, lon, max_km)
+    # search a small window first; widen only when the answer could lie outside it (same result, far fewer rows)
+    near = _nearby(lat, lon, min(3.0, max_km))
     places = [x for x in near if x[4] != "S"]
+    if max_km > 3.0 and (not places or max(1500, places[0][0] * 1.6) > 3000):
+        near = _nearby(lat, lon, max_km)
+        places = [x for x in near if x[4] != "S"]
     if not places:
         return None
     # prefer a named neighbourhood/locality if it is almost as close as the nearest village/town
@@ -196,48 +240,80 @@ class Namer:
         self.online = bool(g.get("online_geocoding"))
         self.max_km = float(g.get("geocode_max_km") or 15)
         self.cache: dict[str, str] = {}
+        self._known: Optional[dict] = None
+        self.new: list = []                          # GeoCache rows to add (written by flush_cache)
 
     def name(self, lat: Optional[float], lon: Optional[float]) -> str:
         if lat is None or lon is None:
             return ""
-        best = None
-        for f in self.fences:
-            d = haversine_m(lat, lon, f.lat, f.lon)
-            if d <= f.radius_m and (best is None or d < best[0]):
-                best = (d, f)
-        if best:
-            return f"{best[1].name} ({best[1].category})"
+        fence = _fence_name(self.fences, lat, lon)
+        if fence:
+            return fence
         key = f"{lat:.4f},{lon:.4f}"
         if key in self.cache:
             return self.cache[key]
-        row = self.db.get(GeoCache, key)
-        if row:
-            self.cache[key] = row.name
-            return row.name
+        if self._known is None:                      # load the whole cache once (no per-lookup query/autoflush)
+            self._known = {k: n for k, n in self.db.execute(select(GeoCache.key, GeoCache.name))}
+        if key in self._known:
+            self.cache[key] = self._known[key]
+            return self._known[key]
         name, src = offline_name(lat, lon, self.max_km), "offline"
         if self.online:
             on = online_name(lat, lon)
             if on:
                 name, src = on, "osm"
         name = name or f"{lat:.5f}, {lon:.5f}"
-        self.db.merge(GeoCache(key=key, name=name, source=src))
+        self.new.append(GeoCache(key=key, name=name, source=src))
         self.cache[key] = name
         return name
+
+    def flush_cache(self) -> None:
+        for g in self.new:
+            self.db.merge(g)
+        self.new = []
+
+
+def rename_swipes(db: Session, period_ids: Optional[set] = None) -> set:
+    """Re-name stored swipes (e.g. after a geofence change) for draft months; one lookup per distinct coordinate and a
+    bulk update. Returns the ids of periods whose names changed (to recalculate)."""
+    from sqlalchemy import bindparam, update
+    from app.models import Period, SwipeRow
+    drafts = {p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT"))}
+    if period_ids is not None:
+        drafts &= set(period_ids)
+    if not drafts:
+        return set()
+    namer = Namer(db)
+    changes, touched = [], set()
+    for rid, pid, lat, lon, place in db.execute(select(SwipeRow.id, SwipeRow.period_id, SwipeRow.lat, SwipeRow.lon,
+                                                       SwipeRow.place)
+                                                .where(SwipeRow.lat.is_not(None), SwipeRow.period_id.in_(drafts))):
+        new = namer.name(lat, lon)
+        if new != place:
+            changes.append({"i": rid, "p": new})
+            touched.add(pid)
+    namer.flush_cache()
+    if changes:
+        db.execute(update(SwipeRow.__table__).where(SwipeRow.__table__.c.id == bindparam("i")).values(place=bindparam("p")), changes)
+    return touched
 
 
 def unnamed_clusters(db: Session, limit: int = 30) -> list[dict]:
     """Group swipe coordinates not covered by a geofence (≈110 m grid) so the admin can name them."""
     from app.models import SwipeRow
 
+    from sqlalchemy import func
     fences = db.scalars(select(Geofence)).all()
-    buckets: dict = defaultdict(lambda: {"count": 0, "emps": set(), "lat": 0.0, "lon": 0.0, "place": ""})
-    for s in db.scalars(select(SwipeRow).where(SwipeRow.lat.is_not(None))):
-        if any(haversine_m(s.lat, s.lon, f.lat, f.lon) <= f.radius_m for f in fences):
+    # grouped in SQL (≈110 m buckets) — never loads every swipe; fence check on each bucket's centre
+    q = (select(func.round(SwipeRow.lat, 3), func.round(SwipeRow.lon, 3), func.count(), func.avg(SwipeRow.lat),
+                func.avg(SwipeRow.lon), func.max(SwipeRow.place), func.group_concat(SwipeRow.emp_no.distinct()))
+         .where(SwipeRow.lat.is_not(None)).group_by(func.round(SwipeRow.lat, 3), func.round(SwipeRow.lon, 3))
+         .order_by(func.count().desc()))
+    out = []
+    for _, _, n, lat, lon, place, emps in db.execute(q):
+        if any(haversine_m(lat, lon, f.lat, f.lon) <= f.radius_m for f in fences):
             continue
-        k = (round(s.lat, 3), round(s.lon, 3))
-        b = buckets[k]
-        b["count"] += 1
-        b["emps"].add(s.emp_no)
-        b["lat"], b["lon"], b["place"] = s.lat, s.lon, s.place
-    out = sorted(buckets.values(), key=lambda b: -b["count"])[:limit]
-    return [{**b, "emps": sorted(b["emps"])} for b in out]
+        out.append({"count": n, "lat": lat, "lon": lon, "place": place or "", "emps": sorted((emps or "").split(","))})
+        if len(out) >= limit:
+            break
+    return out

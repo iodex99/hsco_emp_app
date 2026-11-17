@@ -15,6 +15,7 @@
     <form method="post" action="/periods/{{ period.key }}/finalise" class="inline" data-confirm="Finalise {{ period.label }}? Imports and corrections will be locked until an admin re-opens the month.">{{ ui.csrf_field() }}<button class="btn">{{ ui.icon('lock','sm') }} Finalise for payroll</button></form>
     {% endif %}
     {% if can_admin and period.status == 'FINALISED' %}<button class="btn danger" type="button" onclick="HSCO.openDrawer('reopen')">{{ ui.icon('lock-open','sm') }} Re-open</button>{% endif %}
+    {% if can_admin and period.status == 'DRAFT' %}<button class="btn ghost" type="button" onclick="HSCO.openDrawer('delmonth')" title="Remove a month imported by mistake">{{ ui.icon('trash-2','sm') }}</button>{% endif %}
   </div>
 </div>
 
@@ -84,6 +85,14 @@
 <div class="db"><div class="alert warn">{{ ui.icon('triangle-alert') }}<span>Payroll may already have used this sheet. Re-opening allows imports and corrections again; it is recorded in the audit log.</span></div>
 <div class="field"><label>Reason</label><textarea name="reason" rows="3" required placeholder="e.g. Late regularisation approved by partner"></textarea></div></div>
 <div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn danger">Re-open month</button></div></form></aside><div class="scrim"></div>
+{% endif %}
+{% if can_admin and period.status == 'DRAFT' %}
+<aside class="drawer" id="delmonth" aria-label="Delete month"><div class="dh"><h2>Delete {{ period.label }}?</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<form method="post" action="/periods/{{ period.key }}/delete" style="display:contents">{{ ui.csrf_field() }}
+<div class="db"><div class="alert bad">{{ ui.icon('triangle-alert') }}<span>For a month imported by mistake (for example a wrong date in a file). Everything for {{ period.label }} is removed — imported files, results, corrections and reviews. Later months are recalculated. This is recorded in the audit log and cannot be undone; re-import the files to bring the month back.</span></div>
+<div class="field"><label>Reason</label><textarea name="reason" rows="2" required placeholder="e.g. File had a wrong year"></textarea></div>
+<div class="field"><label>Type <b>{{ period.label }}</b> to confirm</label><input name="confirm" required autocomplete="off"></div></div>
+<div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn danger">{{ ui.icon('trash-2','sm') }} Delete month</button></div></form></aside><div class="scrim"></div>
 {% endif %}
 {% endblock %}
 {% block scripts %}{% endblock %}

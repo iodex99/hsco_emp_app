@@ -25,8 +25,8 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`90 passed` (82 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real reference
-data present. Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
+`109 passed` (101 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
 
@@ -54,3 +54,21 @@ Screenshots of the e2e run: `test-results/*.png` (git-ignored).
 - **1.3.0:** toolkit tests caught a header sort cycle that skipped ascending for numbers, and a Columns button
   shadowed by the `cols` property; a shell-escaped `\n` had broken a regex (now `node --check` before testing).
 - Fixture/time arithmetic and test expectations corrected (auto-attendance semantics).
+
+## Full re-test — v1.4.1 (2026-11-17)
+Beyond the automated suite (scripts kept out of the repo; they need real or generated data):
+- **Crawl:** every internal link (≈ 220 pages incl. all 97 employees, filters, downloads) as admin and as viewer —
+  all 200 (viewer correctly 403 on HR/admin pages), no JS errors; typical server time < 0.35 s.
+- **Fresh install, real data, browser:** drop all five greytHR exports at once → 2.8 s, all recognised, no errors.
+- **Awkward uploads:** empty workbook, header only, CSV muster, corrupt zip, PDF, .xls renamed .xlsx, 32k-char cell,
+  far-future dates, Unicode names, formula-like text, same file twice — each gives a clear result; nothing crashes.
+- **Scale:** synthetic 300 employees × 12 months (≈ 8.7k muster rows and 11k swipes with GPS per month) imported via
+  HTTP; page and export timings in CHANGELOG 1.4.1.
+- **Concurrency:** two HR users importing different months while three viewers browse (≈ 50 requests/s): no errors,
+  read median 0.04 s, p95 0.21 s. Start-up maintenance on that data (50k renames, 12 recalculations, 3.4k backfills)
+  ran in the background with every request succeeding.
+- **Independent code review** of v1.4.0: 12 findings, all fixed with regression tests (CHANGELOG 1.4.1).
+New tests: numeric IDs, status words, hours/time edge cases, warning rows, title periods, layout replay validation,
+thread-safe detection (test_parsers, 19); attention at 0 %, stored summaries = day detail, joining/leaving list,
+two unsure sheets, data month vs title, one recalculation per upload, escaped board pack + formula-safe Excel,
+upgrade skips finalised months, partial files, content-based file type, future dates refused, delete month (test_web).

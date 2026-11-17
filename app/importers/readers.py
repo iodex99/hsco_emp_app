@@ -24,12 +24,17 @@ def _trim(rows: list[list]) -> list[list]:
 
 def read_workbook(data: bytes, filename: str) -> dict[str, list[list]]:
     name = filename.lower()
+    # the content decides, not the extension (a .xls saved as .xlsx, or the reverse, still opens)
+    if data[:4] == b"PK\x03\x04":
+        return _read_xlsx(data)
+    if data[:8] == bytes.fromhex("D0CF11E0A1B11AE1"):
+        return _read_xls(data)
     if name.endswith(".csv"):
         text = data.decode("utf-8-sig", errors="replace")
         return {"csv": _trim([list(r) for r in csv.reader(io.StringIO(text))])}
-    if data[:4] == b"PK\x03\x04" or name.endswith((".xlsx", ".xlsm")):
+    if name.endswith((".xlsx", ".xlsm")):
         return _read_xlsx(data)
-    if data[:8] == bytes.fromhex("D0CF11E0A1B11AE1") or name.endswith(".xls"):
+    if name.endswith(".xls"):
         return _read_xls(data)
     raise ValueError(f"Unsupported file type: {filename}")
 

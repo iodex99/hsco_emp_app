@@ -15,10 +15,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Employee, MonthResult, Period
+from app.services import attendance_stats as AS
 from app.services.compute import fy_of
 from app.services.settings import get_policy
 
-UNPLANNED = ("absent", "lop")
+UNPLANNED = AS.UNPLANNED
 BRADFORD_BANDS = [(0, "None", "ok"), (1, "Low", "ok"), (51, "Monitor", "info"), (201, "Warning", "warn"),
                   (450, "Serious", "bad")]
 HOURS_BUCKETS = [(0, 4, "< 4 h"), (4, 6, "4–6 h"), (6, 7, "6–7 h"), (7, 8, "7–8 h"), (8, 8.5, "8–8.5 h"),
@@ -46,21 +47,7 @@ def bradford_band(score: float) -> tuple[str, str]:
 
 
 def _spells(days: list[dict]) -> tuple[int, float]:
-    """Unplanned-absence spells and days. Consecutive absent working days form one spell; weekly-offs and holidays
-    between them do not break it (a Friday + Monday absence is one spell)."""
-    spells, total, in_spell = 0, 0.0, False
-    for dd in sorted(days, key=lambda d: d["date"]):
-        if dd.get("type") != "WORKDAY":
-            continue
-        halves = sum(0.5 for b in (dd.get("b1"), dd.get("b2")) if b in UNPLANNED)
-        if halves:
-            if not in_spell:
-                spells += 1
-            in_spell = True
-            total += halves
-        else:
-            in_spell = False
-    return spells, total
+    return AS.spells(days)
 
 
 def _hm(minutes) -> str:
@@ -85,13 +72,13 @@ def insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
     """Cached per period until any month is recalculated or employee master data / settings change."""
     from sqlalchemy import func
     from app.models import Setting
-    stamp = (period.id, with_matrix, db.scalar(select(func.max(Period.computed_at))),
+    stamp = (period.id, db.scalar(select(func.max(Period.computed_at))),
              db.scalar(select(func.max(Setting.updated_at))), db.scalar(select(func.count(Employee.emp_no))),
              db.scalar(select(func.max(Employee.updated_at))) if hasattr(Employee, "updated_at") else None)
     hit = _CACHE.get(stamp)
     if hit is not None:
         return hit
-    out = _insights(db, period, with_matrix)
+    out = _insights(db, period, True)
     if len(_CACHE) > 8:
         _CACHE.clear()
     _CACHE[stamp] = out
@@ -108,23 +95,18 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
 
     # ---------------------------------------------------------------- history (rolling 12 months, FY to date)
     window = _months_back(period, 12)
-    hist_periods = [p for p in db.scalars(select(Period)) if (p.year, p.month) in set(window) and p.computed_at]
-    hist_ids = {p.id: p for p in hist_periods}
+    hist_ids = {p.id: p for p in db.scalars(select(Period).where(Period.computed_at.is_not(None)))
+                if (p.year, p.month) in set(window)}
     fy = fy_of(y, m, policy.fy_start_month)
-    hist_days: dict[str, list] = defaultdict(list)
+    hist = history(db, hist_ids)
+    hist_stats: dict[str, list] = defaultdict(list)
     fy_leave: Counter = Counter()
-    fy_months: Counter = Counter()
-    months_seen: Counter = Counter()
-    if hist_ids:
-        for emp_no, days, data, pid in db.execute(select(MonthResult.emp_no, MonthResult.days, MonthResult.data,
-                                                         MonthResult.period_id)
-                                                  .where(MonthResult.period_id.in_(list(hist_ids)))):
-            p = hist_ids[pid]
-            hist_days[emp_no].extend(days or [])
-            months_seen[emp_no] += 1
-            if fy_of(p.year, p.month, policy.fy_start_month) == fy and (p.year, p.month) <= (y, m):
-                fy_leave[emp_no] += (data or {}).get("pl_days") or 0
-                fy_months[emp_no] += 1
+    for h in hist:
+        if h["pid"] == period.id:
+            continue                                   # the current month comes from its full rows below
+        hist_stats[h["emp_no"]].append((h["ym"], h["st"]))
+        if fy_of(*h["ym"], policy.fy_start_month) == fy:
+            fy_leave[h["emp_no"]] += h["data"].get("pl_days") or 0
 
     # ---------------------------------------------------------------- per-employee scorecard
     rows = []
@@ -141,13 +123,17 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         on_time = [x for x in with_in if not x.get("late")]
         long_days = [x for x in days if (x.get("work_min") or 0) >= (d.get("hours_per_day") or policy.hours_per_day) * 60 + 120]
         worked = [x for x in days if (x.get("work_min") or 0) > 0]
-        unpl_spells_m, unpl_days_m = _spells(days)
-        s12, d12 = _spells(hist_days.get(r.emp_no, days))
+        st_m = AS.month_stats(days)
+        unpl_spells_m, unpl_days_m = st_m["sp"], st_m["un"]
+        past = hist_stats.get(r.emp_no, [])
+        s12, d12 = AS.join_spells(past + [((y, m), st_m)])
         bradford = round(s12 * s12 * d12)
         band, tone = bradford_band(bradford)
         tenure_m = None
         if e and e.doj:
             tenure_m = (month_end.year - e.doj.year) * 12 + (month_end.month - e.doj.month)
+            if tenure_m < 0:
+                tenure_m = None
         req = d.get("required_hours") or 0
         act = d.get("actual_hours") or 0
         ent = policy.annual_leave_days
@@ -161,7 +147,7 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
             "absence_pct": _pct(unpl_days_m, workdays),
             "leave_days": d.get("pl_days") or 0, "compoff_days": d.get("cof_days") or 0,
             "bradford": bradford, "bradford_band": band, "bradford_tone": tone, "bradford_spells": s12,
-            "bradford_days": d12, "bradford_months": months_seen.get(r.emp_no, 1),
+            "bradford_days": d12, "bradford_months": len(past) + 1,
             "punctuality_pct": _pct(len(on_time), len(with_in)),
             "late_days": d.get("late_days") or 0, "very_late_days": d.get("very_late_days") or 0,
             "avg_late_min": d.get("avg_late_min") or 0,
@@ -180,8 +166,8 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
             "deduction_days": d.get("deduction_days") or 0,
             "leave_closing": d.get("leave_closing"), "compoff_closing": d.get("compoff_closing"),
             "encashment_days": d.get("encashment_days"),
-            "leave_used_fy": round(fy_leave.get(r.emp_no, d.get("pl_days") or 0), 1),
-            "leave_used_fy_pct": _pct(fy_leave.get(r.emp_no, d.get("pl_days") or 0), ent),
+            "leave_used_fy": round(fy_leave.get(r.emp_no, 0) + (d.get("pl_days") or 0), 1),
+            "leave_used_fy_pct": _pct(fy_leave.get(r.emp_no, 0) + (d.get("pl_days") or 0), ent),
             "flags": r.flag_count,
         }
         row.update(_attention(row, policy))
@@ -287,7 +273,7 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         "bradford_bands": [{"band": lab, "tone": t, "from": lo,
                             "count": sum(1 for x in rows if x["bradford_band"] == lab)} for lo, lab, t in BRADFORD_BANDS],
         "weights": WEIGHTS,
-        "trend": insight_trend(db, period),
+        "trend": insight_trend(db, period, hist, hist_ids),
     }
     if with_matrix:
         out["matrix"] = matrix(res)
@@ -298,8 +284,8 @@ def _attention(row: dict, policy) -> dict:
     """0–100 composite: higher = needs a conversation. Each part is 0..1 then weighted (see WEIGHTS)."""
     parts = {
         "bradford": min(1.0, row["bradford"] / 450),
-        "punctuality": (1 - (row["punctuality_pct"] or 100) / 100) if row["behaviour"] else 0,
-        "utilisation": max(0.0, min(1.0, (100 - (row["utilisation_pct"] or 100)) / 20)),
+        "punctuality": (1 - (100 if row["punctuality_pct"] is None else row["punctuality_pct"]) / 100) if row["behaviour"] else 0,
+        "utilisation": max(0.0, min(1.0, (100 - (100 if row["utilisation_pct"] is None else row["utilisation_pct"])) / 20)),
         "regularisation": min(1.0, (row["regularised_days"] or 0) / max(1, policy.persistent_regularisation_days * 2))
         if row["behaviour"] else 0,
         "wfh": min(1.0, max(0.0, (row["wfh_days"] - policy.wfh_limit_days) / max(1, policy.wfh_limit_days * 2))),
@@ -358,56 +344,96 @@ def matrix(res: list[MonthResult]) -> dict:
                        ("O", "Weekly off", "o"), ("H", "Holiday", "y"), ("E", "Worked off-day", "e")]}
 
 
-def insight_trend(db: Session, period: Period, n: int = 12) -> list[dict]:
-    excl = set(get_policy(db).metrics_exclude_groups)
-    ps = [p for p in db.scalars(select(Period).order_by(Period.year, Period.month))
-          if p.computed_at and (p.year, p.month) <= (period.year, period.month)][-n:]
-    out = []
-    for p in ps:
-        wd = pres = unpl = act = req = pn = pd = wfh = 0.0
-        hc = 0
-        for grp, data, days in db.execute(select(MonthResult.group, MonthResult.data, MonthResult.days)
-                                          .where(MonthResult.period_id == p.id)):
-            hc += 1
-            act += data.get("actual_hours") or 0
-            req += data.get("required_hours") or 0
-            pres += data.get("days_present") or 0
-            wfh += data.get("wfh_days") or 0
-            for x in days or []:
-                if x.get("type") != "WORKDAY":
-                    continue
-                wd += 1
-                unpl += sum(0.5 for b in (x.get("b1"), x.get("b2")) if b in UNPLANNED)
-                if (grp or "") not in excl and x.get("in") and "present" in (x.get("b1"), x.get("b2")):
-                    pd += 1
-                    pn += 0 if x.get("late") else 1
-        out.append({"key": p.key, "label": p.label, "headcount": hc, "absenteeism_pct": _pct(unpl, wd),
-                    "attendance_pct": _pct(pres, wd), "punctuality_pct": _pct(pn, pd), "utilisation_pct": _pct(act, req),
-                    "wfh_pct": _pct(wfh, pres)})
+def history(db: Session, pids: dict) -> list[dict]:
+    """One row per employee-month for the given periods: result data + compact stats, never the day detail.
+    Months calculated before v1.4.1 have no stored stats; those are derived from their days (one extra query)."""
+    if not pids:
+        return []
+    out, missing = [], []
+    for rid, emp_no, grp, data, pid in db.execute(select(MonthResult.id, MonthResult.emp_no, MonthResult.group,
+                                                         MonthResult.data, MonthResult.period_id)
+                                                  .where(MonthResult.period_id.in_(list(pids)))):
+        p = pids[pid]
+        row = {"id": rid, "emp_no": emp_no, "group": grp or "", "data": data or {}, "pid": pid,
+               "ym": (p.year, p.month), "st": (data or {}).get("_ins")}
+        if not row["st"]:
+            missing.append(row)
+        out.append(row)
+    if missing:
+        by_id = {r["id"]: r for r in missing}
+        ids = list(by_id)
+        for i in range(0, len(ids), 500):
+            for rid, days in db.execute(select(MonthResult.id, MonthResult.days).where(MonthResult.id.in_(ids[i:i + 500]))):
+                by_id[rid]["st"] = AS.month_stats(days or [])
     return out
 
 
-def employee_scorecard(ins: dict, emp_no: str) -> Optional[dict]:
-    """One employee's scorecard next to their group's and the firm's averages."""
-    me = next((x for x in ins["rows"] if x["emp_no"] == emp_no), None)
-    if not me:
-        return None
-    grp = [x for x in ins["rows"] if x["group"] == me["group"]]
-    keys = [("attendance_pct", "Attendance", "%", True), ("punctuality_pct", "On-time arrivals", "%", True),
+def insight_trend(db: Session, period: Period, hist: Optional[list] = None, pids: Optional[dict] = None) -> list[dict]:
+    excl = set(get_policy(db).metrics_exclude_groups)
+    if hist is None:
+        window = set(_months_back(period, 12))
+        pids = {p.id: p for p in db.scalars(select(Period).where(Period.computed_at.is_not(None)))
+                if (p.year, p.month) in window}
+        hist = history(db, pids)
+    agg: dict = defaultdict(Counter)
+    for h in hist:
+        a, d, st = agg[h["pid"]], h["data"], h["st"]
+        a["hc"] += 1
+        a["act"] += d.get("actual_hours") or 0
+        a["req"] += d.get("required_hours") or 0
+        a["pres"] += d.get("days_present") or 0
+        a["wfh"] += d.get("wfh_days") or 0
+        a["wd"] += st["wd"]
+        a["un"] += st["un"]
+        if h["group"] not in excl:
+            a["pd"] += st["pw"]
+            a["pn"] += st["ot"]
+    out = []
+    for pid, p in sorted((pids or {}).items(), key=lambda x: (x[1].year, x[1].month)):
+        if pid not in agg or (p.year, p.month) > (period.year, period.month):
+            continue
+        a = agg[pid]
+        out.append({"key": p.key, "label": p.label, "headcount": a["hc"], "absenteeism_pct": _pct(a["un"], a["wd"]),
+                    "attendance_pct": _pct(a["pres"], a["wd"]), "punctuality_pct": _pct(a["pn"], a["pd"]),
+                    "utilisation_pct": _pct(a["act"], a["req"]), "wfh_pct": _pct(a["wfh"], a["pres"])})
+    return out
+
+
+_SC_KEYS = [("attendance_pct", "Attendance", "%", True), ("punctuality_pct", "On-time arrivals", "%", True),
             ("utilisation_pct", "Hours vs required", "%", True), ("avg_hours", "Average day (h)", "", True),
             ("absence_pct", "Unplanned absence", "%", False), ("bradford", "Bradford factor (12 m)", "", False),
             ("wfh_pct", "WFH share of days", "%", False), ("regularisation_pct", "Regularised days", "%", False),
             ("long_days", "Long days (≥ 2 h over)", "", None), ("attention", "Attention score", "", False)]
+
+
+def _sc_aggregates(ins: dict) -> dict:
+    """Group/firm averages, attention ranks and a by-employee index, computed once per insights result."""
+    agg = ins.get("_sc_agg")
+    if agg is None:
+        by_g = defaultdict(list)
+        for x in ins["rows"]:
+            by_g[x["group"]].append(x)
+        agg = {"firm": {k: _avg([x.get(k) for x in ins["rows"]]) for k, *_ in _SC_KEYS},
+               "group": {g: {k: _avg([x.get(k) for x in rs]) for k, *_ in _SC_KEYS} for g, rs in by_g.items()},
+               "rank": {x["emp_no"]: i + 1 for i, x in enumerate(sorted(ins["rows"], key=lambda x: -x["attention"]))},
+               "by_emp": {x["emp_no"]: x for x in ins["rows"]}}
+        ins["_sc_agg"] = agg
+    return agg
+
+
+def employee_scorecard(ins: dict, emp_no: str) -> Optional[dict]:
+    """One employee's scorecard next to their group's and the firm's averages."""
+    agg = _sc_aggregates(ins)
+    me = agg["by_emp"].get(emp_no)
+    if not me:
+        return None
     out = []
-    for k, label, unit, higher_better in keys:
-        mv = me.get(k)
-        ga = _avg([x.get(k) for x in grp])
-        fa = _avg([x.get(k) for x in ins["rows"]])
+    for k, label, unit, higher_better in _SC_KEYS:
+        mv, ga, fa = me.get(k), agg["group"][me["group"]][k], agg["firm"][k]
         verdict = ""
         if mv is not None and fa is not None and higher_better is not None:
             diff = (mv - fa) if higher_better else (fa - mv)
             scale = max(abs(fa) * (0.05 if unit == "%" else 0.1), 1)
             verdict = "better" if diff > scale else "worse" if diff < -scale else "typical"
         out.append({"key": k, "label": label, "unit": unit, "me": mv, "group": ga, "firm": fa, "verdict": verdict})
-    rank = sorted(ins["rows"], key=lambda x: -x["attention"]).index(me) + 1
-    return {"row": me, "metrics": out, "rank": rank, "of": len(ins["rows"]), "weights": WEIGHTS}
+    return {"row": me, "metrics": out, "rank": agg["rank"][emp_no], "of": len(ins["rows"]), "weights": WEIGHTS}

@@ -43,6 +43,9 @@ immediately). A banner appears for admins → **Update now** → progress dialog
    otherwise the previous code is restored and started again, and the dialog says so.
 
 Users may be signed out for a few seconds while it restarts. Data (`DATA_DIR`) is never part of an update.
+After the first start of a new version a background job may run for a short while (building the place-name index
+in `DATA_DIR\geo`, refreshing stored place names once, adding summaries to older months). The app stays usable
+meanwhile; it only writes in short steps.
 Requirements: outbound HTTPS to `api.github.com` and `github.com` (only GETs; nothing is sent). If an update adds a
 Python package the server also needs PyPI access, otherwise it rolls back.
 

@@ -13,7 +13,7 @@ from app.engine.model import BUCKETS
 from app.models import Geofence, Holiday, HolidayCalendar, Period, SwipeRow
 from app.services.audit import audit
 from app.services.compute import compute_period
-from app.services.geo import Namer, unnamed_clusters
+from app.services.geo import rename_swipes, unnamed_clusters
 from app.services.settings import get_general, get_policy_json, save_general, save_policy
 from app.web import Ctx, admin, hr, redirect, render
 
@@ -41,6 +41,7 @@ def _recompute_drafts(c: Ctx):
     for p in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))
                           .order_by(Period.year, Period.month)):
         compute_period(c.db, p, cascade=False)
+        c.db.commit()          # one month per transaction: never hold the write lock for the whole cascade
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -231,11 +232,11 @@ def delete_geofence(gid: int, c: Ctx = Depends(hr)):
 
 
 def _rename_swipes(c: Ctx):
-    namer = Namer(c.db)
-    for s in c.db.scalars(select(SwipeRow).where(SwipeRow.lat.is_not(None))):
-        s.place = namer.name(s.lat, s.lon)
-    for p in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))):
-        compute_period(c.db, p, cascade=False)
+    for pid in rename_swipes(c.db):
+        p = c.db.get(Period, pid)
+        if p and p.computed_at:
+            compute_period(c.db, p, cascade=False)
+            c.db.commit()
 
 
 @router.post("/settings/updates")

@@ -20,6 +20,7 @@ import difflib
 import functools
 import hashlib
 import re
+import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
@@ -46,7 +47,7 @@ _DT_FORMATS = (
 )
 _D_FORMATS = ("%d %b %Y", "%d %B %Y", "%d-%b-%Y", "%d-%b-%y", "%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d.%m.%Y",
               "%d-%m-%Y", "%d %b %y", "%b %d, %Y", "%B %d, %Y", "%d-%B-%Y", "%a, %d %b %Y", "%A, %d %B %Y")
-_T_FORMATS = ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I:%M:%S %p", "%I:%M%p", "%H.%M")
+_T_FORMATS = ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I:%M:%S %p", "%I:%M%p")
 
 
 def _clean(v: Any) -> str:
@@ -123,9 +124,14 @@ def parse_hhmm(v: Any) -> int:
         return 0
     if isinstance(v, (int, float)):
         return int(round(float(v) * 60))       # decimal hours (8.5 → 510)
+    if isinstance(v, timedelta):               # [h]:mm cells, may exceed 24 h
+        return int(v.total_seconds() // 60)
     if hasattr(v, "hour") and hasattr(v, "minute"):
         return v.hour * 60 + v.minute
     s = str(v).strip().lower().replace(" ", "")
+    m = re.match(r"^(\d+)days?,(\d+):(\d{2})(?::\d{2})?$", s)          # str(timedelta) e.g. "1 day, 2:05:00"
+    if m:
+        return int(m.group(1)) * 1440 + int(m.group(2)) * 60 + int(m.group(3))
     m = re.match(r"^(-?)(\d+):(\d{1,2})(?::\d{1,2})?$", s)
     if m:
         mins = int(m.group(2)) * 60 + int(m.group(3))
@@ -159,30 +165,38 @@ def emp_id(v: Any) -> str:
     return str(v).strip().upper()
 
 
-_STATUS_WORDS = {
-    "present": "P", "p": "P", "pr": "P", "work from home": "WFH", "wfh": "WFH", "on duty": "OD", "od": "OD",
-    "absent": "A", "a": "A", "ab": "A", "unpaid leave": "LOP", "leave without pay": "LOP", "lwp": "LOP", "lop": "LOP",
-    "week off": "OFF", "weekly off": "OFF", "weekoff": "OFF", "wo": "OFF", "off": "OFF", "rest day": "OFF",
-    "holiday": "H", "h": "H", "ph": "H", "public holiday": "H", "festival holiday": "H",
+_STATUS_WORDS = {   # words only — short codes (P, A, PL, WO, PH, AB…) are kept as written; see status_codes()
+    "present": "P", "work from home": "WFH", "on duty": "OD",
+    "absent": "A", "unpaid leave": "LOP", "leave without pay": "LOP", "loss of pay": "LOP",
+    "week off": "OFF", "weekly off": "OFF", "weekoff": "OFF", "rest day": "OFF",
+    "holiday": "H", "public holiday": "H", "festival holiday": "H",
     "leave": "PL", "paid leave": "PL", "privilege leave": "PL", "earned leave": "PL", "casual leave": "CL",
     "sick leave": "SL", "comp off": "COF", "compoff": "COF", "comp-off": "COF", "compensatory off": "COF",
 }
 
 
 def status_codes(v: Any) -> tuple[str, str]:
-    """Status cell → (session1, session2). Handles 'P', 'PL/P', 'Present', 'Week Off', 'Half Day', 'P(HD)'."""
+    """Status cell → (session1, session2). 'P', 'PL/P', 'Present', 'Week Off', 'Half Day' (P/A), 'Half Day Leave'
+    (PL/P), 'Half Day Absent' (A/P), 'P(HD)' (P/A), 'PL (HD)' (PL/P). Short codes are kept exactly as written."""
     s = _clean(v) if v not in (None, "") else ""
     if not s:
         return "", ""
     low = s.lower()
-    if "half" in low and "day" in low or low in ("hd", "p/2", "½p"):
+    m = re.fullmatch(r"([a-z]{1,4})\s*\(\s*(?:hd|half(?: day)?)\s*\)", low)
+    if m:
+        code = status_codes(m.group(1))[0]
+        return (code, "A") if code == "P" else (code, "P")
+    if low in ("hd", "p/2", "½p"):
         return "P", "A"
+    if re.search(r"\bhalf\b", low):
+        rest = re.sub(r"\bhalf\b|\bday\b|[-:()]", " ", low).strip()
+        code = status_codes(rest)[0] if rest else "P"
+        return ("P", "A") if code in ("P", "") else (code, "P")
     if "/" in s:
         a, b = [x.strip() for x in s.split("/", 1)]
         return status_codes(a)[0], status_codes(b)[0]
-    if s.upper() in DEFAULT_STATUS_MAP:          # already a status code (greytHR style) — keep as is
-        return s.upper(), s.upper()
-    code = _STATUS_WORDS.get(low.strip(" .")) or s.upper().strip()
+    word = _STATUS_WORDS.get(low.strip(" ."))
+    code = word if word and (len(low) > 4 or " " in low) else s.upper().strip()
     return code, code
 
 
@@ -361,7 +375,8 @@ def _fits(vtype: str, vals: list) -> float:
     def ok(v):
         if vtype == "id":
             s = emp_id(v)
-            return 0 < len(s) <= 20 and bool(re.search(r"\d", s)) and not parse_dt(v) and " " not in s.strip()
+            looks_date = isinstance(v, (datetime, date)) or (isinstance(v, str) and parse_dt(v) is not None)
+            return 0 < len(s) <= 20 and bool(re.search(r"\d", s)) and not looks_date and " " not in s.strip()
         if vtype == "date":
             d = parse_dt(v)
             return d is not None and 1990 <= d.year <= 2100
@@ -387,14 +402,24 @@ def _fits(vtype: str, vals: list) -> float:
     return sum(1 for v in vals if ok(v)) / len(vals)
 
 
-_FIT_CACHE: dict = {}
+_TL = threading.local()
+
+
+def _fit_cache() -> dict:
+    """Per-thread memo of value checks for the sheet being recognised (two uploads at once never share it)."""
+    c = getattr(_TL, "fits", None)
+    if c is None:
+        c = _TL.fits = {}
+    return c
 
 
 def _fit_cached(rows, hr, col, vtype):
+    cache = _fit_cache()
     k = (id(rows), hr, col, vtype)
-    if k not in _FIT_CACHE:
-        _FIT_CACHE[k] = _fits(vtype, _values(rows, hr, col))
-    return _FIT_CACHE[k]
+    v = cache.get(k)
+    if v is None:
+        v = cache[k] = _fits(vtype, _values(rows, hr, col))
+    return v
 
 
 def _assign(headers: list[str], rows, hr: int, fields: list[str]) -> dict:
@@ -425,6 +450,8 @@ def _infer(rows, hr: int, ncols: int, vtype: str, used: set) -> Optional[int]:
         vals = _values(rows, hr, i)
         if len(vals) < 3:
             continue
+        if vtype in ("date", "datetime") and all(isinstance(v, (int, float)) for v in vals):
+            continue                                   # bare numbers (e.g. employee codes) are never inferred as dates
         fit = _fit_cached(rows, hr, i, vtype)
         if vtype == "id":
             distinct = len({emp_id(v) for v in vals}) / len(vals)
@@ -501,11 +528,11 @@ class DetectedSheet:
 
 
 def detect_sheet(name: str, rows: list[list], layouts: Optional[list] = None) -> Optional[DetectedSheet]:
-    _FIT_CACHE.clear()
+    _fit_cache().clear()
     try:
         return _detect_sheet(name, rows, layouts)
     finally:
-        _FIT_CACHE.clear()
+        _fit_cache().clear()
 
 
 def _detect_sheet(name: str, rows: list[list], layouts: Optional[list] = None) -> Optional[DetectedSheet]:
@@ -515,9 +542,10 @@ def _detect_sheet(name: str, rows: list[list], layouts: Optional[list] = None) -
         headers = [norm(c) for c in raw]
         sig = layout_signature(raw)
         for lay in layouts or []:
-            if lay.get("signature") == sig:
-                idx = {norm(h): i for i, h in enumerate(raw)}
-                mp = {f: idx[norm(h)] for f, h in lay["map"].items() if norm(h) in idx}
+            if lay.get("signature") == sig and lay.get("kind") in SCHEMAS:
+                mp = _replay_layout(lay, raw)
+                if mp is None or missing_required(lay["kind"], mp):
+                    continue                           # layout no longer fits: fall back to recognition/review
                 ds = DetectedSheet(name, lay["kind"], hr, headers, [str(r[0]) for r in rows[:hr] if r and r[0]], mp, 1.0, [],
                                    "layout")
                 ds.raw_headers = raw
@@ -532,6 +560,30 @@ def _detect_sheet(name: str, rows: list[list], layouts: Optional[list] = None) -
     ds = DetectedSheet(name, kind, hr, headers, [str(r[0]) for r in rows[:hr] if r and r[0]], mp, round(conf, 3), inferred)
     ds.raw_headers = raw
     return ds
+
+
+def _replay_layout(lay: dict, raw: list) -> Optional[dict]:
+    """Remembered layout → field → column. New layouts store {"i": index, "h": header}: the header must still be in
+    that column (blank/duplicate headers stay unambiguous). Older layouts stored the header text only and are used
+    only when that header occurs exactly once."""
+    out = {}
+    for f, spec in (lay.get("map") or {}).items():
+        if isinstance(spec, dict):
+            i, h = int(spec.get("i", -1)), spec.get("h", "")
+            if i < 0:
+                return None
+            if i < len(raw):
+                if norm(raw[i]) != norm(h):
+                    return None
+            elif h:
+                return None
+            out[f] = i
+        else:
+            hits = [i for i, x in enumerate(raw) if norm(x) == norm(spec)]
+            if len(hits) != 1:
+                return None
+            out[f] = hits[0]
+    return out
 
 
 def detect(sheets: dict[str, list[list]], layouts: Optional[list] = None) -> list[DetectedSheet]:
@@ -561,7 +613,7 @@ def suggest(rows: list[list], header_row: int, kind: str) -> dict:
     """Best-guess field → column mapping for a chosen report type (pre-fills the manual mapping screen)."""
     raw = rows[header_row] if 0 <= header_row < len(rows) else []
     headers = [norm(c) for c in raw]
-    _FIT_CACHE.clear()
+    _fit_cache().clear()
     m = {k: v[0] for k, v in _assign(headers, rows, header_row, schema_fields(kind)).items()}
     used = set(m.values())
     ncols = max([len(r or []) for r in rows[header_row: header_row + 30]] + [len(headers)])
@@ -572,8 +624,8 @@ def suggest(rows: list[list], header_row: int, kind: str) -> dict:
 
     is_status = lambda v: (str(v).strip().upper() in DEFAULT_STATUS_MAP or str(v).strip().lower() in _STATUS_WORDS
                            or "/" in str(v) and all(x.strip().upper() in DEFAULT_STATUS_MAP for x in str(v).split("/")))
-    is_id = lambda v: bool(re.fullmatch(r"[A-Za-z]{0,6}\d{1,8}", emp_id(v))) and parse_dt(v) is None
-    is_date = lambda v: (lambda d: d is not None and 1990 <= d.year <= 2100)(parse_dt(v))
+    is_id = lambda v: bool(re.fullmatch(r"[A-Za-z]{0,6}\d{1,8}", emp_id(v))) and not (isinstance(v, (datetime, date)) or isinstance(v, str) and parse_dt(v))
+    is_date = lambda v: not isinstance(v, (int, float)) and (lambda d: d is not None and 1990 <= d.year <= 2100)(parse_dt(v))
     is_time = lambda v: parse_time(v) is not None and not is_date(v)
     is_dt = lambda v: (lambda d: d is not None and 1990 <= d.year <= 2100 and (d.hour or d.minute))(parse_dt(v))
     tests = {"emp_no": is_id, "date": is_date, "s1": is_status, "s2": is_status, "status": is_status,
@@ -592,7 +644,7 @@ def suggest(rows: list[list], header_row: int, kind: str) -> dict:
             used.add(i)
     if kind == "muster" and "s1" in m and "s2" not in m and "status" not in m:
         m["status"] = m.pop("s1")               # a single status column is a whole-day status
-    _FIT_CACHE.clear()
+    _fit_cache().clear()
     return m
 
 
@@ -619,6 +671,9 @@ def detect_period(ds: DetectedSheet, rows: list[list]) -> Optional[tuple[int, in
             d = parse_date(m.group(1).replace("-", " ").replace("/", " ") if not re.match(r"\d{1,2}/\d{1,2}/", m.group(1)) else m.group(1))
             if d:
                 return d.year, d.month
+    for t in ds.title_lines:
+        if re.search(r"\b(printed|generated|run|downloaded|exported|as on|as of)\b", t, re.I):
+            continue                                   # a print/run date is not the report month
         m = _MONTH_TITLE_RE.search(t)
         if m:
             d = parse_date(f"01 {m.group(1)} {m.group(2)}")
@@ -630,10 +685,16 @@ def detect_period(ds: DetectedSheet, rows: list[list]) -> Optional[tuple[int, in
 # ============================================================================ parsers
 
 def _data_rows(rows, ds):
-    for r in rows[ds.header_row + 1:]:
+    for _, r in _numbered_rows(rows, ds):
+        yield r
+
+
+def _numbered_rows(rows, ds):
+    """(spreadsheet row number, row) for non-blank rows under the header."""
+    for i, r in enumerate(rows[ds.header_row + 1:], start=ds.header_row + 2):
         if r is None or all(v in (None, "") for v in r):
             continue
-        yield r
+        yield i, r
 
 
 def _g(r, ds, f):
@@ -653,12 +714,12 @@ def _combine(day: date, v: Any) -> Optional[datetime]:
 
 def parse_muster(rows, ds) -> tuple[list[MusterDay], list[str]]:
     out, warn = [], []
-    for n, r in enumerate(_data_rows(rows, ds)):
+    for n, r in _numbered_rows(rows, ds):
         e = emp_id(_g(r, ds, "emp_no"))
         d = parse_date(_g(r, ds, "date"))
         if not e or not d:
             if any(v not in (None, "") for v in r):
-                warn.append(f"row {ds.header_row + n + 2}: missing employee/date — skipped")
+                warn.append(f"row {n}: missing employee/date — skipped")
             continue
         if "s1" in ds.map:
             s1 = status_codes(_g(r, ds, "s1"))[0]
@@ -679,7 +740,7 @@ def parse_muster(rows, ds) -> tuple[list[MusterDay], list[str]]:
 
 def parse_swipes(rows, ds) -> tuple[list[Swipe], dict, list[str]]:
     out, names, warn = [], {}, []
-    for n, r in enumerate(_data_rows(rows, ds)):
+    for n, r in _numbered_rows(rows, ds):
         e = emp_id(_g(r, ds, "emp_no"))
         ts = None
         if "timestamp" in ds.map:
@@ -692,7 +753,7 @@ def parse_swipes(rows, ds) -> tuple[list[Swipe], dict, list[str]]:
             ts = _combine(dd, _g(r, ds, "time")) if dd else None
         if not e or not ts:
             if any(v not in (None, "") for v in r):
-                warn.append(f"row {ds.header_row + n + 2}: missing employee/time — skipped")
+                warn.append(f"row {n}: missing employee/time — skipped")
             continue
         lat = lon = None
         if "lat" in ds.map and "lon" in ds.map:

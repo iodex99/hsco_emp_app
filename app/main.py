@@ -69,8 +69,8 @@ def create_app() -> FastAPI:
     from app import updater
     updater.start_background_checker()
     if not os.environ.get("HSCO_DISABLE_GEO_WARMUP"):
-        from app.services import geo
-        geo.warm_up()
+        from app.services import maintenance
+        maintenance.start()
 
     app.add_middleware(SecurityHeaders)
 

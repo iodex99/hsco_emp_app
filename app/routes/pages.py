@@ -104,20 +104,22 @@ async def do_import(request: Request, files: list[UploadFile] = File(...), perio
 
 
 def _run_imports(c: Ctx, blobs, hint, manual=None, remember=False, token=""):
-    results, errors = [], []
+    results, errors, touched = [], [], set()
     for _, name, data in sorted(blobs, key=lambda x: x[0]):
         if not data:
             continue
         try:
-            res = import_file(c.db, data, name, c.user, hint, c.ip, manual=manual)
+            t: set = set()
+            res = import_file(c.db, data, name, c.user, hint, c.ip, manual=manual, recompute=False, touched_out=t)
             if manual and remember:
                 rows = read_workbook(data, name)[manual["sheet"]]
                 IMP.save_layout(c.db, P.manual_sheet(manual["sheet"], rows, manual["kind"], manual["header_row"],
                                                      manual["map"]), name)
                 audit(c.db, c.user, "import_layout_saved", manual["kind"], name, {"sheet": manual["sheet"]}, c.ip)
             c.db.commit()
+            touched |= t
             if token:
-                IMP.drop_pending(token)
+                IMP.finish_pending(token, manual["sheet"] if manual else "")
             results.append({"file": name, "sheets": res})
         except ImportError_ as ex:
             c.db.rollback()
@@ -125,6 +127,13 @@ def _run_imports(c: Ctx, blobs, hint, manual=None, remember=False, token=""):
         except Exception as ex:  # noqa: BLE001
             c.db.rollback()
             errors.append({"file": name, "error": f"Unexpected error: {ex}"})
+    if touched:            # all files of the upload are in: recalculate once (oldest affected month onwards)
+        try:
+            IMP.recompute_from(c.db, touched, commit_each=True)
+            c.db.commit()
+        except Exception as ex:  # noqa: BLE001
+            c.db.rollback()
+            errors.append({"file": "Recalculation", "error": f"The files were imported but recalculating failed: {ex}"})
     batches = c.db.scalars(select(ImportBatch).order_by(ImportBatch.uploaded_at.desc()).limit(100)).all()
     pmap = {p.id: p for p in periods(c.db)}
     cur = pick_period(c, None)

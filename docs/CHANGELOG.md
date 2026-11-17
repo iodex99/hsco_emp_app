@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.4.1 — 2026-11-17 — full re-test: speed, safety and the review's fixes
+Tested end to end again: every page crawled as admin and as viewer (no errors), a fresh install importing the real
+exports in a browser (2.8 s for all five), awkward uploads, a synthetic firm 3× the size with 12 months of history,
+two people importing at once while others browse, and an independent code review.
+
+**Faster** (300 people × 12 months; before → after): overview 2.3 s → 0.5 s · Insights first load 4.9 s → 0.7 s ·
+an employee page after a correction 4.7 s → 0.14 s · Settings 1.4 s → 0.5 s · board pack 4.7 s → 0.8 s ·
+Excel 8.2 s → 4.3 s · muster + swipes upload 15–22 s → 5.5–8.4 s · one month's calculation 1.2 s → 0.75 s.
+How: results store a compact per-person month summary (`attendance_stats`), so history, trends and Bradford factors
+never decode the day-by-day detail; lists that don't need day detail skip it; rows are inserted in bulk; employees
+and the place-name cache are loaded once per import; place lookups search a 3 km window first; an upload is
+recalculated once for all its files; the unnamed-places list is grouped in the database; Excel borders are registered
+once; shift texts are parsed once.
+
+**Safer**
+- A small file no longer wipes a month: a file covering fewer than 80 % of the people already in that month (e.g. a
+  correction for one person) replaces only those people's days/punches and says so; a full export still replaces
+  the month.
+- Files dated more than a month ahead of today are refused ("often a wrong year") instead of creating a phantom
+  month that would become everyone's default view. Admins can now **delete a mistaken draft month** (Payroll leave
+  sheet → bin icon; reason and typing the month name required; audit-logged; later months recalculated).
+- Importing an earlier month recalculates every later draft month (leave and comp-off balances carry forward).
+- Recalculations commit month by month, and the start-up maintenance (gazetteer index, one-time place renaming,
+  summary backfill) runs in a background thread with short transactions — measured: 50k swipes renamed and 12
+  months recalculated in the background with no failed request and a 0.3 s median response meanwhile.
+- The file type is decided by content, not extension (a .xls saved as .xlsx now opens).
+
+**Fixed (independent review)**
+- Attention score treated 0 % on-time / 0 % hours as 100 % — the worst cases scored best. Same falsy-zero colouring in
+  Insights and the board pack.
+- Remembered layouts store column index + header and are checked on replay (moved/duplicate/blank headers or a
+  missing required column → recognised afresh or sent for review, never imported blindly).
+- Several unsure sheets in one workbook can each be mapped (the upload is kept until all are done).
+- The month of a day-level file comes from its dates; a title month is used only without dates (and a disagreeing
+  title is reported). "from … to …" wins over a bare month name; print/run dates are ignored.
+- Numeric employee codes (e.g. 50123) are no longer taken for Excel dates.
+- Recognition caches are per thread (two simultaneous uploads can't interfere).
+- Joining/leaving lists apply the Date of Leaving (marks the person inactive).
+- Status words: "Half Day Leave/CL" → leave + present (not absent), "Half Day Absent" → A/P, "P(HD)", "PL (HD)";
+  short codes are kept exactly as written so admins can map their own (PH, AB…).
+- `[h]:mm` durations over 24 h and "9.5"-style decimals are read correctly; warnings quote real spreadsheet rows.
+- The place-name upgrade no longer holds the write lock, skips finalised months and never calls the online service.
+- Board-pack data is fully escaped inside its script; imported text can't become an Excel formula.
+- Small: "1 rows", missing values show "—", bare `/periods` opens the latest month, negative tenure hidden.
+
 ## 1.4.0 — 2026-11-17 — universal importer, automatic place names, Insights, new board pack
 - **Universal importer** (`app/importers/parsers.py` rewritten): reports are recognised by *meaning*, not by exact
   layout. Each report type is described by fields with synonyms; headers are matched exactly, by whole words or fuzzily,

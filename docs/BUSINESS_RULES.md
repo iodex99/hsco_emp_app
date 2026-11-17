@@ -118,3 +118,18 @@ Unnamed clusters are suggested to admin for naming.
 ## 10. Period lifecycle
 `DRAFT` (imports, auto‑compute) → `FINALISED` (locked: no imports/overrides; ledgers posted; exports stamped).
 Re‑open = admin only, reason mandatory, audit‑logged.
+**Delete a month** (v1.4.1) = admin only, DRAFT only, reason + typing the month name, audit‑logged; removes the month's
+imports, results, corrections and reviews; later draft months are recalculated.
+
+## 11. Import rules (v1.4.1)
+- **Month of a file:** day-level files (muster, swipes) belong to the month most of their dates fall in; a title month
+  is only used when there are no dates (and a disagreement is reported). Files more than one month ahead of today
+  are refused (usually a wrong year).
+- **Full vs partial files:** a muster/swipe file containing at least 80 % of the people already in that month is a
+  full export and replaces the month; a smaller file replaces only the people it contains (others kept, message
+  shown). Summary/MIS files always replace the month's copy.
+- **Recalculation:** after an upload, the earliest affected draft month and every later draft month are recalculated
+  once, oldest first (balances carry forward); finalised months are never touched.
+- **Status words** are translated (Present, Absent, Week Off, Holiday, Leave, Half Day…; "Half Day Leave" = leave +
+  present, "Half Day" = present + absent); **codes** (P, A, PL, WO, PH, AB…) are kept exactly as in the file and mapped
+  by the status map in Settings (unknown codes are flagged).

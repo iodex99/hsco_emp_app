@@ -13,6 +13,7 @@ from app.engine.compute import SEV_HIGH, SEV_MEDIUM, compute_month
 from app.models import (
     DayOverrideRow, Employee, HolidayCalendar, LeaveOpening, MonthOverrideRow, MonthResult, MusterRow, Period, SwipeRow,
 )
+from app.services.attendance_stats import month_stats
 from app.services.settings import get_policy
 
 SCALARS = [f.name for f in dc_fields(M.EmployeeMonth) if f.name not in ("days", "flags", "overrides")]
@@ -98,10 +99,13 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
         cal_id = e.holiday_calendar_id or default_cal
         employees[k] = engine_employee(e, cal_days.get(cal_id) if cal_id else None)
 
-    muster = [M.MusterDay(r.emp_no, r.day, r.s1, r.s2, r.in_time, r.out_time, r.work_min, r.shift, r.name)
-              for r in db.scalars(select(MusterRow).where(MusterRow.period_id == period.id))]
-    swipes = [M.Swipe(r.emp_no, r.ts, r.door, r.location_type, r.swipe_type, r.lat, r.lon, r.place)
-              for r in db.scalars(select(SwipeRow).where(SwipeRow.period_id == period.id))]
+    # plain rows, not ORM objects (thousands per month)
+    muster = [M.MusterDay(*r) for r in db.execute(
+        select(MusterRow.emp_no, MusterRow.day, MusterRow.s1, MusterRow.s2, MusterRow.in_time, MusterRow.out_time,
+               MusterRow.work_min, MusterRow.shift, MusterRow.name).where(MusterRow.period_id == period.id))]
+    swipes = [M.Swipe(*r) for r in db.execute(
+        select(SwipeRow.emp_no, SwipeRow.ts, SwipeRow.door, SwipeRow.location_type, SwipeRow.swipe_type, SwipeRow.lat,
+               SwipeRow.lon, SwipeRow.place).where(SwipeRow.period_id == period.id))]
     d_ovr = [M.DayOverride(o.emp_no, o.day, o.day_type or None, o.s1 or None, o.s2 or None, o.work_min, o.reason)
              for o in db.scalars(select(DayOverrideRow).where(DayOverrideRow.period_id == period.id))]
     m_ovr: dict = {}
@@ -120,7 +124,8 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
     prev = previous_period(db, period)
     prev_res = {}
     if prev:
-        prev_res = {r.emp_no: r.data for r in db.scalars(select(MonthResult).where(MonthResult.period_id == prev.id))}
+        prev_res = {e: d for e, d in db.execute(select(MonthResult.emp_no, MonthResult.data)
+                                                .where(MonthResult.period_id == prev.id))}
     openings = {o.emp_no: o for o in db.scalars(select(LeaveOpening).where(LeaveOpening.year == y, LeaveOpening.month == m))}
 
     db.execute(delete(MonthResult).where(MonthResult.period_id == period.id))
@@ -133,6 +138,8 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
         ledger = _ledger(r, e, y, m, policy, openings.get(emp_no), prev_res.get(emp_no))
         data.update(ledger)
         data["overrides"] = r.overrides
+        days = [_serialize_day(d) for d in r.days]
+        data["_ins"] = month_stats(days)          # compact summary for Insights history/trends
         flags = [{"code": c, "severity": s, "message": msg} for c, s, msg in r.flags]
         if ledger.get("leave_opening") is None:
             flags.append({"code": "NO_OPENING_BALANCE", "severity": "info",
@@ -146,13 +153,14 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
         db.add(MonthResult(period_id=period.id, emp_no=emp_no, name=r.name, group=r.group, location=r.location,
                            deduction_days=r.deduction_days, balance_hours=round(r.balance_hours, 4),
                            flag_count=sum(1 for f in flags if f["severity"] in ("critical", "high", "medium")),
-                           data=data, flags=flags, days=[_serialize_day(d) for d in r.days]))
+                           data=data, flags=flags, days=days))
     period.computed_at = datetime.now()
     db.flush()
     summary = {"employees": len(results), "deductions": sum(1 for r in results.values() if r.deduction_days)}
     if cascade:
         nxt = get_period(db, y + (m == 12), m % 12 + 1)
         if nxt and nxt.status == "DRAFT" and db.scalar(select(MusterRow.id).where(MusterRow.period_id == nxt.id).limit(1)):
+            db.commit()        # this month is final; release the write lock before calculating the next one
             compute_period(db, nxt, cascade=True)
     return summary
 

@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.orm import defer
 from sqlalchemy.orm import Session
 
 from app.models import Employee, ManualMisRow, MonthResult, MusterRow, Period, SummaryRow
@@ -50,13 +51,17 @@ def hm(minutes: Optional[float]) -> str:
     return f"{m // 60:02d}:{m % 60:02d}"
 
 
-def results_for(db: Session, period: Period) -> list[MonthResult]:
-    return list(db.scalars(select(MonthResult).where(MonthResult.period_id == period.id).order_by(MonthResult.emp_no)))
+def results_for(db: Session, period: Period, with_days: bool = True) -> list[MonthResult]:
+    """with_days=False skips the day-by-day detail (~20 KB JSON per row) when only figures and flags are needed."""
+    q = select(MonthResult).where(MonthResult.period_id == period.id).order_by(MonthResult.emp_no)
+    if not with_days:
+        q = q.options(defer(MonthResult.days))
+    return list(db.scalars(q))
 
 
 def compute_kpis(db: Session, period: Period, policy=None, res=None, emps=None) -> dict:
     policy = policy or get_policy(db)
-    res = res if res is not None else results_for(db, period)
+    res = res if res is not None else results_for(db, period, with_days=False)
     emps = emps if emps is not None else {e.emp_no: e for e in db.scalars(select(Employee))}
     y, m = period.year, period.month
     month_start = date(y, m, 1)
@@ -263,9 +268,14 @@ def _tenure(emps: dict, asof: date) -> list[dict]:
 
 def trend(db: Session, n: int = 12) -> list[dict]:
     periods = list(db.scalars(select(Period).order_by(Period.year.desc(), Period.month.desc()).limit(n)))[::-1]
+    by_p: dict = defaultdict(list)
+    if periods:
+        for pid, data in db.execute(select(MonthResult.period_id, MonthResult.data)
+                                    .where(MonthResult.period_id.in_([p.id for p in periods]))):
+            by_p[pid].append(data or {})
     out = []
     for p in periods:
-        D = [r.data for r in results_for(db, p)]
+        D = by_p.get(p.id, [])
         if not D:
             continue
         out.append({
@@ -300,7 +310,7 @@ RECON_FIELDS = [
 
 def reconciliation(db: Session, period: Period) -> dict:
     """Compare app results to (a) the uploaded manual MIS and (b) the greytHR Summary report."""
-    res = {r.emp_no: r for r in results_for(db, period)}
+    res = {r.emp_no: r for r in results_for(db, period, with_days=False)}
     manual = {r.emp_no: r.data for r in db.scalars(select(ManualMisRow).where(ManualMisRow.period_id == period.id))}
     summ = {r.emp_no: r.data for r in db.scalars(select(SummaryRow).where(SummaryRow.period_id == period.id))}
     rows = []

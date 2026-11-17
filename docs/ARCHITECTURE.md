@@ -19,8 +19,10 @@ app/cli.py                 create-admin, reset-mfa, backup, make-cert, import
 app/web.py                 per-request DB session, auth context, role guards + CSRF, render helpers
 app/engine/                PURE calculation engine (no DB/web): model.py (types, Policy), compute.py
 app/importers/             readers.py (xlsx/xls/csv → rows, filters ignored), parsers.py (universal recognition + parse)
-app/services/              settings, audit, imports (pipeline, remembered layouts, pending uploads), compute
-                           (DB→engine→results + ledgers), metrics, insights (scorecards, Bradford, heatmaps), geo
+app/services/              settings, audit, imports (pipeline, remembered layouts, pending uploads, partial-file
+                           rules, recompute_from), compute (DB→engine→results + ledgers), metrics, insights
+                           (scorecards, Bradford, heatmaps), attendance_stats (compact month summaries), geo,
+                           maintenance (start-up background jobs)
 app/security/              core.py (passwords, sessions, CSRF, TOTP, recovery, email OTP), passkeys.py (WebAuthn)
 app/reports/               excel.py (workbook), html_report.py (standalone board pack)
 app/routes/                auth, pages (dashboard/imports/flags/recon/audit), periods (sheet, drill-down, overrides,
@@ -36,6 +38,10 @@ plain `def` (FastAPI runs them in a thread pool); an `async def` handler may onl
 then hand off with `anyio.to_thread.run_sync(...)`. `get_db` is an async generator with shielded commit/rollback/close
 and `scope="function"` (commits before the response). Middleware must be pure ASGI (no `BaseHTTPMiddleware`).
 Regression tests: `tests/e2e/test_disconnect.py`.
+**Keep write transactions short (v1.4.1):** multi-month recalculations commit after each month
+(`recompute_from(commit_each=True)`, settings/employee edits, override cascades); slow reads (gazetteer
+lookups) happen before an import's first delete; start-up maintenance writes in small batches. Verified with two
+simultaneous 300-person imports plus three busy readers: no failures, no "database is locked".
 
 ## Front end
 Server-rendered Jinja pages; shared macros in `templates/_ui.html` (icon, person, badges, KPI with delta, toplist,
@@ -137,3 +143,19 @@ change, employee count/last edit). Used by `/insights`, the employee Scorecard t
 (`icon_base=""` so icons point to the inlined sprite). Inlined: `app.css` (+ Inter as base64), `icons.svg`,
 Chart.js, `table.js` (`window.HSCO_ICONS = ""`; `HSCO.Table` is exported so the drill-down's day table gets the toolkit).
 Tables are server-rendered; the per-employee drill-down is built in the browser from embedded JSON. No network access.
+
+## Performance notes (v1.4.1, measured on 300 employees × 12 months)
+- `MonthResult.days` (~20 KB JSON per employee-month) is only loaded where day detail is shown (current month's
+  Insights/dashboard charts, drill-down, board pack, Excel daily sheet). Everything historical reads
+  `MonthResult.data` incl. `data["_ins"]` (`attendance_stats.month_stats`: working days, unplanned days/spells,
+  first/last-day absence for joining spells across months, present days, punctuality counts). Months calculated by
+  older versions are back-filled by `maintenance.backfill_month_stats` (and derived on the fly until then).
+- `metrics.results_for(..., with_days=False)` defers the day detail; the dashboard trend reads data only.
+- Imports: employees preloaded, muster/swipe rows inserted with one executemany, place names resolved before any
+  delete, GeoCache loaded once per import and written at the end. One recalculation per upload batch.
+- Geo: thread-local read-only gazetteer connection; 3 km window first, full radius only if needed; longitude span
+  scaled by cos(latitude).
+- Insights cached per (period, latest calculation, settings change, employee edits); scorecard aggregates computed
+  once per result (`_sc_aggregates`).
+- Excel: the bottom border is registered once per workbook (`_thin`); remaining cost is openpyxl XML writing
+  (~4 s for 300 people, ~2 s for the real firm).

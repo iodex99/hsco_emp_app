@@ -101,4 +101,5 @@ def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Fo
     for p in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))
                           .order_by(Period.year, Period.month)):
         compute_period(c.db, p, cascade=False)
+        c.db.commit()          # one month per transaction
     return redirect(f"/employees/{emp_no}", "Employee saved and draft months recomputed.")

@@ -20,7 +20,10 @@ from app.services.settings import get_general, get_policy
 
 
 def _safe_json(o) -> str:
-    return json.dumps(o, default=str, separators=(",", ":")).replace("</", "<\\/")
+    """JSON that is safe inside <script>: every <, > and & is escaped, so a name or remark containing '</script>' or
+    '<!--' can never end or confuse the script block."""
+    return (json.dumps(o, default=str, separators=(",", ":"))
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
 def _day_tags(dd: dict) -> str:

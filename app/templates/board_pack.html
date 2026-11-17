@@ -1,7 +1,7 @@
 <!doctype html>
 {% import "_ui.html" as ui with context %}
 {% set k = m.kpis %}{% set pk = m.prev_kpis %}{% set ik = I.kpis %}
-{% macro pct(v) %}{% if v is not none %}{{ v|n(1) }}%{% endif %}{% endmacro %}
+{% macro pct(v, dash=False) %}{% if v is not none %}{{ v|n(1) }}%{% elif dash %}—{% endif %}{% endmacro %}
 {% macro who(name, sub, id) %}<button type="button" class="who" data-emp="{{ id }}"><span class="av">{{ ui.initials(name) }}</span><span><b>{{ name }}</b><small>{{ sub }}</small></span></button>{% endmacro %}
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Board pack · {{ period.label }} · {{ org.org_name }}</title>
@@ -61,10 +61,10 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
 <!-- ======================================================== OVERVIEW -->
 <section class="pane on" data-pane="ov">
   <div class="kpis">
-    {{ ui.kpi('Attendance', pct(k.attendance_rate), 'circle-check', '', none, ui.delta(k.attendance_rate, pk.attendance_rate if pk else none, True, '%') or 'days present ÷ working days') }}
-    {{ ui.kpi('Unplanned absence', pct(ik.absenteeism_pct), 'calendar-x', 'bad' if (ik.absenteeism_pct or 0) >= 5 else '', none, ik.unplanned_spells ~ ' spells this month') }}
-    {{ ui.kpi('On-time arrivals', pct(ik.punctuality_pct), 'alarm-clock', 'warn' if (ik.punctuality_pct or 100) < 70 else 'good', none, 'median first punch ' ~ ik.median_in) }}
-    {{ ui.kpi('Hours vs required', pct(ik.utilisation_pct), 'timer', 'good' if (ik.utilisation_pct or 0) >= 100 else 'warn', none, '+' ~ (ik.overtime_hours|n(0)) ~ ' h over · −' ~ (ik.shortfall_hours|n(0)) ~ ' h short') }}
+    {{ ui.kpi('Attendance', pct(k.attendance_rate, True), 'circle-check', '', none, ui.delta(k.attendance_rate, pk.attendance_rate if pk else none, True, '%') or 'days present ÷ working days') }}
+    {{ ui.kpi('Unplanned absence', pct(ik.absenteeism_pct, True), 'calendar-x', 'bad' if (ik.absenteeism_pct or 0) >= 5 else '', none, ik.unplanned_spells ~ ' spells this month') }}
+    {{ ui.kpi('On-time arrivals', pct(ik.punctuality_pct, True), 'alarm-clock', 'warn' if (100 if ik.punctuality_pct is none else ik.punctuality_pct) < 70 else 'good', none, 'median first punch ' ~ (ik.median_in or '—')) }}
+    {{ ui.kpi('Hours vs required', pct(ik.utilisation_pct, True), 'timer', 'good' if (ik.utilisation_pct or 0) >= 100 else 'warn', none, '+' ~ (ik.overtime_hours|n(0)) ~ ' h over · −' ~ (ik.shortfall_hours|n(0)) ~ ' h short') }}
     {{ ui.kpi('Leave deductions', k.deduction_employees, 'calendar-days', 'bad' if k.deduction_employees else '', none, ui.delta(k.deduction_employees, pk.deduction_employees if pk else none) or 'people short of required hours', 'people · ' ~ (k.deduction_days|n) ~ ' days') }}
     {{ ui.kpi('Payroll LOP days', k.payroll_lop_days|n, 'briefcase', 'bad' if k.payroll_lop_days else '', none, ui.delta(k.payroll_lop_days, pk.payroll_lop_days if pk else none) or 'loss of pay incl. leave exhausted') }}
     {{ ui.kpi('People movement', '+' ~ k.new_joinees ~ ' / −' ~ k.exits, 'users', '', none, 'joined / left this month · attrition ' ~ pct(ik.attrition_pct) ~ ' (12 m)') }}
@@ -199,12 +199,12 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
 <!-- ======================================================== ABSENCE & HOURS -->
 <section class="pane" data-pane="abs">
   <div class="minis mb">
-    <div class="mini {{ 'bad' if (ik.absenteeism_pct or 0) >= 5 }}"><div class="v">{{ pct(ik.absenteeism_pct) }}</div><div class="l">Unplanned absence rate</div></div>
+    <div class="mini {{ 'bad' if (ik.absenteeism_pct or 0) >= 5 }}"><div class="v">{{ pct(ik.absenteeism_pct, True) }}</div><div class="l">Unplanned absence rate</div></div>
     <div class="mini"><div class="v">{{ ik.bradford_avg|n(1) }}</div><div class="l">Average Bradford factor</div></div>
-    <div class="mini"><div class="v">{{ pct(ik.leave_used_fy_pct) }}</div><div class="l">Annual leave used, {{ ik.fy_label }}</div></div>
+    <div class="mini"><div class="v">{{ pct(ik.leave_used_fy_pct, True) }}</div><div class="l">Annual leave used, {{ ik.fy_label }}</div></div>
     <div class="mini"><div class="v">{{ ik.leave_liability_days|n }}</div><div class="l">Leave balance owed (days)</div></div>
     <div class="mini"><div class="v">{{ ik.long_days }}</div><div class="l">Long days (2 h+ over)</div></div>
-    <div class="mini"><div class="v">{{ pct(ik.regularisation_pct) }}</div><div class="l">Present days regularised</div></div>
+    <div class="mini"><div class="v">{{ pct(ik.regularisation_pct, True) }}</div><div class="l">Present days regularised</div></div>
   </div>
   <div class="grid g-2-1 mb">
     <div class="card"><div class="hd"><h2>Highest Bradford factors</h2><span class="sub">S² × D, last 12 months</span></div><div class="bd" style="padding-top:4px"><ul class="list">
@@ -248,7 +248,7 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
   <div class="minis mb">
     <div class="mini good"><div class="v">{{ k.new_joinees }}</div><div class="l">Joined this month</div></div>
     <div class="mini {{ 'warn' if k.exits }}"><div class="v">{{ k.exits }}</div><div class="l">Left this month</div></div>
-    <div class="mini"><div class="v">{{ pct(ik.attrition_pct) }}</div><div class="l">Attrition, last 12 months ({{ ik.exits_12m }} exits)</div></div>
+    <div class="mini"><div class="v">{{ pct(ik.attrition_pct, True) }}</div><div class="l">Attrition, last 12 months ({{ ik.exits_12m }} exits)</div></div>
     <div class="mini"><div class="v">{{ ik.joiners_12m }}</div><div class="l">Joiners, last 12 months</div></div>
     <div class="mini"><div class="v">{{ ik.avg_tenure_years|n(1) }}</div><div class="l">Average tenure (years)</div></div>
     <div class="mini"><div class="v">{{ m.people.anniversaries|length }}</div><div class="l">Work anniversaries</div></div>
