@@ -26,6 +26,17 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 `77 passed` (Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real reference data present.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
 
+## Live verification against GitHub (2026-11-17)
+1. Push `115604a` → Actions run 1 (Windows tests 77/77 green) → release **build-1** (v1.2.0, zip 864 KB + sha256).
+2. build-1 downloaded from GitHub, checksum verified, extracted to a fresh folder, started with the supervisor
+   (`run_server.py --dev --port 8450`, no `.git`): its first check against `api.github.com` reported "up to date".
+3. Push `97c8953` (v1.2.1) → Actions run 2 green → release **build-2**.
+4. In Chromium on the installed copy: Settings → Updates → *Check now* → banner "Version 1.2.1 is available" →
+   *Update now* → progress `0% → 76% → Verifying checksum → Backing up, installing and restarting → Updated to
+   v1.2.1 (build 2)`; restart took ~5 s; `/healthz` = 1.2.1 build 2; sidebar shows "v1.2.1 · build 2";
+   `last_result.json` = applied; `backups/pre-update-build2-*.db` and `updates/rollback/build1-*` present; no JS errors.
+5. Stopping the supervisor process freed the port within seconds (child watchdog).
+
 ## Bugs found by testing (fixed)
 - openpyxl read-only mode trusted greytHR's wrong `<dimension>` → DOJ report read as 1 column → `reset_dimensions()`.
 - Jinja autoescaped embedded JSON → dashboard charts did not render → `Markup` with `</` neutralised.
