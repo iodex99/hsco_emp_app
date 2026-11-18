@@ -38,10 +38,44 @@ def init_db() -> None:
     from app import models  # noqa: F401  (register tables)
 
     Base.metadata.create_all(get_engine())
+    add_missing_columns(get_engine())
     from app.services.settings import ensure_defaults
 
     with session_scope() as db:
         ensure_defaults(db)
+
+
+def add_missing_columns(engine) -> list[str]:
+    """Additive schema upgrade for existing databases: create_all() makes missing tables but never new columns of an
+    existing table, so add them (ALTER TABLE … ADD COLUMN, with the model's scalar default). Never drops or changes
+    anything. Returns the columns added (logged)."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    added = []
+    with engine.begin() as con:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                ddl = col.type.compile(engine.dialect)
+                default = ""
+                d = col.default.arg if col.default is not None and getattr(col.default, "is_scalar", False) else None
+                if isinstance(d, bool):
+                    default = f" DEFAULT {int(d)}"
+                elif isinstance(d, (int, float)):
+                    default = f" DEFAULT {d}"
+                elif isinstance(d, str):
+                    default = " DEFAULT '" + d.replace("'", "''") + "'"
+                con.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {ddl}{default}'))
+                added.append(f"{table.name}.{col.name}")
+    if added:
+        import logging
+        logging.getLogger("hsco.db").info("schema upgraded: added %s", ", ".join(added))
+    return added
 
 
 def SessionLocal():

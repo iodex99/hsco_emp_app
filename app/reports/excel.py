@@ -233,6 +233,28 @@ def build_workbook(db: Session, period: Period) -> bytes:
         if row[5]:
             ws.cell(row=i, column=6).fill = AMBER
 
+    # ------------------------------------------------------------------ mobile sign-ins with place names
+    from app.services import locations as LOC
+    L = LOC.report(db, period)
+    if L["rows"]:
+        ws = wb.create_sheet("Sign-ins & Places")
+        _table(ws, 5, ["When", "Employee No", "Name", "Tagged as", "Place", "Remark", "Office check", "Permission reason",
+                       "Phone", "Status", "Latitude", "Longitude"],
+               [[r["ts"], r["emp_no"], r["name"], r["type"] if r["swipe_type"].lower() != "permission" else "Permission",
+                 r["place"], r["note"], r["office_check"], r["reason"], r["device"], r["approval"], r["lat"], r["lon"]]
+                for r in L["rows"]],
+               [16, 10, 22, 14, 44, 30, 16, 22, 16, 10, 11, 11], org,
+               f"Mobile sign-ins and places — {period.label} (offline place names; named places take priority)")
+        for i, r in enumerate(L["rows"], start=6):
+            ws.cell(row=i, column=1).number_format = "dd-mmm-yyyy hh:mm"
+            if r["office_check"] == "Away from office":
+                ws.cell(row=i, column=7).fill = RED
+        ws = wb.create_sheet("Places")
+        _table(ws, 5, ["Place", "Mostly tagged", "Tags", "Sign-ins", "People", "Who", "Remarks", "First", "Last"],
+               [[b["place"], b["main_type"], b["types"], b["count"], b["people"], ", ".join(b["people_names"]),
+                 b["notes"], b["first"], b["last"]] for b in L["places"]],
+               [44, 14, 30, 9, 8, 40, 36, 16, 16], org, f"Places people signed in from — {period.label}")
+
     ws = wb.create_sheet("Regularisation & Punches")
     rows = []
     for r in res:

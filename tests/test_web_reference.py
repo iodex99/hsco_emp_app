@@ -100,3 +100,43 @@ def test_real_month_end_to_end(client):
     html = c.get("/exports/2026-10.html").text
     from tests.reference_setup import build
     assert build()["mis"]["PC003"]["name"] in html and len(html) > 300_000
+
+
+@pytest.mark.skipif(not (REF / "Employee Swipe Details.xlsx").exists(), reason="Nov-2026 swipe export not present")
+def test_real_signins_with_coordinates(client):
+    """The real November punch log with GPS: imported with October's exports in one go, every sign-in gets a place,
+    October is untouched, November (no muster yet) has a Locations page, suggestions and the office check work."""
+    from sqlalchemy import func, select
+    from app.db import session_scope
+    from app.models import MonthResult, Period, SwipeRow
+    c = client
+    make_user()
+    login_full(c)
+    files = [("files", (f, (REF / f).read_bytes(), "x")) for f in FILES + ["Employee Swipe Details.xlsx"]]
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=files)
+    assert r.status_code == 200 and "Unexpected" not in r.text and "not imported yet" not in r.text
+    assert "Employee Swipe Details.xlsx" in r.text and "November 2026" in r.text
+    with session_scope() as db:
+        nov = db.scalar(select(Period).where(Period.year == 2026, Period.month == 11))
+        gps = db.scalar(select(func.count()).where(SwipeRow.period_id == nov.id, SwipeRow.lat.is_not(None)))
+        unnamed = db.scalar(select(func.count()).where(SwipeRow.period_id == nov.id, SwipeRow.lat.is_not(None),
+                                                       (SwipeRow.place == "") | SwipeRow.place.is_(None)))
+        assert gps > 100 and unnamed == 0
+        assert all(6 <= la <= 37.5 and 68 <= lo <= 97.5 for la, lo in db.execute(
+            select(SwipeRow.lat, SwipeRow.lon).where(SwipeRow.period_id == nov.id, SwipeRow.lat.is_not(None))))
+        assert db.scalar(select(func.count()).where(MonthResult.period_id == nov.id)) == 0      # no muster yet
+        oct_rows = db.scalar(select(func.count()).select_from(MonthResult).join(Period).where(Period.month == 10))
+        assert oct_rows == 97
+    page = c.get("/locations?period=2026-11")
+    assert page.status_code == 200 and "November 2026" in page.text and "Bandra Kurla Complex" in page.text
+    assert c.get("/").status_code == 200 and "October 2026" in c.get("/").text              # default view stays October
+    st = c.get("/settings").text
+    assert "Suggested places" in st and 'data-name="Mumbai office" data-cat="Office"' in st and 'data-cat="Client"' in st
+    assert 'data-name="Delhi office" data-cat="Office"' in st and "probably not an office" in st
+    # name the Mumbai office from its suggestion → office-tagged sign-ins elsewhere are now visible
+    m = re.search(r'data-name="(Mumbai office)" data-cat="Office" data-lat="([\d.]+)" data-lon="([\d.]+)" data-r="(\d+)"', st)
+    assert m
+    c.post("/settings/geofences", data={"csrf": csrf_of(c, "/settings"), "name": "Mumbai office", "category": "Office",
+                                        "lat": m.group(2), "lon": m.group(3), "radius_m": m.group(4)})
+    page = c.get("/locations?period=2026-11").text
+    assert "Mumbai office (Office)" in page and "Away from office" in page and "At office" in page

@@ -52,7 +52,7 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
     <button class="on" data-tab="ov">Overview</button><button data-tab="sheet">Payroll leave sheet</button>
     <button data-tab="score">Scorecard</button><button data-tab="heat">Attendance heatmap</button>
     <button data-tab="exc">Exceptions <span class="n">{{ m.flags|rejectattr('severity','eq','info')|list|length }}</span></button>
-    <button data-tab="abs">Absence &amp; hours</button><button data-tab="groups">Groups</button><button data-tab="people">People</button>
+    <button data-tab="abs">Absence &amp; hours</button><button data-tab="groups">Groups</button><button data-tab="people">People</button>{% if L.rows %}<button data-tab="loc">Locations</button>{% endif %}
     {% if m.trend|length > 1 %}<button data-tab="trend">Trend</button>{% endif %}
   </div>
 </div></header>
@@ -242,6 +242,34 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
   </tbody></table></div></div></div>
   <div class="card"><div class="hd"><h2>Groups side by side</h2></div><div class="bd"><div class="chartbox" style="height:300px"><canvas id="cGroups"></canvas></div></div></div>
 </section>
+
+<!-- ======================================================== LOCATIONS -->
+{% if L.rows %}{% set lk = L.kpis %}
+<section class="pane" data-pane="loc">
+  <div class="minis mb">
+    <div class="mini"><div class="v">{{ lk.mobile }}</div><div class="l">Mobile sign-ins{% if lk.gps_pct is not none %} · {{ lk.gps_pct|n(0) }}% with GPS{% endif %}</div></div>
+    <div class="mini"><div class="v">{{ lk.client_visits }}</div><div class="l">Client visits</div></div>
+    <div class="mini"><div class="v">{{ lk.wfh }}</div><div class="l">WFH sign-ins ({{ lk.wfh_people }} people)</div></div>
+    <div class="mini {{ 'bad' if lk.away }}"><div class="v">{% if lk.offices_named %}{{ lk.away }}{% else %}—{% endif %}</div><div class="l">{% if lk.offices_named %}Tagged 'Office' but elsewhere{% else %}Offices not named yet{% endif %}</div></div>
+    <div class="mini {{ 'bad' if lk.shared_devices }}"><div class="v">{{ lk.shared_devices }}</div><div class="l">Phones shared between people</div></div>
+    <div class="mini"><div class="v">{{ lk.places }}</div><div class="l">Distinct places</div></div>
+  </div>
+  <div class="card flush mb"><div class="hd"><h2>By place</h2></div><div data-table-for="#bp-places"></div><div class="bd"><div class="tw" style="max-height:60vh"><table id="bp-places" class="compact" data-table data-csv="places-{{ period.key }}">
+    <thead><tr><th data-key="place" data-type="text">Place</th><th data-key="main" data-type="enum">Mostly tagged</th><th data-key="n" data-type="num" class="num">Sign-ins</th><th data-key="people" data-type="num" class="num">People</th><th data-key="who" data-type="text">Who</th><th data-key="notes" data-type="text">Remarks</th></tr></thead><tbody>
+    {% for b in L.places %}<tr><td class="small strong">{{ b.place }}</td><td>{{ b.main_type }}</td><td class="num">{{ b.count }}</td><td class="num">{{ b.people }}</td><td class="small">{{ b.people_names[:5]|join(', ') }}{% if b.people_names|length > 5 %} +{{ b.people_names|length - 5 }}{% endif %}</td><td class="small">{{ b.notes }}</td></tr>{% endfor %}
+  </tbody></table></div></div></div>
+  <div class="card flush"><div class="hd" style="flex-wrap:wrap;gap:8px"><h2>Sign-ins</h2><div class="chips" data-chips="#bp-signins">
+    <button class="chip on" type="button" data-chip="">All</button>
+    {% for tag, label in [('away', "'Office' but elsewhere"), ('client', 'Client'), ('wfh', 'WFH'), ('onduty', 'On duty'), ('permission', 'Permission'), ('shared', 'Shared phone')] %}{% if L.tag_counts.get(tag) %}<button class="chip" type="button" data-chip="{{ tag }}">{{ label }} <span class="n">{{ L.tag_counts[tag] }}</span></button>{% endif %}{% endfor %}
+  </div></div><div data-table-for="#bp-signins"></div>
+  <div class="bd"><div class="tw" style="max-height:70vh"><table id="bp-signins" class="compact" data-table data-csv="sign-ins-{{ period.key }}">
+    <thead><tr><th data-key="when" data-type="date">When</th><th data-key="emp" data-type="text">Employee</th><th data-key="type" data-type="enum">Tagged as</th><th data-key="place" data-type="text">Place</th><th data-key="note" data-type="text">Remark</th><th data-key="check" data-type="enum">Office check</th></tr></thead><tbody>
+    {% for r in L.rows %}<tr data-emp="{{ r.emp_no }}" data-tags="{{ r.tags }}"><td class="small" data-v="{{ r.ts.isoformat() }}" style="white-space:nowrap">{{ r.ts.strftime('%d %b, %H:%M') }}</td>
+      <td data-v="{{ r.name }}">{{ ui.person(r.name, r.emp_no) }}</td><td>{{ r.type }}</td><td class="small">{{ r.place or '—' }}</td><td class="small">{{ r.note }}</td>
+      <td data-f="{{ r.office_check or '—' }}">{% if r.office_check == 'Away from office' %}<span class="badge b-bad">Away from office</span>{% elif r.office_check %}<span class="badge b-ok">At office</span>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div></div></div>
+</section>
+{% endif %}
 
 <!-- ======================================================== PEOPLE -->
 <section class="pane" data-pane="people">

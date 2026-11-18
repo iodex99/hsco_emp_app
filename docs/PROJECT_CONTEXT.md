@@ -53,7 +53,8 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 3. Should leavers in their exit month be exempt from shortfall deduction? (Currently only via group/override.)
 4. Opening leave & comp-off balances at go-live — need a one-time upload (template provided).
 5. LOP: leave column or absent column? (default leave).
-6. Which greytHR report carries sign-in coordinates? The supplied swipe export has none — importer is ready for
-   `Latitude/Longitude` columns or "lat, long" text.
-7. Office/client geofences (names + coordinates) to load.
+6. ~~Which greytHR report carries sign-in coordinates?~~ Answered 2026-11-18: the newer *Employee Swipe Details*
+   export (Longitude/Latitude columns, phone, remarks) — supported from v1.5.0.
+7. Office/client geofences: name the Mumbai and Delhi offices (Settings → Locations suggests both); client names
+   as HR prefers. Is a second "Office" spot near Sion a real office? (suggested as "Mumbai office — Sion").
 8. Is "late" for the board > 1 hour (default) or another threshold?

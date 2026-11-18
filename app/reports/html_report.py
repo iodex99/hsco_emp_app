@@ -63,12 +63,16 @@ def _employees(results, ins: dict, emps: dict) -> list[dict]:
                       "b": dd["b1"] if dd["b1"] != "present" else dd["b2"], "i": dd["in"], "o": dd["out"],
                       "h": dd["work_min"], "late": dd["late_min"] if dd.get("late") else 0, "tags": _day_tags(dd),
                       "hol": dd.get("holiday") or "",
-                      "locs": sorted({s.get("place") or s.get("loc") or
-                                      ("Office biometric" if (s.get("type") or "").lower() == "astra" else s.get("type") or "")
-                                      for s in dd.get("swipes", [])} - {""}),
+                      "locs": sorted({_loc_label(s) for s in dd.get("swipes", [])} - {""}),
                       "n": dd.get("notes", [])} for dd in r.days],
         })
     return out
+
+
+def _loc_label(s: dict) -> str:
+    base = s.get("place") or s.get("loc") or ("Office biometric" if (s.get("type") or "").lower() == "astra"
+                                              else s.get("type") or "")
+    return f"{base} — “{s['note']}”" if s.get("note") and base else base
 
 
 def _icons() -> str:
@@ -92,6 +96,8 @@ def build_board_pack(db: Session, period: Period) -> str:
     from sqlalchemy import select
     m = MX.period_metrics(db, period)
     ins = INS.insights(db, period)
+    from app.services import locations as LOC
+    loc = LOC.report(db, period)
     pol = get_policy(db)
     org = get_general(db)
     results = MX.results_for(db, period)
@@ -101,7 +107,7 @@ def build_board_pack(db: Session, period: Period) -> str:
     tpl = templates.env.get_template("board_pack.html")
     return tpl.render(
         org=org, period=period, generated=datetime.now().strftime("%d-%b-%Y %H:%M"), m=m, I=ins, rows=results,
-        D=[r.data for r in results], policy=pol, icon_base="", labels=MX.FLAG_LABELS,
+        D=[r.data for r in results], policy=pol, icon_base="", labels=MX.FLAG_LABELS, L=loc,
         data_json=_safe_json({"emps": E, "labels": MX.FLAG_LABELS, "m": {k: m[k] for k in (
             "daily", "location_mix", "in_time_hist", "trend", "late_by_weekday")} | {"tenure": m["people"]["tenure_buckets"]},
             "ins": {"hours_hist": ins["hours_hist"], "bands": ins["bradford_bands"], "groups": ins["groups"],

@@ -233,6 +233,12 @@ class SwipeRow(Base):
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lon: Mapped[float | None] = mapped_column(Float, nullable=True)
     place: Mapped[str] = mapped_column(String(256), default="")
+    # v1.5: mobile sign-in details from the newer greytHR swipe export
+    note: Mapped[str] = mapped_column(String(256), default="")       # employee's remark (client name, purpose)
+    reason: Mapped[str] = mapped_column(String(256), default="")     # permission / regularisation reason
+    approval: Mapped[str] = mapped_column(String(32), default="")    # Approved / Pending / Rejected
+    device: Mapped[str] = mapped_column(String(128), default="")     # phone model
+    device_id: Mapped[str] = mapped_column(String(128), default="")  # phone identifier
 
 
 class SummaryRow(Base):

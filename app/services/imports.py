@@ -220,7 +220,8 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                 db.execute(insert(SwipeRow), [
                     {"period_id": period.id, "emp_no": r.emp_no, "ts": r.ts, "door": r.door,
                      "location_type": r.location_type, "swipe_type": r.swipe_type, "lat": r.lat, "lon": r.lon,
-                     "place": pl} for r, pl in zip(keep, places)])
+                     "place": pl, "note": r.note, "reason": r.reason, "approval": r.approval, "device": r.device,
+                     "device_id": r.device_id} for r, pl in zip(keep, places)])
             namer.flush_cache()
             n = len(keep)
             if not any(r.lat is not None for r in recs):

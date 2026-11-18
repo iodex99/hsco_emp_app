@@ -96,3 +96,15 @@ firm value (others), otherwise "typical".
 *v1.4.1:* the attention score uses 0 % as 0 % (previously a 0 % on-time or hours share was mistaken for "no data").
 History-based measures (Bradford, FY leave used, trend) are computed from the stored month summaries; a spell that runs
 from one month's last working day into the next month's first working day counts once.
+
+## Locations (v1.5 — `app/services/locations.py`; Locations page, Excel "Sign-ins & Places"/"Places", board pack)
+| Measure | Definition |
+|---|---|
+| Mobile sign-ins | punches that are not office-biometric (Astra); % with GPS |
+| Client visits | distinct (person, day, place) with Location Type "Client Location" |
+| WFH sign-ins | Location Type Work from Home (count and people) |
+| 'Office' but not at an office | Office-tagged mobile sign-ins outside every named Office (+150 m) — only when offices are named |
+| Shared phones | phone ids used by 2+ people in the month |
+| By place | sign-ins, people, tags and top remarks per place name |
+Flags: `OFF_SITE_OFFICE` (medium) "Tagged 'Office' but not at an office", `SHARED_DEVICE` (high) "Phone used to sign
+in for several people" — see BUSINESS_RULES §9a.

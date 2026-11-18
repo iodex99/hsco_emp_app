@@ -65,6 +65,22 @@ Count of `Count` per Name → `Final = count/2` = **WFH days** (feeds MIS column
 Flaw: a day with one WFH swipe + one office swipe becomes 0.5; 7 employees differ from a distinct‑day count
 (e.g. HS179: 3 by HR method, 4 distinct WFH days).
 
+## 2b. `Employee Swipe Details.xlsx` (newer greytHR export, November 2026 — first file with GPS)
+`Sheet0`, header row 1, 17 columns: Employee No, Employee Name, Access Card, Shift, **Swipe Date** (timestamp),
+Door/Address, **Longitude**, **Latitude** (longitude comes first; numbers stored as text), Location Type, Mobile Device
+Name, Mobile Device Id, Swipe Type, **Status** (approval: Approved / blank for permission requests), Remarks (typed by
+the employee), Permission Reason, Signed In/Out By (empty in the sample), Received On.
+- 1,873 punches, 1–17 Nov 2026, 93 people: 1,418 Astra (office biometric, no GPS), 445 mobile sign-ins (all with GPS,
+  389 distinct points), 10 permission requests (no GPS, with reasons such as "forget to sign out").
+- Location types on mobile sign-ins: Client Location 251, Office 91, Work from Home 73, On-Duty 30.
+- 58 phones; no phone used by two people in the sample; one person used two phones.
+- Remarks are free text: client names ("At … Laboratories (Ghatkopar)"), purposes, or just times ("7:10 pm").
+- Coordinates span lat 13.7–28.7, lon 72.0–77.3 (Mumbai, Delhi, client sites, some out-station).
+- Findings once both offices are named (Mumbai: Marine Lines; Delhi: South Delhi): 48 of 91 "Office"-tagged sign-ins
+  by 8 people were made elsewhere (several from the same spot as their WFH sign-ins).
+- **Importer trap found:** this layout was recognised as a *muster* by v1.4 (approval "Status" ≈ attendance status,
+  "Swipe Date" ≈ date) — fixed in 1.5.0 with strict value checks; regression-tested.
+
 ## 3. `Attendance Summary Report.xls` (legacy .xls, `Sheet0`, header row 4)
 `Employee No | Employee Name | Location | (3 blank) | Present days | Absent days | Leave days | On duty days | Holiday days |
 Total Week Days | Total Hours | Hours Required | Leave Hours | Short Fall | Excess Hours`

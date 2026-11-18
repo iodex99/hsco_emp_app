@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`109 passed` (101 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`119 passed` (v1.5.0; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
@@ -72,3 +72,15 @@ New tests: numeric IDs, status words, hours/time edge cases, warning rows, title
 thread-safe detection (test_parsers, 19); attention at 0 %, stored summaries = day detail, joining/leaving list,
 two unsure sheets, data month vs title, one recalculation per upload, escaped board pack + formula-safe Excel,
 upgrade skips finalised months, partial files, content-based file type, future dates refused, delete month (test_web).
+
+## v1.5.0 — sign-ins with coordinates (2026-11-18)
+New tests: real Nov-2026 export recognised as swipes with lat/lon the right way round and every point named (skips
+without real data); synthetic fixture now in the new 17-column layout (GPS, phone, remarks, permission reason, a
+rejected sign-in); punch log never read as a muster; swapped coordinates corrected; location checks (office/away,
+shared phone, rejected and biometric ignored); schema upgrade adds columns to an old database, idempotent; Locations
+page, Settings suggestions, naming the office → OFF_SITE_OFFICE in the review queue, rejected sign-in note, remark in
+the day view; shared phone flag; punches-only month (pending page with correct counts, no dead downloads); Excel
+sheets and board-pack tab; real-data HTTP flow (October + November together, suggestions "Mumbai office"/"Delhi
+office", office check).
+Manual browser run on the real files: import of all six exports 2.6 s; Locations, suggestions, Name it → save,
+office check (48 of 91 "Office" sign-ins elsewhere), crawl of 232 pages as admin and viewer — no errors.

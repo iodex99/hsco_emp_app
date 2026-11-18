@@ -15,7 +15,7 @@ from typing import Iterable, Optional
 from .model import (
     B_ABSENT, B_COMPOFF, B_LEAVE, B_LOP, B_OFF, B_PRESENT, HOLIDAY, P_ALL_SAT_OFF, P_CUSTOM, P_MUSTER,
     P_STD_FIRST_SAT, P_SUN_ONLY, WEEKLY_OFF, WORKDAY, DayDetail, DayOverride, Employee, EmployeeMonth,
-    MusterDay, Policy, Swipe,
+    REJECTED_APPROVALS, MusterDay, Policy, Swipe,
 )
 
 SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_INFO = "critical", "high", "medium", "info"
@@ -138,7 +138,11 @@ def compute_employee_month(
     res.is_exit = bool(emp.dol and month_start <= emp.dol <= month_end)
 
     swipes_by_day: dict[date, list[Swipe]] = defaultdict(list)
+    rejected_by_day: dict[date, int] = defaultdict(int)
     for s in sorted(swipes, key=lambda x: x.ts):
+        if (s.approval or "").strip().lower() in REJECTED_APPROVALS:
+            rejected_by_day[s.ts.date()] += 1          # a rejected sign-in never counts as attendance
+            continue
         swipes_by_day[s.ts.date()].append(s)
 
     behaviour = emp.group not in set(policy.metrics_exclude_groups)
@@ -204,6 +208,8 @@ def compute_employee_month(
                 notes.append("Leave recorded on a non-working day — ignored")
 
         sw = swipes_by_day.get(d, [])
+        if rejected_by_day.get(d):
+            notes.append(f"{rejected_by_day[d]} rejected sign-in(s) ignored")
         dd = DayDetail(day=d, weekday=d.strftime("%a"), day_type=day_type, s1=s1, s2=s2, b1=b1, b2=b2,
                        in_time=m.in_time, out_time=m.out_time, work_min=work_min, shift=m.shift,
                        swipes=sw, holiday_name=holiday_name, overridden=bool(ov), notes=notes)

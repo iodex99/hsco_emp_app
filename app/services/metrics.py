@@ -24,6 +24,8 @@ FLAG_LABELS = {
     "PERSISTENT_REGULARISATION": "Persistent regularisation",
     "MISSING_PUNCHES": "Repeated missing punches",
     "MOBILE_AT_OFFICE": "Mobile sign-in tagged 'Office'",
+    "OFF_SITE_OFFICE": "Tagged 'Office' but not at an office",
+    "SHARED_DEVICE": "Phone used to sign in for several people",
     "LATE_SITTING": "Frequent late sitting",
     "SANDWICH_PATTERN": "Leave adjacent to weekends/holidays",
     "LOP": "Loss of pay",

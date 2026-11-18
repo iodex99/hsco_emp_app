@@ -18,6 +18,10 @@ Add more methods under **My security** (several phones, keys).
   Bradford factor, on-time arrivals, hours vs required, an employee × day heatmap, arrival times, groups compared.
   An employee's **Scorecard** tab compares them with their group and the firm.
 - **Employees**: settings per person (group, working pattern, hours per day, exemption).
+- **Locations**: every mobile sign-in with its place name (worked out from the GPS coordinates automatically),
+  the employee's remark and phone; filter to client visits, WFH, "Office" sign-ins made elsewhere, shared
+  phones; see it by place or by person. Available as soon as the swipe export is imported — no need to wait for
+  month end.
 - Press **/** anywhere to find an employee; use the **month switcher** (top right) to change month.
 - On an employee's page, click **legend items** under the calendar (several at once) to show only those days, e.g. Late + Missing punch.
 - In the **Review queue**, tick several rows (or the header box for all shown) and use the bar at the bottom to mark them reviewed in one go. *Review queue →* on an employee's Flags card shows only that person.
@@ -77,3 +81,15 @@ For October 2026: 91 of 97 identical once the employee settings were entered; th
 Policy numbers (8.5 h/day, 4 h block = ½ day, WFH limit 2, comp-off ≥ 5 h, late thresholds, exempt groups),
 greytHR status-code meanings, shift timings, holiday calendars (default + special), named locations (geofences) and
 frequent unnamed sign-in spots. Changes apply to draft months only.
+
+## Naming places (once)
+Settings → Locations → **Suggested places** lists the busiest spots people sign in from, with a suggested name and
+type. Click **Name it**, check the name and radius, **Save place**. Do your **offices first** (e.g. "Mumbai office",
+"Delhi office"): from then on, sign-ins tagged "Office" that were made somewhere else appear in the review queue. A
+spot marked "probably not an office" is one that only one person calls "Office" — usually their home. Named places
+replace the map's locality name everywhere (Locations, day view, Excel, board pack).
+
+## A month that isn't calculated yet
+If you import the swipe export during the month, that month shows "Not calculated yet": what's been imported, the
+sign-ins so far and a link to Locations. Everything else (leave, hours, Insights, downloads) appears once the
+month's Attendance Muster Report is imported.

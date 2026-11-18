@@ -79,7 +79,8 @@ def _serialize_day(dd: M.DayDetail) -> dict:
         "out_next_day": bool(dd.out_time and dd.out_time.date() > dd.day),
         "work_min": dd.work_min, "shift": dd.shift, "holiday": dd.holiday_name,
         "swipes": [{"t": s.ts.strftime("%H:%M:%S"), "type": s.swipe_type, "loc": s.location_type, "door": s.door,
-                    "place": s.place, "lat": s.lat, "lon": s.lon} for s in dd.swipes],
+                    "place": s.place, "lat": s.lat, "lon": s.lon, "note": s.note, "reason": s.reason,
+                    "device": s.device} for s in dd.swipes],
         "locs": dd.location_types, "late_min": dd.late_min,
         "late": dd.is_late, "very_late": dd.is_very_late, "early": dd.is_early_exit, "short": dd.is_short_day,
         "late_sit": dd.is_late_sitting, "missing": dd.is_missing_punch, "regularised": dd.is_regularised,
@@ -103,9 +104,10 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
     muster = [M.MusterDay(*r) for r in db.execute(
         select(MusterRow.emp_no, MusterRow.day, MusterRow.s1, MusterRow.s2, MusterRow.in_time, MusterRow.out_time,
                MusterRow.work_min, MusterRow.shift, MusterRow.name).where(MusterRow.period_id == period.id))]
-    swipes = [M.Swipe(*r) for r in db.execute(
+    swipes = [M.Swipe(*r[:8], *(x or "" for x in r[8:])) for r in db.execute(
         select(SwipeRow.emp_no, SwipeRow.ts, SwipeRow.door, SwipeRow.location_type, SwipeRow.swipe_type, SwipeRow.lat,
-               SwipeRow.lon, SwipeRow.place).where(SwipeRow.period_id == period.id))]
+               SwipeRow.lon, SwipeRow.place, SwipeRow.note, SwipeRow.reason, SwipeRow.approval, SwipeRow.device,
+               SwipeRow.device_id).where(SwipeRow.period_id == period.id))]
     d_ovr = [M.DayOverride(o.emp_no, o.day, o.day_type or None, o.s1 or None, o.s2 or None, o.work_min, o.reason)
              for o in db.scalars(select(DayOverrideRow).where(DayOverrideRow.period_id == period.id))]
     m_ovr: dict = {}
@@ -119,6 +121,9 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
         m_ovr.setdefault(o.emp_no, {})[o.field] = v
 
     results = compute_month(y, m, employees, muster, swipes, policy, d_ovr, m_ovr)
+    from app.models import Geofence
+    from app.services.location_checks import flags_by_employee
+    loc_flags = flags_by_employee(swipes, db.scalars(select(Geofence)).all(), {k: e.name for k, e in emps_db.items()})
 
     # ledgers
     prev = previous_period(db, period)
@@ -150,6 +155,7 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
         if ledger.get("compoff_overdraft"):
             flags.append({"code": "COMPOFF_OVERDRAWN", "severity": SEV_MEDIUM,
                           "message": f"Comp-off availed beyond balance by {ledger['compoff_overdraft']:g} day(s)"})
+        flags.extend(loc_flags.get(emp_no, []))
         db.add(MonthResult(period_id=period.id, emp_no=emp_no, name=r.name, group=r.group, location=r.location,
                            deduction_days=r.deduction_days, balance_hours=round(r.balance_hours, 4),
                            flag_count=sum(1 for f in flags if f["severity"] in ("critical", "high", "medium")),

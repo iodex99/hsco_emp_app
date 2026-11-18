@@ -12,12 +12,13 @@ import gzip
 import json
 import math
 import os
+import re
 import pathlib
 import sqlite3
 import threading
 import urllib.parse
 import urllib.request
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Optional
 
 from sqlalchemy import select
@@ -298,22 +299,95 @@ def rename_swipes(db: Session, period_ids: Optional[set] = None) -> set:
     return touched
 
 
-def unnamed_clusters(db: Session, limit: int = 30) -> list[dict]:
-    """Group swipe coordinates not covered by a geofence (≈110 m grid) so the admin can name them."""
-    from app.models import SwipeRow
+CATEGORY_FOR_TYPE = {"office": "Office", "client location": "Client", "work from home": "Home", "wfh": "Home",
+                     "on-duty": "Other"}
 
+
+_TIMEISH = re.compile(r"(?i)^\s*(shift\s+(in|out)|\d{1,2}([:.]\d{2})?\s*(am|pm)?|in|out|wfh|office)\s*$")
+
+
+def _clean_note(n: str) -> str:
+    """A remark as a possible place name: drop times ('7:10 pm'), 'Shift In', and lead-ins like 'At …'."""
+    n = re.sub(r"\s+", " ", (n or "")).strip(" .-")
+    if not n or _TIMEISH.match(n):
+        return ""
+    n = re.sub(r"(?i)^(at|in|visit(ed)? to|visit|meeting at|meeting with)\s+", "", n)
+    return n[:60]
+
+
+def unnamed_clusters(db: Session, limit: int = 30, merge_m: float = 250) -> list[dict]:
+    """Frequent sign-in spots not yet covered by a named place, with a suggested name and type.
+
+    Punches are bucketed in SQL (≈110 m grid, never loading every swipe), neighbouring buckets within merge_m are
+    merged (one office often spans two buckets), and each spot gets: its usual location type → suggested category
+    (Office / Client / Home / Other), the remarks people typed there (client names), the people, a suggested name and
+    a radius that covers its punches."""
     from sqlalchemy import func
+    from app.models import Employee, SwipeRow
+
     fences = db.scalars(select(Geofence)).all()
-    # grouped in SQL (≈110 m buckets) — never loads every swipe; fence check on each bucket's centre
     q = (select(func.round(SwipeRow.lat, 3), func.round(SwipeRow.lon, 3), func.count(), func.avg(SwipeRow.lat),
-                func.avg(SwipeRow.lon), func.max(SwipeRow.place), func.group_concat(SwipeRow.emp_no.distinct()))
+                func.avg(SwipeRow.lon), func.max(SwipeRow.place), func.group_concat(SwipeRow.emp_no, "|"),
+                func.group_concat(func.coalesce(SwipeRow.location_type, ""), "|"),
+                func.group_concat(func.coalesce(SwipeRow.note, ""), "|"),
+                func.max(SwipeRow.lat) - func.min(SwipeRow.lat), func.max(SwipeRow.lon) - func.min(SwipeRow.lon))
          .where(SwipeRow.lat.is_not(None)).group_by(func.round(SwipeRow.lat, 3), func.round(SwipeRow.lon, 3))
-         .order_by(func.count().desc()))
-    out = []
-    for _, _, n, lat, lon, place, emps in db.execute(q):
+         .order_by(func.count().desc()).limit(2000))
+    spots: list = []
+    for _, _, n, lat, lon, place, emps, types, notes, dlat, dlon in db.execute(q):
         if any(haversine_m(lat, lon, f.lat, f.lon) <= f.radius_m for f in fences):
             continue
-        out.append({"count": n, "lat": lat, "lon": lon, "place": place or "", "emps": sorted((emps or "").split(","))})
-        if len(out) >= limit:
-            break
+        b = {"count": n, "lat": lat, "lon": lon, "place": place or "", "emps": Counter((emps or "").split("|")),
+             "types": Counter(t.strip() for t in (types or "").split("|")),
+             "notes": Counter(_clean_note(x) for x in (notes or "").split("|") if _clean_note(x)),
+             "spread": haversine_m(0, 0, dlat or 0, dlon or 0) / 2}
+        for c in spots:                                # merge into a bigger neighbour
+            if haversine_m(lat, lon, c["lat"], c["lon"]) <= merge_m:
+                tot = c["count"] + n
+                c["lat"], c["lon"] = (c["lat"] * c["count"] + lat * n) / tot, (c["lon"] * c["count"] + lon * n) / tot
+                c["spread"] = max(c["spread"], haversine_m(lat, lon, c["lat"], c["lon"]) + b["spread"])
+                c["count"] = tot
+                for k in ("emps", "types", "notes"):
+                    c[k].update(b[k])
+                break
+        else:
+            spots.append(b)
+    names = {e.emp_no: e.name for e in db.scalars(select(Employee))}
+    cities = [x for x in (get_general(db).get("locations") or []) if x]
+    out = []
+    for c in sorted(spots, key=lambda x: -x["count"])[:limit]:
+        main_type = next((t for t, _ in c["types"].most_common() if t), "")
+        category = CATEGORY_FOR_TYPE.get(main_type.lower(), "Other")
+        locality = (c["place"] or "").replace("near ", "").split(" (")[0].split(",")[0].split(" · ")[0]
+        people = [e for e, _ in c["emps"].most_common() if e]
+        # a remark names the place only if it is what people there usually write (not a one-off)
+        note, ncount = c["notes"].most_common(1)[0] if c["notes"] else ("", 0)
+        named_by_note = ncount >= 2 and ncount >= 0.3 * sum(c["notes"].values())
+        warning = ""
+        if category == "Office" and len(people) < 2:
+            # an office is shared; one person calling a spot "Office" is more likely home or a client
+            category, warning = "Other", f"only {names.get(people[0], people[0]) if people else 'one person'} tags this 'Office'"
+            suggestion = locality or f"{c['lat']:.4f}, {c['lon']:.4f}"
+        elif category == "Client" and named_by_note:
+            suggestion = note
+        elif category == "Office":
+            city = next((x for x in cities if x.lower() in (c["place"] or "").lower()), "")
+            suggestion = f"{city} office" if city else (f"Office — {locality}" if locality else "Office")
+        elif category == "Home" and len(people) == 1:
+            suggestion = f"Home — {names.get(people[0], people[0])}"
+        else:
+            suggestion = locality or f"{c['lat']:.4f}, {c['lon']:.4f}"
+        if any(o["suggestion"] == suggestion[:80] for o in out):   # the busiest spot keeps the plain name
+            extra = locality if locality and locality.lower() not in suggestion.lower() else (main_type or category)
+            suggestion = f"{suggestion} — {extra}"
+            n = 2
+            while any(o["suggestion"] == suggestion[:80] for o in out):
+                suggestion = f"{suggestion.rsplit(' #', 1)[0]} #{n}"
+                n += 1
+        out.append({"count": c["count"], "lat": c["lat"], "lon": c["lon"], "place": c["place"],
+                    "emps": sorted(people), "people": [names.get(e, e) for e in people],
+                    "main_type": main_type or "—", "types": ", ".join(f"{t or '—'} {n}" for t, n in c["types"].most_common()),
+                    "notes": [n for n, _ in c["notes"].most_common(3)], "category": category, "suggestion": suggestion[:80],
+                    "warning": warning,
+                    "radius": int(min(400, max(100, round((c["spread"] + 60) / 25) * 25)))})
     return out

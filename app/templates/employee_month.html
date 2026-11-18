@@ -129,7 +129,7 @@
     {% if raw_status.get(dd.date) and (raw_status[dd.date][0] != dd.s1 or raw_status[dd.date][1] != dd.s2) %}<span class="muted small">(greytHR {{ raw_status[dd.date][0] }})</span>{% endif %}
     <div>{% for t,on,cls in [('late '~dd.late_min~'m',dd.late,'late'),('missing punch',dd.missing,'bad'),('regularised',dd.regularised,'info'),('WFH',dd.wfh,'vio'),('worked off-day',dd.extra,'ok'),('comp-off earned',dd.co_earned,'ok'),('early exit',dd.early,'late'),('late sitting',dd.late_sit,''),('corrected',dd.overridden,'vio')] if on %}<span class="tag {{ cls }}">{{ t }}</span>{% endfor %}</div></td>
   <td class="tnum">{{ dd.in }}</td><td class="tnum">{{ dd.out }}{% if dd.out_next_day %}<sup>+1</sup>{% endif %}</td><td class="num" data-v="{{ (dd.work_min / 60)|round(2) if dd.work_min else '' }}">{{ dd.work_min|hm if dd.work_min else '' }}</td><td class="num" data-v="{{ dd.late_min if dd.late else '' }}">{{ dd.late_min if dd.late else '' }}</td>
-  <td class="small">{% for s in dd.swipes %}<div>{{ s.t[:5] }} · {{ s.place or s.loc or ('Office biometric' if s.type == 'Astra' else s.type) }}</div>{% else %}<span class="muted">—</span>{% endfor %}</td>
+  <td class="small">{% for s in dd.swipes %}<div>{{ s.t[:5] }} · {{ s.place or s.loc or ('Office biometric' if s.type == 'Astra' else s.type) }}{% if s.place and s.loc %} <span class="muted">({{ s.loc }})</span>{% endif %}{% if s.note %} <i class="muted">“{{ s.note }}”</i>{% endif %}{% if s.reason %} <span class="tag">{{ s.reason }}</span>{% endif %}</div>{% else %}<span class="muted">—</span>{% endfor %}</td>
   <td class="small muted">{{ dd.notes|join('; ') }}</td>
   {% if editable %}<td><button class="btn sm ghost" type="button" data-day="{{ dd.date }}">{{ ui.icon('pencil','sm') }}</button></td>{% endif %}
 </tr>{% endfor %}
@@ -259,7 +259,7 @@ function openDay(date){
               ['In / out', d.in ? d.in+' – '+(d.out||'no out-punch') : '—'], ['Hours', hm(d.work_min)]];
   if (d.late) kv.push(['Late by', d.late_min+' min']);
   document.getElementById('dw-kv').innerHTML = kv.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
-  document.getElementById('dw-punches').innerHTML = d.swipes.length ? d.swipes.map(s=>`<li><b class="tnum">${esc(s.t)}</b><span>${esc(s.place||s.loc||(s.type==='Astra'?'Office biometric':s.type))}</span><span class="r muted">${esc(s.type)}</span></li>`).join('') : '<li class="muted">No punches recorded</li>';
+  document.getElementById('dw-punches').innerHTML = d.swipes.length ? d.swipes.map(s=>`<li style="align-items:flex-start"><b class="tnum">${esc(s.t)}</b><span>${esc(s.place||s.loc||(s.type==='Astra'?'Office biometric':s.type))}${s.place&&s.loc?` <span class="muted">(${esc(s.loc)})</span>`:''}${s.note?`<br><i class="muted small">“${esc(s.note)}”</i>`:''}${s.reason?`<br><span class="tag">${esc(s.reason)}</span>`:''}${s.lat!=null?`<br><span class="mono muted small">${(+s.lat).toFixed(5)}, ${(+s.lon).toFixed(5)}${s.device?' · '+esc(s.device):''}</span>`:''}</span><span class="r muted">${esc(s.type)}</span></li>`).join('') : '<li class="muted">No punches recorded</li>';
   document.getElementById('dw-notes').textContent = (d.notes||[]).join(' · ');
   const f = document.getElementById('day-form');
   if (f){ document.getElementById('dw-day').value = date; f.reset(); document.getElementById('dw-day').value = date; }

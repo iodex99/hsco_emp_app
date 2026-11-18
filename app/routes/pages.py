@@ -39,11 +39,31 @@ def pick_period(c: Ctx, key: Optional[str]) -> Optional[Period]:
     return ps[0] if ps else None
 
 
+def pending_month(c: Ctx, p: Period):
+    """A month with imports but no calculation yet (no muster, e.g. the month in progress): say so plainly instead of
+    showing zeros, list what's in and what's missing, and point to its sign-ins."""
+    if p.computed_at is not None:
+        return None
+    from sqlalchemy import case, func
+    from app.models import SwipeRow
+    n_if = lambda cond: func.sum(case((cond, 1), else_=0))  # noqa: E731  (an integer count, not a boolean)
+    agg = c.db.execute(select(func.count(), n_if(func.lower(SwipeRow.swipe_type) != "astra"), n_if(SwipeRow.lat.is_not(None)),
+                              func.min(SwipeRow.ts), func.max(SwipeRow.ts), func.count(SwipeRow.emp_no.distinct()))
+                       .where(SwipeRow.period_id == p.id)).one()
+    total = agg[0] or 0
+    signins = {"total": total, "mobile": int(agg[1] or 0), "biometric": total - int(agg[1] or 0), "gps": int(agg[2] or 0),
+               "first": agg[3], "last": agg[4], "people": agg[5]}
+    calculated = next((x for x in periods(c.db) if x.computed_at), None)
+    return render(c, "month_pending.html", period=p, wf=WF.status(c.db, p), signins=signins, calculated=calculated)
+
+
 @router.get("/", response_class=HTMLResponse)
 def dashboard(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     p = pick_period(c, period)
     if p is None:
         return render(c, "empty.html")
+    if p.computed_at is None:
+        return pending_month(c, p)
     data = MX.period_metrics(c.db, p)
     wf = WF.status(c.db, p)
     return render(c, "dashboard.html", period=p, m=data, labels=MX.FLAG_LABELS, wf=wf, policy=get_policy(c.db))
@@ -54,10 +74,24 @@ def insights_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     p = pick_period(c, period)
     if p is None:
         return render(c, "empty.html")
+    if p.computed_at is None:
+        return pending_month(c, p)
     data = INS.insights(c.db, p)
     chart = {"hours_hist": data["hours_hist"], "bands": data["bradford_bands"], "groups": data["groups"],
              "trend": data["trend"]}
     return render(c, "insights.html", period=p, I=data, chart=chart, policy=get_policy(c.db))
+
+
+@router.get("/locations", response_class=HTMLResponse)
+def locations_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
+    """Where people signed in from (mobile sign-ins with place names) — available as soon as a swipe export with
+    coordinates is imported, even before the month's muster."""
+    from app.services import locations as LOC
+    p = LOC.pick(c.db, period)
+    months = LOC.months_with_signins(c.db)
+    if p is None:
+        return render(c, "locations.html", R=None, months=months)
+    return render(c, "locations.html", R=LOC.report(c.db, p), months=months, period=p)
 
 
 @router.get("/api/employees")
@@ -295,6 +329,8 @@ def recon_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     p = pick_period(c, period)
     if p is None:
         return render(c, "empty.html")
+    if p.computed_at is None:
+        return pending_month(c, p)
     return render(c, "reconciliation.html", period=p, r=MX.reconciliation(c.db, p))
 
 

@@ -668,13 +668,13 @@ def test_place_name_upgrade_skips_finalised_months(loaded):
     with session_scope() as db:
         p = db.scalar(select(Period))
         p.status = "FINALISED"
-        db.add(SwipeRow(period_id=p.id, emp_no="T001", ts=dt.datetime(2026, 10, 1, 10), lat=19.1145, lon=72.8712, place="frozen"))
+        db.add(SwipeRow(period_id=p.id, emp_no="T001", ts=dt.datetime(2026, 10, 1, 3, 33), lat=19.1146, lon=72.8713, place="frozen"))
         s = db.get(Setting, "geo_names_version")
         if s:
             db.delete(s)
     geo.upgrade_place_names()
     with session_scope() as db:
-        assert db.scalar(select(SwipeRow.place).where(SwipeRow.lat == 19.1145)) == "frozen"
+        assert db.scalar(select(SwipeRow.place).where(SwipeRow.ts == dt.datetime(2026, 10, 1, 3, 33))) == "frozen"
 
 
 def test_partial_file_updates_only_its_people(loaded, fixtures):
@@ -739,3 +739,104 @@ def test_admin_can_delete_a_mistaken_month(loaded):
     with session_scope() as db:
         assert db.scalar(select(MusterRow.id).limit(1)) is None and db.scalar(select(Period.id)) is None
         assert db.scalar(select(AuditLog).where(AuditLog.action == "period.delete")) is not None
+
+
+# ---------------------------------------------------------------- v1.5: locations end to end
+
+def test_locations_page_suggestions_and_office_check(loaded):
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import MonthResult
+    c = loaded
+    page = c.get("/locations").text
+    assert "Locations" in page and "Acme Pharma" in page and "Name your offices" in page
+    assert "Andheri East, Mumbai Suburban, Maharashtra" in page                       # offline name for T004's WFH
+    st = c.get("/settings").text
+    assert "Suggested places" in st and 'data-name="Acme Pharma (BKC)"' in st and 'data-cat="Client"' in st
+    assert "probably not an office" in st          # a spot only one person tags 'Office' is not offered as an office
+    # name the office (as the "Name it" button would fill it) → office sign-ins are verified on recalculation
+    r = c.post("/settings/geofences", data={"csrf": csrf_of(c, "/settings"), "name": "Head office", "category": "Office",
+                                            "lat": "18.93860", "lon": "72.82950", "radius_m": "200"}, follow_redirects=True)
+    assert r.status_code == 200
+    with session_scope() as db:
+        flags = {r.emp_no: [f["code"] for f in r.flags] for r in db.scalars(select(MonthResult))}
+    assert "OFF_SITE_OFFICE" in flags["T005"] and "OFF_SITE_OFFICE" not in flags["T002"]
+    q = c.get("/flags?code=OFF_SITE_OFFICE").text
+    assert "Esha Patel" in q and "Kalachowki" in q
+    page = c.get("/locations").text
+    assert "Away from office" in page and "At office" in page and "Head office (Office)" in page
+    # rejected sign-in ignored, remark visible in the day view
+    emp = c.get("/periods/2026-10/employee/T006").text
+    assert "rejected sign-in(s) ignored" in emp
+    assert "Acme Pharma" in c.get("/periods/2026-10/employee/T001").text
+
+
+def test_shared_phone_and_signins_only_month(loaded):
+    """A phone used by two people is flagged; a month with punches but no muster still has a Locations page."""
+    from openpyxl import Workbook
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import MonthResult
+    c = loaded
+    head = ["Employee No", "Employee Name", "Swipe Date", "Door/Address", "Longitude", "Latitude", "Location Type",
+            "Mobile Device Name", "Mobile Device Id", "Swipe Type", "Status", "Remarks"]
+    wb = Workbook(); ws = wb.active; ws.append(head)
+    ws.append(["T001", "Asha Rao", "02 Oct 2026 09:50:00", "Mobile Sign In", "72.8712", "19.1145", "Work from Home", "Pixel 8", "SAMEPHONE1", "Mobile Sign In", "Approved", ""])
+    ws.append(["T002", "Bilal Khan", "02 Oct 2026 09:52:00", "Mobile Sign In", "72.8712", "19.1145", "Work from Home", "Pixel 8", "SAMEPHONE1", "Mobile Sign In", "Approved", ""])
+    buf = io.BytesIO(); wb.save(buf)
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=[("files", ("two_people.xlsx", buf.getvalue(), "x"))])
+    assert "only their punches were replaced" in r.text                              # partial file: others kept
+    with session_scope() as db:
+        f = {m.emp_no: m.flags for m in db.scalars(select(MonthResult))}
+    assert any(x["code"] == "SHARED_DEVICE" and "Bilal Khan" in x["message"] for x in f["T001"])
+    # November: punches only (month in progress, no muster yet)
+    wb = Workbook(); ws = wb.active; ws.append(head)
+    ws.append(["T004", "Dev Mehta", "03 Nov 2026 10:05:00", "Mobile Sign In", "72.8680", "19.0660", "Client Location", "iPhone", "X1", "Mobile Sign In", "Approved", "Maker properties"])
+    ws.append(["T004", "Dev Mehta", "03 Nov 2026 18:05:00", "Mobile Sign In", "72.8680", "19.0660", "Client Location", "iPhone", "X1", "Mobile Sign In", "Approved", ""])
+    ws.append(["T006", "Farhan Ali", "04 Nov 2026 10:00:00", "", "", "", "", None, None, "Permission", "", ""])
+    ws.append(["T001", "Asha Rao", "04 Nov 2026 09:40:00", "hasmukhshah", "", "", "", None, None, "Astra", "Approved", ""])
+    ws.append(["T001", "Asha Rao", "04 Nov 2026 18:40:00", "hasmukhshah", "", "", "", None, None, "Astra", "Approved", ""])
+    buf = io.BytesIO(); wb.save(buf)
+    import datetime as _dt
+    if _dt.date.today() >= _dt.date(2026, 10, 1):
+        c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=[("files", ("nov.xlsx", buf.getvalue(), "x"))])
+        page = c.get("/locations?period=2026-11").text
+        assert "November 2026" in page and "Maker properties" in page and "Bandra Kurla Complex" in page
+        assert c.get("/").status_code == 200                                         # overview unaffected
+        # a month with punches but no muster: a clear "not calculated yet" page, correct counts, no dead downloads
+        for path in ("/?period=2026-11", "/periods/2026-11", "/insights?period=2026-11", "/reconciliation?period=2026-11"):
+            html = c.get(path).text
+            assert "Not calculated yet" in html and "/exports/2026-11" not in html, path
+        html = c.get("/?period=2026-11").text
+        assert '3</div><div class="l">Mobile sign-ins (2 with GPS)' in html and '2</div><div class="l">Office biometric' in html
+
+
+def test_location_exports(loaded):
+    from openpyxl import load_workbook
+    c = loaded
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    assert "Sign-ins & Places" in wb.sheetnames and "Places" in wb.sheetnames
+    vals = [cell.value for row in wb["Sign-ins & Places"].iter_rows() for cell in row]
+    assert "At Acme Pharma (BKC)" in vals and any(isinstance(v, str) and "Andheri East" in v for v in vals)
+    html = c.get("/exports/2026-10.html").text
+    assert 'data-pane="loc"' in html and "Acme Pharma" in html
+
+
+def test_schema_upgrade_adds_columns(tmp_path):
+    """A database from an older version (swipes without the new columns) is upgraded in place, data kept."""
+    import sqlite3
+    from sqlalchemy import create_engine
+    from app.db import add_missing_columns
+    db = tmp_path / "old.db"
+    con = sqlite3.connect(db)
+    con.execute("create table swipes (id integer primary key, period_id int, emp_no varchar(32), ts datetime, door varchar(128),"
+                " location_type varchar(64), swipe_type varchar(32), lat float, lon float, place varchar(256))")
+    con.execute("insert into swipes (period_id, emp_no, ts, place) values (1, 'E1', '2026-10-01 10:00:00', 'Office')")
+    con.commit(); con.close()
+    eng = create_engine(f"sqlite:///{db.as_posix()}")
+    added = add_missing_columns(eng)
+    assert {"swipes.note", "swipes.reason", "swipes.approval", "swipes.device", "swipes.device_id"} <= set(added)
+    con = sqlite3.connect(db)
+    assert con.execute("select emp_no, place, note, device_id from swipes").fetchall() == [("E1", "Office", "", "")]
+    con.close()
+    assert add_missing_columns(eng) == []                                            # idempotent

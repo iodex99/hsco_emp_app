@@ -20,6 +20,7 @@
       {% if cur_period %}<a href="/periods/{{ pk }}" class="{{ 'on' if path.startswith('/periods') }}">{{ ui.icon('file-spreadsheet') }}Payroll leave sheet</a>{% endif %}
       <a href="/flags{{ '?period=' ~ pk if pk }}" class="{{ 'on' if path.startswith('/flags') }}">{{ ui.icon('list-checks') }}Review queue{% if nav_open %}<span class="count">{{ nav_open }}</span>{% endif %}</a>
       <a href="/employees" class="{{ 'on' if path.startswith('/employees') }}">{{ ui.icon('users') }}Employees</a>
+      <a href="/locations" class="{{ 'on' if path.startswith('/locations') }}">{{ ui.icon('map-pin') }}Locations</a>
       <div class="grp">Reports</div>
       <a href="/exports" class="{{ 'on' if path.startswith('/exports') }}">{{ ui.icon('download') }}Downloads</a>
       <a href="/reconciliation{{ '?period=' ~ pk if pk }}" class="{{ 'on' if path.startswith('/reconciliation') }}">{{ ui.icon('git-compare') }}Reconciliation</a>

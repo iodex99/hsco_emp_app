@@ -116,6 +116,14 @@ class Swipe:
     lat: Optional[float] = None
     lon: Optional[float] = None
     place: str = ""
+    note: str = ""            # the employee's remark on a mobile sign-in (e.g. client name)
+    reason: str = ""          # permission / regularisation reason
+    approval: str = ""        # Approved / Pending / Rejected … (rejected punches are ignored)
+    device: str = ""          # phone model
+    device_id: str = ""       # phone identifier (same phone used by several people = risk)
+
+
+REJECTED_APPROVALS = ("rejected", "declined", "cancelled", "canceled", "denied")
 
 
 @dataclass

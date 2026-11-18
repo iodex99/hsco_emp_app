@@ -115,6 +115,20 @@ sends coordinates outside the server. Results are cached (`geo_cache`). When the
 (`geo.NAMES_VERSION`), cached offline names are dropped once, stored swipes renamed and draft months recalculated.
 Unnamed clusters are suggested to admin for naming.
 
+## 9a. Checks on mobile sign-ins (v1.5)
+- **Rejected** sign-ins (approval Rejected/Declined/Cancelled/Denied) never count as attendance; the day notes them.
+- **OFF_SITE_OFFICE (medium):** a mobile sign-in tagged "Office" with GPS that is not within any named place of type
+  *Office* (radius + 150 m GPS slack). Only checked once at least one office is named (Settings → Locations).
+  Biometric (Astra) punches are never checked.
+- **SHARED_DEVICE (high):** the same phone id used to sign in for two or more people in the month (each is flagged
+  with the others' names).
+- **Suggested places:** punches bucketed ≈110 m, neighbouring buckets within 250 m merged; category from the usual
+  tag (Office → Office, Client Location → Client, Work from Home → Home, On-Duty → Other); a spot tagged "Office" by
+  only one person is offered as Other with a warning; Office names use the city from Settings → Locations list
+  ("Mumbai office"); a Client spot is named after a remark only if that remark is ≥ 30 % of the remarks there and
+  occurs ≥ 2 times; radius = spread of the punches + 60 m, 100–400 m.
+- A month with punches but no muster is **not calculated**: its pages say so; Locations works from the punches.
+
 ## 10. Period lifecycle
 `DRAFT` (imports, auto‑compute) → `FINALISED` (locked: no imports/overrides; ledgers posted; exports stamped).
 Re‑open = admin only, reason mandatory, audit‑logged.

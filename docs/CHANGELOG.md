@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.5.0 — 2026-11-18 — sign-ins with coordinates: place names, location checks, Locations page
+Built and tested on greytHR's newer *Employee Swipe Details* export (November 2026, with GPS).
+- **Importer:** the new 17-column swipe export is recognised (it was being mistaken for a muster: its approval
+  "Status" passed as an attendance status and the "Swipe Date" timestamp as a date — both value checks are now
+  strict). Longitude/Latitude are read in any column order (and swapped back if labelled the wrong way round). New
+  per-punch fields are kept: the employee's remark, permission reason, approval status, phone model and phone id
+  ("Signed In/Out By" no longer passes as an IN/OUT direction).
+- **Database:** new swipe columns; existing databases are upgraded in place at start-up (`add_missing_columns` —
+  additive only).
+- **Place names** for every sign-in with GPS (offline gazetteer; named places first) — 445 points named in 0.3 s.
+- **Location checks** (new flags): *Tagged 'Office' but not at an office* (once offices are named; 150 m GPS slack)
+  and *Phone used to sign in for several people* (buddy-punching risk). Rejected sign-ins are ignored by the
+  calculation and noted on the day.
+- **Suggested places** (Settings → Locations): busiest unnamed spots with their usual tag, the remarks typed there,
+  the people, a suggested name and type and a fitting radius — "Name it" fills the form. Offices are suggested as
+  "Mumbai office" / "Delhi office" from the Locations list; a spot only one person tags "Office" is not offered as
+  an office ("probably not an office"); one-off remarks and times typed as remarks don't become names.
+- **Locations page** (new): every mobile sign-in with place, remark, phone, office check; chips (Office-but-
+  elsewhere, client, WFH, on duty, permission, shared phone, no GPS, rejected); by-place and by-person tables; works
+  for a month that has punches but no muster yet.
+- **Month not calculated yet:** overview, payroll sheet, Insights and reconciliation for such a month (e.g. the
+  month in progress) now say so and show what is imported and the sign-ins so far — instead of zeros, misleading
+  "vs last month" changes and download buttons that led nowhere.
+- Employee day view, board pack and Excel ("Sign-ins & Places", "Places" sheets; board-pack *Locations* tab) show
+  places with remarks. Review queue loads faster (no day detail).
+
 ## 1.4.1 — 2026-11-17 — full re-test: speed, safety and the review's fixes
 Tested end to end again: every page crawled as admin and as viewer (no errors), a fresh install importing the real
 exports in a browser (2.8 s for all five), awkward uploads, a synthetic firm 3× the size with 12 months of history,

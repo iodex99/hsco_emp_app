@@ -200,6 +200,16 @@ def status_codes(v: Any) -> tuple[str, str]:
     return code, code
 
 
+def looks_like_status(v: Any) -> bool:
+    s = _clean(v) if v not in (None, "") else ""
+    if not s or len(s) > 24:
+        return False
+    low = s.lower()
+    if s.upper() in DEFAULT_STATUS_MAP or low.strip(" .") in _STATUS_WORDS or re.search(r"half", low):
+        return True
+    return bool(re.fullmatch(r"[a-z]{1,4}(\s*/\s*[a-z]{1,4})?(\s*\(\s*(hd|half( day)?)\s*\))?", low))
+
+
 _COORD_RE = re.compile(r"(-?\d{1,2}\.\d{3,})\s*[,; ]\s*(-?\d{1,3}\.\d{3,})")
 _PERIOD_RE = re.compile(r"(?:from|for|period)\s*:?\s*(\d{1,2}[\s\-/][A-Za-z]+[\s\-/]\d{2,4}|\d{1,2}/\d{1,2}/\d{4})\s*(?:to|-)\s*"
                         r"(\d{1,2}[\s\-/][A-Za-z]+[\s\-/]\d{2,4}|\d{1,2}/\d{1,2}/\d{4})", re.I)
@@ -280,6 +290,12 @@ F = {
     "actual_hours": (["actual hours worked"], "number"),
     "balance_hours": (["shortfall / excess"], "number"),
     "remark": (["remark", "remarks", "comment", "comments", "note", "notes"], "text"),
+    # punch-log extras (greytHR "Employee Swipe Details" with mobile sign-ins)
+    "reason": (["permission reason", "reason", "regularisation reason", "regularization reason", "request reason"], "text"),
+    "approval": (["status", "approval status", "swipe status", "request status", "approval"], "text"),
+    "device": (["mobile device name", "device model", "phone model", "handset", "mobile model"], "text"),
+    "device_id": (["mobile device id", "device id", "device identifier", "imei", "device serial", "device uuid"], "text"),
+    "signed_by": (["signed in / out by", "signed in out by", "signed by", "marked by", "entered by", "punched by"], "text"),
     "days_present_mis": (["days present"], "number"),
 }
 
@@ -287,7 +303,8 @@ F = {
 SCHEMAS = {
     "muster": (["emp_no", "date", ("s1", "status")], ["name", "s2", "in_time", "out_time", "hours", "shift"], 1.0),
     "swipes": (["emp_no", ("timestamp", "time")], ["name", "date", "door", "location_type", "swipe_type", "direction",
-                                                   "lat", "lon", "coords", "shift"], 1.0),
+                                                   "lat", "lon", "coords", "shift", "remark", "reason", "approval",
+                                                   "device", "device_id", "signed_by"], 1.0),
     "summary": (["emp_no", "week_days", "hours_required"], ["name", "location", "present", "absent", "leave", "on_duty",
                                                              "holiday", "total_hours", "leave_hours", "short_fall", "excess"], 1.2),
     "mis_manual": (["emp_no", "group", "week_days", "required_hours_mis"],
@@ -377,9 +394,9 @@ def _fits(vtype: str, vals: list) -> float:
             s = emp_id(v)
             looks_date = isinstance(v, (datetime, date)) or (isinstance(v, str) and parse_dt(v) is not None)
             return 0 < len(s) <= 20 and bool(re.search(r"\d", s)) and not looks_date and " " not in s.strip()
-        if vtype == "date":
+        if vtype == "date":                    # a calendar date: a punch timestamp (with a time of day) is not one
             d = parse_dt(v)
-            return d is not None and 1990 <= d.year <= 2100
+            return d is not None and 1990 <= d.year <= 2100 and not (d.hour or d.minute or d.second)
         if vtype == "datetime":
             d = parse_dt(v)
             return d is not None and 1990 <= d.year <= 2100 and (d.hour or d.minute or d.second or isinstance(v, str) and ":" in v)
@@ -389,9 +406,8 @@ def _fits(vtype: str, vals: list) -> float:
             return isinstance(v, (int, float, time)) or bool(re.search(r"\d", str(v)))
         if vtype == "number":
             return isinstance(v, (int, float)) or bool(re.fullmatch(r"-?[\d,]*\.?\d+", str(v).strip()))
-        if vtype == "status":
-            s = str(v).strip()
-            return 0 < len(s) <= 20
+        if vtype == "status":                  # an attendance status: a short code or a known word, not "Approved"
+            return looks_like_status(v)
         if vtype == "lat":
             return -90 <= num(v, 999) <= 90
         if vtype == "lon":
@@ -740,6 +756,7 @@ def parse_muster(rows, ds) -> tuple[list[MusterDay], list[str]]:
 
 def parse_swipes(rows, ds) -> tuple[list[Swipe], dict, list[str]]:
     out, names, warn = [], {}, []
+    swapped = 0
     for n, r in _numbered_rows(rows, ds):
         e = emp_id(_g(r, ds, "emp_no"))
         ts = None
@@ -767,14 +784,26 @@ def parse_swipes(rows, ds) -> tuple[list[Swipe], dict, list[str]]:
                         break
         if lat is not None and (lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0)):
             lat = lon = None
+        if lat is not None and not _in_india(lat, lon) and _in_india(lon, lat):
+            lat, lon = lon, lat                         # latitude/longitude labelled the wrong way round
+            swapped += 1
         if "name" in ds.map:
             names[e] = str(_g(r, ds, "name") or "").strip()
         stype = str(_g(r, ds, "swipe_type") or "").strip()
         if not stype and "direction" in ds.map:
             stype = "Punch " + str(_g(r, ds, "direction") or "").strip()
-        out.append(Swipe(emp_no=e, ts=ts, door=str(_g(r, ds, "door") or "").strip(),
-                         location_type=str(_g(r, ds, "location_type") or "").strip(), swipe_type=stype, lat=lat, lon=lon))
+        txt = lambda f: re.sub(r"\s+", " ", str(_g(r, ds, f) or "")).strip()[:250]  # noqa: E731
+        out.append(Swipe(emp_no=e, ts=ts, door=txt("door"), location_type=txt("location_type"), swipe_type=stype,
+                         lat=lat, lon=lon, note=txt("remark"), reason=txt("reason"), approval=txt("approval"),
+                         device=txt("device"), device_id=txt("device_id")))
+    if swapped:
+        warn.insert(0, f"{swapped} sign-in(s) had latitude and longitude the wrong way round — corrected.")
     return out, names, warn[:50]
+
+
+def _in_india(lat: float, lon: float) -> bool:
+    """Rough box around India (the gazetteer's coverage)."""
+    return 6.0 <= lat <= 37.5 and 68.0 <= lon <= 97.5
 
 
 def parse_summary(rows, ds) -> list[dict]:

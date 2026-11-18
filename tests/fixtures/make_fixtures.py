@@ -26,6 +26,14 @@ EMPS = [
 DOJ = {"T001": date(2023, 4, 3), "T002": date(2024, 7, 1), "T003": date(2001, 1, 2), "T004": date(2025, 10, 6),
        "T005": date(2022, 10, 17), "T006": date(2026, 10, 13)}
 HOLIDAYS = {date(2026, 10, 20)}
+# synthetic coordinates (public landmarks, no real homes): office = Marine Lines, client = BKC
+OFFICE = (18.93860, 72.82950)
+CLIENT = (19.06600, 72.86800)
+HOME_T004 = (19.11450, 72.87120)          # Andheri East
+AWAY = (18.98440, 72.83970)               # Kalachowki — tagged "Office" but not at the office
+DEVICE = {"T001": ("iPhone", "a1f0c0de00000001"), "T002": ("OnePlus 11R", "a1f0c0de00000002"),
+          "T004": ("Redmi Note 13", "a1f0c0de00000004"), "T005": ("OPPO A57", "a1f0c0de00000005"),
+          "T006": ("Galaxy M14", "a1f0c0de00000006")}
 
 
 def _first_sat(d):
@@ -87,15 +95,21 @@ def build_days():
                 if emp == "T003":
                     pass  # partner: no punches (auto attendance) — handled below
                 elif emp == "T004" and d.day in (5, 6, 12, 13):
-                    swipes = [(in_dt, "Mobile Sign In", "Work from Home", "Mobile Sign In"),
-                              (out_dt, "Mobile Sign In", "Work from Home", "Mobile Sign In")]
+                    swipes = [(in_dt, "Mobile Sign In", "Work from Home", "Mobile Sign In", HOME_T004, ""),
+                              (out_dt, "Mobile Sign In", "Work from Home", "Mobile Sign In", HOME_T004, "")]
+                elif emp == "T002" and d.day in (28, 29):     # mobile "Office" sign-ins that ARE at the office
+                    swipes = [(in_dt, "Mobile Sign In", "Office", "Mobile Sign In", OFFICE, ""),
+                              (out_dt, "hasmukhshah", "", "Astra")]
+                elif emp == "T005" and d.day in (28, 29):     # tagged "Office" from somewhere else
+                    swipes = [(in_dt, "Mobile Sign In", "Office", "Mobile Sign In", AWAY, "Shift In"),
+                              (out_dt, "hasmukhshah", "", "Astra")]
                 elif emp == "T006" and d.day in (15, 22):
                     swipes = [(in_dt, "hasmukhshah", "", "Astra")]                      # missing out punch
                 elif emp == "T006" and d.day in (16, 23, 27):
-                    swipes = [(in_dt, "", "", "Permission"), (out_dt, "hasmukhshah", "", "Astra")]
+                    swipes = [(in_dt, "", "", "Permission", None, "forget to sign in"), (out_dt, "hasmukhshah", "", "Astra")]
                 elif emp == "T001" and d.day in (21, 22):
-                    swipes = [(in_dt, "Mobile Sign In", "Client Location", "Mobile Sign In"),
-                              (out_dt, "Mobile Sign In", "Client Location", "Mobile Sign In")]
+                    swipes = [(in_dt, "Mobile Sign In", "Client Location", "Mobile Sign In", CLIENT, "At Acme Pharma (BKC)"),
+                              (out_dt, "Mobile Sign In", "Client Location", "Mobile Sign In", CLIENT, "")]
                 else:
                     swipes = [(in_dt + timedelta(seconds=rnd.randint(0, 59)), "hasmukhshah", "", "Astra"),
                               (out_dt + timedelta(seconds=rnd.randint(0, 59)), "hasmukhshah", "", "Astra")]
@@ -139,16 +153,29 @@ def write_all(folder: Path) -> dict:
     wb = Workbook()
     ws = wb.active
     ws.title = "Sheet0"
-    ws.append(["Employee No", "Employee Name", "Shift", "Swipe Date", "Door/Address", "Location Type", "Swipe Type",
-               "Received On", "Count"])
+    # greytHR's current "Employee Swipe Details" layout (Nov-2026 sample): Longitude BEFORE Latitude, phone, remarks
+    ws.append(["Employee No", "Employee Name", "Access Card", "Shift", "Swipe Date", "Door/Address", "Longitude",
+               "Latitude", "Location Type", "Mobile Device Name", "Mobile Device Id", "Swipe Type", "Status", "Remarks",
+               "Permission Reason", "Signed In/Out By", "Received On"])
     allsw = []
     for emp, _, _ in EMPS:
         for d, *_rest, sw in days[emp]:
-            for t, door, loc, typ in sw:
-                allsw.append((t, emp, door, loc, typ))
-    for t, emp, door, loc, typ in sorted(allsw, reverse=True):
+            for t, door, loc, typ, *extra in sw:
+                gps, note = (extra + [None, ""])[:2]
+                allsw.append((t, emp, door, loc, typ, gps, note))
+    # a rejected mobile sign-in (must be ignored by the calculation)
+    allsw.append((datetime(2026, 10, 30, 23, 50), "T006", "Mobile Sign In", "Work from Home", "Mobile Sign In",
+                  (19.2, 72.97), "late entry", "Rejected"))
+    for t, emp, door, loc, typ, gps, note, *st in sorted(allsw, key=lambda x: x[0], reverse=True):
         ts = t.strftime("%d %b %Y %H:%M:%S")
-        ws.append([emp, names[emp], "10:am-18:30pm", ts, door, loc, typ, ts, 1 if loc == "Work from Home" else None])
+        mobile = typ != "Astra"
+        dev = DEVICE.get(emp, ("", "")) if typ == "Mobile Sign In" else ("", "")
+        reason = note if typ == "Permission" else ""
+        remark = "" if typ == "Permission" else note
+        status = st[0] if st else ("" if typ == "Permission" else "Approved")
+        ws.append([emp, names[emp], None if mobile else emp[1:], "10:am-18:30pm", ts, door,
+                   f"{gps[1]:.8f}" if gps else "", f"{gps[0]:.8f}" if gps else "", loc, dev[0] or None, dev[1] or None,
+                   typ, status, remark or None, reason, "", ts])
     wb.create_sheet("Sheet1").append(["Row Labels", "Count of Count"])
     p_swipes = folder / "EmployeeSwipeDetails.xlsx"
     wb.save(p_swipes)

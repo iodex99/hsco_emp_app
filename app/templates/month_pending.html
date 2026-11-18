@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui with context %}
+{% block title %}{{ period.label }}{% endblock %}
+{% block content %}
+<div class="ph"><div><h1>{{ period.label }}</h1>
+  {% set muster_in = (wf.files|selectattr('kind', 'equalto', 'muster')|first).done %}
+  <div class="sub">{% if muster_in %}The muster is imported but the month hasn't been calculated yet.{% else %}Not calculated yet — the month's attendance muster hasn't been imported{% if signins.total %}; punches are already in{% endif %}.{% endif %}</div></div>
+  <div class="actions">{% if can_hr and muster_in %}<form method="post" action="/periods/{{ period.key }}/recompute" class="inline">{{ ui.csrf_field() }}<button class="btn">{{ ui.icon('refresh-cw','sm') }} Calculate now</button></form>
+  {% elif can_hr %}<a class="btn" href="/imports">{{ ui.icon('upload','sm') }} Import files</a>{% endif %}</div>
+</div>
+
+<div class="grid g2 mb">
+  <div class="card"><div class="hd"><h2>What's been imported</h2><span class="sub">{{ period.label }}</span></div><div class="bd" style="padding-top:6px">
+    <ul class="checklist">{% for f in wf.files %}<li>{% if f.done %}<span class="ok-ic">{{ ui.icon('circle-check') }}</span>{% else %}<span class="no-ic">{{ ui.icon('circle-dot') }}</span>{% endif %}
+      <span>{{ f.label }}</span><span class="spacer"></span>{% if not f.required %}<span class="muted small">optional</span>{% elif not f.done %}<span class="badge b-warn">needed</span>{% endif %}</li>{% endfor %}</ul>
+    <p class="small muted mt">Leave, hours, deductions, Insights and the downloads are worked out once the <b>Attendance Muster Report</b> for {{ period.label }} is imported — usually at month end.</p>
+  </div></div>
+  <div class="card"><div class="hd"><h2>Sign-ins so far</h2></div><div class="bd">
+    {% if signins.total %}
+    <div class="minis" style="grid-template-columns:1fr 1fr">
+      <div class="mini"><div class="v">{{ signins.mobile }}</div><div class="l">Mobile sign-ins ({{ signins.gps }} with GPS)</div></div>
+      <div class="mini"><div class="v">{{ signins.biometric }}</div><div class="l">Office biometric punches</div></div>
+    </div>
+    <p class="small muted">From {{ signins.first.strftime('%d %b') }} to {{ signins.last.strftime('%d %b') }} · {{ signins.people }} people.</p>
+    <a class="btn sec" href="/locations?period={{ period.key }}">{{ ui.icon('map-pin','sm') }} See where people signed in</a>
+    {% else %}<p class="muted">No punches imported for {{ period.label }} yet.</p>{% endif %}
+  </div></div>
+</div>
+{% if calculated %}<p class="small muted">{{ ui.icon('info','sm') }} The latest calculated month is <a href="/?period={{ calculated.key }}">{{ calculated.label }}</a>.</p>{% endif %}
+{% endblock %}

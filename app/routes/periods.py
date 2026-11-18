@@ -57,6 +57,9 @@ def periods_index(c: Ctx = Depends(viewer)):
 @router.get("/periods/{key}", response_class=HTMLResponse)
 def period_results(key: str, c: Ctx = Depends(viewer)):
     p = get_p(c, key)
+    if p.computed_at is None:
+        from app.routes.pages import pending_month
+        return pending_month(c, p)
     rows = MX.results_for(c.db, p, with_days=False)
     policy = get_policy(c.db)
     return render(c, "period.html", period=p, rows=rows, policy=policy)

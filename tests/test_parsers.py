@@ -89,6 +89,23 @@ def test_real_exports_detected():
     assert len(s["Reference"]) < 200
 
 
+@pytest.mark.skipif(not (REF / "Employee Swipe Details.xlsx").exists(), reason="Nov-2026 swipe export (real data) not present")
+def test_real_swipe_export_with_coordinates():
+    """greytHR's newer swipe export: Longitude before Latitude, phone, remarks, status — read as swipes, not muster."""
+    s = read_path(REF / "Employee Swipe Details.xlsx")
+    d = P.detect(s)
+    assert [x.kind for x in d] == ["swipes"] and not P.needs_review(d[0])
+    raw = d[0].raw_headers
+    assert raw[d[0].map["lat"]] == "Latitude" and raw[d[0].map["lon"]] == "Longitude"
+    sw, _, warn = P.parse_swipes(s[d[0].sheet], d[0])
+    gps = [x for x in sw if x.lat is not None]
+    assert len(sw) > 1000 and len(gps) > 100 and not any("wrong way round" in w for w in warn)
+    assert all(6 <= x.lat <= 37.5 and 68 <= x.lon <= 97.5 for x in gps)          # India, correctly oriented
+    assert any(x.note for x in sw) and any(x.reason for x in sw) and any(x.device_id for x in sw)
+    from app.services.geo import offline_name
+    assert all(offline_name(x.lat, x.lon) for x in gps[:50])                     # every point gets a name
+
+
 # ---------------------------------------------------------------- universal importer: layout-independent recognition
 
 def _muster_rows(fixtures):
@@ -265,3 +282,60 @@ def test_detection_is_thread_safe():
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert not errors
+
+
+
+# ---------------------------------------------------------------- v1.5: mobile sign-ins with coordinates
+
+def test_new_swipe_layout_fixture(fixtures):
+    s = read_path(fixtures["swipes"])
+    d = P.detect(s)[0]
+    assert d.kind == "swipes" and not P.needs_review(d)
+    sw, _, _ = P.parse_swipes(s[d.sheet], d)
+    home = [x for x in sw if x.emp_no == "T004" and x.location_type == "Work from Home"]
+    assert home and (home[0].lat, home[0].lon) == (19.1145, 72.8712) and home[0].device == "Redmi Note 13"
+    client = [x for x in sw if x.location_type == "Client Location" and x.note]
+    assert client and client[0].note == "At Acme Pharma (BKC)"
+    perm = [x for x in sw if x.swipe_type == "Permission"]
+    assert perm and perm[0].reason == "forget to sign in" and perm[0].lat is None
+    assert [x.approval for x in sw if x.emp_no == "T006" and x.ts.day == 30 and x.ts.hour == 23] == ["Rejected"]
+
+
+def test_punch_log_is_never_read_as_a_muster():
+    """A punch log with an approval 'Status' column and a timestamp 'Swipe Date' used to look like a muster."""
+    rows = [["Employee No", "Employee Name", "Swipe Date", "Status", "Location Type"]] +         [[f"E{i}", f"N{i}", f"0{i % 9 + 1} Nov 2026 {9 + i % 3}:1{i % 6}:00", "Approved", "Office"] for i in range(12)]
+    d = P.detect({"s": rows})[0]
+    assert d.kind == "swipes" and d.map["approval"] == 3 and d.map["timestamp"] == 2
+    assert P.looks_like_status("PL/P") and P.looks_like_status("Week Off") and P.looks_like_status("PH")
+    assert not P.looks_like_status("Approved") and not P.looks_like_status("Mobile Sign In")
+
+
+def test_swapped_latitude_longitude_are_corrected():
+    rows = [["Employee No", "Swipe Date", "Latitude", "Longitude"],
+            ["E1", "01 Nov 2026 10:00:00", "72.8712", "19.1145"], ["E1", "01 Nov 2026 19:00:00", "", ""]]
+    d = P.detect({"s": rows})[0]
+    sw, _, warn = P.parse_swipes(rows, d)
+    assert (sw[0].lat, sw[0].lon) == (19.1145, 72.8712) and sw[1].lat is None
+    assert warn and "wrong way round" in warn[0]
+
+
+def test_location_checks():
+    from datetime import datetime
+    from types import SimpleNamespace as NS
+    from app.engine.model import Swipe
+    from app.services import location_checks as LC
+    office = NS(category="Office", lat=18.9386, lon=72.8295, radius_m=200)
+    client = NS(category="Client", lat=19.066, lon=72.868, radius_m=200)
+    t = datetime(2026, 11, 3, 10)
+    sw = [Swipe("A", t, location_type="Office", swipe_type="Mobile Sign In", lat=18.9390, lon=72.8299, device_id="d1"),
+          Swipe("B", t, location_type="Office", swipe_type="Mobile Sign In", lat=18.9844, lon=72.8397, device_id="d2",
+                place="Kalachowki, Mumbai"),
+          Swipe("C", t, location_type="Office", swipe_type="Mobile Sign In", lat=18.9844, lon=72.8397, device_id="d2",
+                approval="Rejected"),
+          Swipe("D", t, location_type="Work from Home", swipe_type="Mobile Sign In", lat=19.2, lon=72.9, device_id="d1"),
+          Swipe("E", t, location_type="Office", swipe_type="Astra")]
+    f = LC.flags_by_employee(sw, [office, client], {"A": "Asha", "D": "Dev"})
+    assert [x["code"] for x in f["B"]] == ["OFF_SITE_OFFICE"] and "Kalachowki" in f["B"][0]["message"]
+    assert "A" in f and [x["code"] for x in f["A"]] == ["SHARED_DEVICE"] and "Dev" in f["A"][0]["message"]
+    assert "C" not in f and "E" not in f                         # rejected and biometric punches never flagged
+    assert LC.flags_by_employee(sw[1:2], [client]) == {}          # no office named → nothing to check against

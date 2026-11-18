@@ -159,3 +159,15 @@ Tables are server-rendered; the per-employee drill-down is built in the browser 
   once per result (`_sc_aggregates`).
 - Excel: the bottom border is registered once per workbook (`_thin`); remaining cost is openpyxl XML writing
   (~4 s for 300 people, ~2 s for the real firm).
+
+## Schema upgrades (v1.5)
+`db.init_db()` runs `create_all()` (new tables) and then `add_missing_columns()`: for every model table that exists,
+any column missing in the database is added with `ALTER TABLE … ADD COLUMN` and the model's scalar default. Additive
+only — nothing is dropped or altered; idempotent; logged. New columns must therefore be nullable or have a scalar
+default. First used for `swipes.note/reason/approval/device/device_id`.
+
+## Locations (v1.5)
+`services/location_checks.py` (pure: office fences, at-office test with slack, shared phones, flags per employee — used
+by `compute_period` and the Locations report) · `services/locations.py` (report for a month from `SwipeRow`, no muster
+needed) · `geo.unnamed_clusters` (suggested places, grouped in SQL then merged) · `routes/pages.py`: `/locations`,
+`pending_month()` for months without results.

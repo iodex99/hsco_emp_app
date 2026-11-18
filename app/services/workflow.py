@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import defer, Session
 
 from app.models import DayOverrideRow, FlagReview, ImportBatch, MonthOverrideRow, MonthResult, Period
 
@@ -12,7 +12,8 @@ ACTIONABLE = ("critical", "high", "medium")
 def actionable_flags(db: Session, period: Period) -> list[dict]:
     reviewed = {(r.emp_no, r.code): r for r in db.scalars(select(FlagReview).where(FlagReview.period_id == period.id))}
     out = []
-    for r in db.scalars(select(MonthResult).where(MonthResult.period_id == period.id).order_by(MonthResult.emp_no)):
+    for r in db.scalars(select(MonthResult).where(MonthResult.period_id == period.id).order_by(MonthResult.emp_no)
+                        .options(defer(MonthResult.days), defer(MonthResult.data))):
         for f in r.flags:
             rv = reviewed.get((r.emp_no, f["code"]))
             out.append({**f, "emp_no": r.emp_no, "name": r.name, "group": r.group,
