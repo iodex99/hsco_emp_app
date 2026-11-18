@@ -212,7 +212,8 @@ def top_lists(D: list[dict], policy) -> dict:
         "absent": pick(D, "unauth_absent_days", minv=0.5),
         "excess_hours": pick(D, "balance_hours", minv=0.01),
         "shortfall": [{"emp_no": d["emp_no"], "name": d["name"], "group": d.get("group", ""),
-                       "value": round(-d["balance_hours"], 2), "deduction": d.get("deduction_days", 0)}
+                       "value": round(-d["balance_hours"], 2),
+                       "deduction": d.get("shortfall_deduction_days", d.get("deduction_days", 0))}
                       for d in sorted(D, key=lambda d: d.get("balance_hours", 0)) if d.get("balance_hours", 0) < 0],
         "late_sitting": pick(beh, "late_sitting_days", minv=1),
         "compoff_earned": pick(D, "compoff_earned", minv=1),
@@ -341,7 +342,10 @@ def reconciliation(db: Session, period: Period) -> dict:
                 except ValueError:
                     mded = 0.0
             if abs(mded - (r.data.get("deduction_days") or 0)) > 0.001:
-                diffs.append({"field": "Deduction days", "manual": mded, "app": r.data.get("deduction_days"), "rule": ""})
+                wd = r.data.get("wfh_deduction_days") or 0
+                rule = (f"{wd:g} day(s) for {r.data.get('wfh_excess_days') or 0:g} WFH day(s) over the limit, "
+                        f"not deducted in the manual sheet") if wd and abs((r.data.get("deduction_days") or 0) - wd - mded) <= 0.001 else ""
+                diffs.append({"field": "Deduction days", "manual": mded, "app": r.data.get("deduction_days"), "rule": rule})
         rows.append({"emp_no": emp_no, "name": (r.name if r else mrow.get("name", "")),
                      "in_app": bool(r), "in_manual": bool(mrow), "diffs": diffs,
                      "manual_remark": (mrow or {}).get("remark", ""), "app_remark": r.data.get("remark", "") if r else ""})

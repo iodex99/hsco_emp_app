@@ -27,6 +27,7 @@ POLICY_NUMBERS = [
     ("shortfall_grace_hours", "Shortfall grace (hours, 0 = none)", "0"),
     ("comp_off_min_hours", "Min hours on off-day to earn comp-off", "5"),
     ("wfh_limit_days", "WFH days allowed per month", "2"),
+    ("wfh_excess_deduction_days", "Leave deducted per WFH day over the limit (0 = flag only)", "0.5"),
     ("late_grace_min", "Late grace after shift start (min)", "15"),
     ("very_late_min", "Very late threshold (min)", "60"),
     ("early_exit_grace_min", "Early-exit grace before shift end (min)", "15"),

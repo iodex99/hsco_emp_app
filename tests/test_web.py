@@ -301,13 +301,23 @@ def test_exports(loaded):
     i = rows["T001"]
     assert ws.cell(row=i, column=9).value == f"=E{i}-F{i}-G{i}-H{i}"
     assert ws.cell(row=i, column=22).value.startswith("=IF(U")
-    # Excel formula logic replicated: balance -> deduction must equal the app's value
-    e, f, g, h = (ws.cell(row=i, column=k).value for k in (5, 6, 7, 8))
-    o, p, t = (ws.cell(row=i, column=k).value for k in (15, 16, 20))
-    bal = round((o - p) - (e - f - g - h) * t, 2)
+    assert f"+CEILING(MAX(0,J{i}-2),1)*0.5)" in ws.cell(row=i, column=22).value          # WFH over the limit (v1.6.5)
+    # Excel formula logic replicated: balance + WFH -> deduction must equal the app's value
     import math
-    ded = 0 if bal >= 0 else math.ceil(round(-bal, 4) / 4) * 0.5
-    assert ded == _result("T001")[0]["deduction_days"]
+    for emp in ("T001", "T004"):
+        i = rows[emp]
+        e, f, g, h, j = (ws.cell(row=i, column=k).value for k in (5, 6, 7, 8, 10))
+        o, p, t = (ws.cell(row=i, column=k).value for k in (15, 16, 20))
+        bal = round((o - p) - (e - f - g - h) * t, 2)
+        ded = (0 if bal >= 0 else math.ceil(round(-bal, 4) / 4) * 0.5) + math.ceil(max(0, j - 2)) * 0.5
+        if ws.cell(row=i, column=21).value == "Yes":
+            ded = 0
+        assert ded == _result(emp)[0]["deduction_days"], emp
+    d4, f4 = _result("T004")                       # Article = exempt group: over the WFH limit, flagged, not deducted
+    assert d4["wfh_days"] == 4 and d4["wfh_excess_days"] == 2 and d4["wfh_deduction_days"] == 0 and d4["exempt"]
+    assert any("exempt, no deduction" in x["message"] for x in f4 if x["code"] == "WFH_OVER_LIMIT")
+    led = [c_.value for c_ in wb["Leave & Comp-off Ledger"][5]]
+    assert led[6:9] == ["Shortfall deduction", "WFH over-limit deduction", "Unauthorised absence"]
     # the HTML board pack was removed in v1.6 (the app itself is the board view)
     assert c.get("/exports/2026-10.html").status_code == 404
     assert "/exports/2026-10.html" not in c.get("/exports").text and "Board pack" not in c.get("/").text
@@ -570,6 +580,7 @@ def test_targeted_holidays_settings_import_and_wfh(loaded):
     assert before["wfh_days"] == len(wfh_dates) == 4 and before.get("offday_wfh_days", 0) == 0
     st = c.get("/settings").text
     assert 'id="targeted"' in st and 'name="groups" value="Article"' in st and 'name="locations" value="Mumbai"' in st
+    assert 'name="wfh_excess_deduction_days"' in st and "0 = flag only" in st         # v1.6.5 setting
     csrf = csrf_of(c, "/settings")
     r = c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-07", "name": "X"}, follow_redirects=True)
     assert "Choose who the holiday is for" in r.text

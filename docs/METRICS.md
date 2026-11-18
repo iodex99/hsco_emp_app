@@ -10,7 +10,7 @@ Code: `app/engine/compute.py` (per employee), `app/services/metrics.py` (organis
 | Attendance rate | Σ days present ÷ Σ (week days − holidays) |
 | Leave deductions | employees with shortfall deduction; total deduction days |
 | Payroll LOP days | LOP status days + days beyond leave balance (+ comp-off overdraft if configured) |
-| Over WFH limit | employees with WFH days > limit (2); WFH counts only on the person's own working days (v1.6.4) |
+| Over WFH limit | employees with WFH days > limit (2); WFH counts only on the person's own working days (v1.6.4); ½ day of leave per extra day (v1.6.5) |
 | Persistently late | > 60 min late on ≥ 10 days (non-partners) |
 | Persistent regularisation | ≥ 3 regularised days |
 | Unauthorised absent days | Σ `A` halves on working days |

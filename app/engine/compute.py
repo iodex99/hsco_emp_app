@@ -118,7 +118,8 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
 # Bump when a calculation rule changes: on the next start the app recalculates every draft month once
 # (services/maintenance.recalc_on_rules_change); finalised months never change.
 # 2 = v1.6.4: WFH only on the person's own working days; targeted holidays.
-RULES_VERSION = 2
+# 3 = v1.6.5: half a day of leave deducted per WFH day above the monthly limit.
+RULES_VERSION = 3
 
 
 def compute_employee_month(
@@ -307,7 +308,17 @@ def compute_employee_month(
         else:
             exempt_reason = ""
     res.exempt = bool(exempt_reason)
-    res.deduction_days = 0.0 if res.exempt else deduction_for_shortfall(res.shortfall_hours, policy)
+    res.shortfall_deduction_days = 0.0 if res.exempt else deduction_for_shortfall(res.shortfall_hours, policy)
+    # WFH above the monthly limit: policy.wfh_excess_deduction_days of leave per extra WFH day (owner, v1.6.5)
+    res.wfh_excess_days = float(math.ceil(max(0.0, res.wfh_days - policy.wfh_limit_days) - 1e-9))
+    res.wfh_deduction_days = 0.0 if res.exempt else res.wfh_excess_days * policy.wfh_excess_deduction_days
+    if res.wfh_excess_days:
+        wfh_dates = [dd for dd in res.days if dd.is_wfh]
+        for n, dd in enumerate(wfh_dates[int(policy.wfh_limit_days):], start=int(policy.wfh_limit_days) + 1):
+            dd.notes.append(f"WFH day {n} of the month — over the limit of {policy.wfh_limit_days:g}"
+                            + (f": {policy.wfh_excess_deduction_days:g} day deducted from leave"
+                               if res.wfh_deduction_days else ""))
+    res.deduction_days = res.shortfall_deduction_days + res.wfh_deduction_days
     if month_overrides.get("deduction_days") is not None:
         res.deduction_days = float(month_overrides["deduction_days"])
 
@@ -319,12 +330,20 @@ def compute_employee_month(
         res.remark = str(month_overrides["remark"])
     else:
         parts = []
-        if res.exempt and res.shortfall_hours > 0:
+        if res.exempt and (res.shortfall_hours > 0 or res.wfh_excess_days):
             parts.append(f"{exempt_reason} — no deduction")
         elif res.exempt:
             parts.append(exempt_reason)
         if res.deduction_days:
-            parts.append(f"{res.deduction_days:g} day deduction ({res.shortfall_hours:.2f} h short)")
+            why = []
+            if res.shortfall_deduction_days:
+                why.append(f"{res.shortfall_deduction_days:g} for {res.shortfall_hours:.2f} h short")
+            if res.wfh_deduction_days:
+                why.append(f"{res.wfh_deduction_days:g} for {res.wfh_excess_days:g} WFH day(s) over the limit")
+            if len(why) == 1 and res.shortfall_deduction_days and "deduction_days" not in month_overrides:
+                parts.append(f"{res.deduction_days:g} day deduction ({res.shortfall_hours:.2f} h short)")
+            else:
+                parts.append(f"{res.deduction_days:g} day deduction" + (f" ({'; '.join(why)})" if why else ""))
         if res.is_exit:
             parts.append(f"Left on {emp.dol:%d-%b-%Y}")
         if res.is_new_joinee:
@@ -433,12 +452,15 @@ def _flags(res: EmployeeMonth, emp: Employee, policy: Policy, flags: list) -> No
         add("NO_ATTENDANCE", SEV_CRITICAL, "No attendance for the entire month")
     if res.deduction_days:
         add("SHORTFALL_DEDUCTION", SEV_HIGH, f"{res.shortfall_hours:.2f} h short → {res.deduction_days:g} day(s) deducted from leave")
+        # (kept for the total; the WFH part is explained on WFH_OVER_LIMIT)
     elif res.exempt and res.shortfall_hours > 0:
         add("SHORTFALL_EXEMPT", SEV_INFO, f"{res.shortfall_hours:.2f} h short but exempt")
     if res.unauth_absent_days:
         add("UNAUTHORISED_ABSENCE", SEV_HIGH, f"{res.unauth_absent_days:g} day(s) absent without approved leave")
     if res.wfh_days > policy.wfh_limit_days:
-        add("WFH_OVER_LIMIT", SEV_HIGH, f"{res.wfh_days:g} WFH days (limit {policy.wfh_limit_days:g})")
+        add("WFH_OVER_LIMIT", SEV_HIGH, f"{res.wfh_days:g} WFH days (limit {policy.wfh_limit_days:g})"
+            + (f" → {res.wfh_deduction_days:g} day(s) deducted from leave" if res.wfh_deduction_days
+               else " — exempt, no deduction" if res.exempt and policy.wfh_excess_deduction_days else ""))
     if is_persistent_late(res.late_days, res.very_late_days, policy):
         add("PERSISTENT_LATE", SEV_MEDIUM, f"More than {policy.very_late_min} min late on {res.very_late_days} days "
             f"(late > {policy.late_grace_min} min on {res.late_days} days, avg {res.avg_late_min:.0f} min)")

@@ -91,6 +91,11 @@ WFH is counted only on a person's own working days. If someone signs in "Work fr
 holiday, the day is shown as off-day work (and can earn a comp-off) with a note — it does not count towards the WFH
 limit.
 
+## WFH over the limit
+Each WFH day above 2 in a month takes ½ day of leave (Rules & calendars → Work from home; 0 = only flag it). It
+appears in the employee's *Leave deduction*, the leave ledger, the review queue and the payroll Excel. Employees or
+groups exempt from deduction are flagged but not deducted; a month correction can change the deduction.
+
 ## A month that isn't calculated yet
 If you import the swipe export during the month, that month shows "Not calculated yet": what's been imported, the
 sign-ins so far and a link to Locations. Everything else (leave, hours, Insights, downloads) appears once the

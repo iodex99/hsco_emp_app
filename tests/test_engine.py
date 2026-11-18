@@ -231,6 +231,35 @@ def test_wfh_counts_only_on_the_persons_own_working_days():
     assert r.wfh_days == 3 and r.offday_wfh_days == 3
 
 
+def test_wfh_over_limit_deducts_half_day_per_extra_day():
+    """v1.6.5 (owner): more than 2 WFH days in a month → ½ day of leave deducted for every additional WFH day."""
+    def wfh(d):
+        return [Swipe("E1", datetime(2026, 10, d, 11, 0), "Mobile Sign In", "Work from Home", "Mobile Sign In"),
+                Swipe("E1", datetime(2026, 10, d, 19, 30), "Mobile Sign In", "Work from Home", "Mobile Sign In")]
+    rows = month()                                                  # no hours shortfall
+    for n, expect in ((1, 0), (2, 0), (3, 0.5), (4, 1.0), (5, 1.5)):
+        sw = [s for d in (5, 6, 7, 8, 9)[:n] for s in wfh(d)]
+        r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, sw, POL)
+        assert (r.wfh_days, r.wfh_deduction_days, r.deduction_days) == (n, expect, expect), n
+    assert r.wfh_excess_days == 3 and r.shortfall_deduction_days == 0
+    notes = {d.day.day: d.notes for d in r.days}
+    assert not any("over the limit" in x for x in notes[6]) and any("WFH day 3 of the month" in x for x in notes[7])
+    assert "1.5 day deduction (1.5 for 3 WFH day(s) over the limit)" in r.remark
+    f = next(x for x in r.flags if x[0] == "WFH_OVER_LIMIT")
+    assert "5 WFH days (limit 2) → 1.5 day(s) deducted from leave" in f[2]
+    # together with an hours shortfall: both parts add up
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, month(hours=(8, 20)), sw[:6], POL)
+    assert r.shortfall_deduction_days == 0.5 and r.wfh_deduction_days == 0.5 and r.deduction_days == 1.0
+    assert "1 day deduction (0.5 for" in r.remark and "0.5 for 1 WFH day(s) over the limit" in r.remark
+    # setting 0 = flag only; exempt employees are not deducted; off-day WFH does not count (v1.6.4)
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, sw, Policy(wfh_excess_deduction_days=0))
+    assert r.deduction_days == 0 and any(x[0] == "WFH_OVER_LIMIT" for x in r.flags)
+    r = compute_employee_month(Employee("E1", group="BSS", exempt=True), 2026, 10, rows, sw, POL)
+    assert r.deduction_days == 0 and "exempt, no deduction" in next(x for x in r.flags if x[0] == "WFH_OVER_LIMIT")[2]
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, wfh(5) + wfh(6) + wfh(10) + wfh(11), POL)
+    assert r.wfh_days == 2 and r.deduction_days == 0                # Sat 10 / Sun 11 are weekly offs
+
+
 def test_targeted_holiday_without_calendar_and_matching():
     from types import SimpleNamespace as NS
     from app.services import holidays as TH

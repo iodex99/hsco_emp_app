@@ -160,6 +160,7 @@
       <tr><td>+ Credited</td><td class="num">{{ d.leave_credit|n }}</td></tr>
       <tr><td>− Paid leave taken</td><td class="num">{{ d.leave_debit_pl|n }}</td></tr>
       <tr><td>− Hours-shortfall deduction</td><td class="num">{{ d.leave_debit_shortfall|n }}</td></tr>
+      {% if d.leave_debit_wfh %}<tr><td>− WFH over the limit ({{ d.wfh_excess_days|n }} day{{ 's' if d.wfh_excess_days != 1 }} × {{ policy.wfh_excess_deduction_days|n(1) }})</td><td class="num">{{ d.leave_debit_wfh|n }}</td></tr>{% endif %}
       <tr><td>− Unauthorised absence</td><td class="num">{{ d.leave_debit_absent|n }}</td></tr>
       <tr><td>− Comp-off taken beyond balance</td><td class="num">{{ d.leave_debit_compoff|n }}</td></tr>
       <tr class="tot"><td>Closing balance</td><td class="num">{{ d.leave_closing|n if d.leave_closing is not none else '—' }}</td></tr>

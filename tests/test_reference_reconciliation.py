@@ -74,9 +74,13 @@ def test_wfh_on_own_off_days_not_counted(run):
 
 def test_deductions_match_manual_remarks(run):
     b, res = run
-    ded = {e: r.deduction_days for e, r in res.items() if r.deduction_days}
+    ded = {e: r.shortfall_deduction_days for e, r in res.items() if r.shortfall_deduction_days}
     # HR: HS112 "1 Day Deduction", HS138 & HS205 "0.5 Days deduction"; HS207 is the documented finding
     assert ded == {"HS112": 1.0, "HS138": 0.5, "HS205": 0.5, "HS207": 0.5}
+    # v1.6.5 (owner): ½ day per WFH day above 2 — HR did not apply this in October's manual sheet
+    wfh = {e: (r.wfh_days, r.wfh_deduction_days) for e, r in res.items() if r.wfh_deduction_days}
+    assert wfh == {"HS016": (6, 2.0), "HS179": (4, 1.0), "HS195": (3, 0.5)}
+    assert all(r.deduction_days == r.shortfall_deduction_days + r.wfh_deduction_days for r in res.values())
     # exempt groups / individuals produce no deduction even when short
     for e in ("HS001", "HS004", "HS011", "HS014", "HS055", "HS098", "HS126", "HS129", "HS158"):
         assert res[e].deduction_days == 0, e

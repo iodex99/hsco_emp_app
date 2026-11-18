@@ -30,8 +30,9 @@
     <label class="check mb"><input type="checkbox" name="absent_debits_leave" value="1" {{ 'checked' if pol.absent_debits_leave }}> <span>Unauthorised absence is taken from the leave balance <span class="help" style="display:block">Policy: leave without approval is adjusted against leave, then salary.</span></span></label>
     <label class="check"><input type="checkbox" name="cof_overdraft_to_leave" value="1" {{ 'checked' if pol.cof_overdraft_to_leave }}> Comp-off taken beyond the balance is taken from leave</label>
   </div></div>
-  <div class="form-sec"><div><h3>Work from home</h3><p>Days above the limit are flagged.</p></div><div>
-    <div class="row">{{ num('wfh_limit_days') }}
+  <div class="form-sec"><div><h3>Work from home</h3><p>Counted only on each person's own working days. Each WFH day above the limit is flagged and takes the set amount of leave (exempt employees / groups excepted).</p></div><div>
+    <div class="row">{{ num('wfh_limit_days') }}{{ num('wfh_excess_deduction_days', 'e.g. 0.5 = half a day of leave for every WFH day above the limit; 0 = flag only.') }}</div>
+    <div class="row">
       <div class="field"><label>How a WFH day is counted</label><select name="wfh_method"><option value="distinct_days" {{ 'selected' if pol.wfh_method=='distinct_days' }}>Any WFH punch on a date = 1 day</option><option value="swipes_half" {{ 'selected' if pol.wfh_method=='swipes_half' }}>WFH punches ÷ 2 (old manual method)</option></select></div>
       <div class="field"><label>Location types that mean WFH</label><input name="wfh_location_types" value="{{ pol.wfh_location_types|join(', ') }}"></div></div>
   </div></div>

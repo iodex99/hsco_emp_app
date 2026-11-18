@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.5 — 2026-11-18 — half a day of leave per WFH day over the limit
+Owner: "more than 2 wfh, then we have to deduct half day for every additional wfh (more than 2 in a month)".
+- **Deduction:** each WFH day above the monthly limit (2) takes **½ day of leave** (Settings → Rules → Work from home →
+  *Leave deducted per WFH day over the limit*, 0 = flag only). It is added to the hours-shortfall deduction:
+  `deduction_days = shortfall part + WFH part`, both stored (`shortfall_deduction_days`, `wfh_deduction_days`,
+  `wfh_excess_days`) and taken from the leave balance (ledger line *WFH over the limit*, Excel ledger column
+  *WFH over-limit deduction*; salary when leave is exhausted, as before).
+- WFH counts only on the person's own working days (v1.6.4); the 3rd, 4th … WFH days carry a note; the flag says
+  "6 WFH days (limit 2) → 2 day(s) deducted from leave"; the remark splits the deduction.
+- Employees *exempt from deduction* (employee master, exempt groups — default Partner, SS, Article, Trainee — or a
+  month exception) are flagged but not deducted. A month correction of *deduction days* still overrides the total.
+- Payroll Excel: the deduction column formula adds `CEILING(MAX(0, WFH − 2), 1) × 0.5` (live: edit column J).
+- October 2026 (real data): HS016 6 WFH → 2 days, HS179 4 → 1 day, HS195 3 → ½ day. HR's manual sheet did not
+  deduct these; Reconciliation labels them *App rule*.
+- Draft months are recalculated automatically after the update (`RULES_VERSION` 3); finalised months never change.
+
 ## 1.6.4 — 2026-11-18 — WFH only on working days; targeted holidays; no stale JS/CSS after updates
 Owner: "employees working from home on their weekly offs, holidays, those wfh shall not be counted as wfh; these weekly
 offs and holidays will differ from person to person, in the future we are going to have targeted holidays as well".

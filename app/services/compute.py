@@ -201,7 +201,8 @@ def _ledger(r: M.EmployeeMonth, e: Optional[M.Employee], y: int, m: int, policy:
                 credit = prorata_entitlement(doj, y, m, policy)
                 leave_open = 0.0
     debit_pl = r.pl_days
-    debit_short = r.deduction_days
+    debit_short = r.deduction_days          # shortfall + WFH over the limit (split below for the ledger)
+    debit_wfh = min(r.wfh_deduction_days, debit_short)
     debit_absent = r.unauth_absent_days if policy.absent_debits_leave else 0.0
 
     # comp-off
@@ -230,7 +231,8 @@ def _ledger(r: M.EmployeeMonth, e: Optional[M.Employee], y: int, m: int, policy:
     lop_extra = co_overdraft if not policy.cof_overdraft_to_leave else 0.0
     return {
         "leave_opening": leave_open, "leave_credit": credit, "leave_debit_pl": debit_pl,
-        "leave_debit_shortfall": debit_short, "leave_debit_absent": debit_absent, "leave_debit_compoff": debit_cof,
+        "leave_debit_shortfall": round(debit_short - debit_wfh, 2), "leave_debit_wfh": debit_wfh,
+        "leave_debit_absent": debit_absent, "leave_debit_compoff": debit_cof,
         "leave_debit_total": round(total_debit, 2), "leave_closing": leave_close,
         "salary_deduction_days": round(salary_days, 2), "encashment_days": encash,
         "compoff_opening": co_open, "compoff_closing": co_close, "compoff_overdraft": co_overdraft,

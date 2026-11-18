@@ -67,6 +67,8 @@ Flaw: a day with one WFH swipe + one office swipe becomes 0.5; 7 employees diffe
 HR's count also includes WFH sign-ins on the person's own weekly off / holiday: **18 such days for 17 people** in
 October 2026 (mostly Sat 31, Sun 25; HS045 on Sat 10 and Sat 17; HS051 on 2-Oct, HS093 on 20-Oct). From v1.6.4 the app
 does not count them as WFH (owner rule) — they are off-day work; the Reconciliation page labels them *App rule*.
+HR's October sheet made no deduction for WFH above 2 (HS016 6, HS179 4, HS195 3 WFH days); from v1.6.5 the app deducts
+½ day per extra day (2, 1 and ½ day) — labelled *App rule* on Reconciliation.
 
 ## 2b. `Employee Swipe Details.xlsx` (newer greytHR export, November 2026 — first file with GPS)
 `Sheet0`, header row 1, 17 columns: Employee No, Employee Name, Access Card, Shift, **Swipe Date** (timestamp),
