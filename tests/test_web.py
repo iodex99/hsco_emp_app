@@ -252,10 +252,11 @@ def test_settings_changes_recompute(loaded):
     c.post(f"/settings/calendars/{cid}/holiday", data={"csrf": csrf, "day": "2026-10-20", "name": "Dussehra"})
     d1, _ = _result("T001")
     assert d1["holidays"] == 2 and d1["extra_days"] == 1   # worked on 2-Oct -> holiday work
-    # geofence
-    r = c.post("/settings/geofences", data={"csrf": csrf, "name": "HO", "category": "Office", "lat": "18.94", "lon": "72.82",
-                                            "radius_m": "150"}, follow_redirects=True)
-    assert "HO" in r.text
+    # named places were removed (v1.6.2): the Settings Locations tab and its routes are gone
+    assert c.post("/settings/geofences", data={"csrf": csrf, "name": "HO", "category": "Office", "lat": "18.94",
+                                               "lon": "72.82", "radius_m": "150"}).status_code in (404, 405)
+    st = c.get("/settings").text
+    assert 'data-tab="locations"' not in st and 'data-pane="locations"' not in st and "Suggested places" not in st
     # employee master edit -> audit + recompute
     c.post("/employees/save", data={"csrf": csrf, "emp_no": "T002", "name": "Bilal Khan", "group": "ATA", "location": "Mumbai",
                                     "weekly_off": "MUSTER", "hours_per_day": "8", "is_active": "1"})
@@ -737,28 +738,19 @@ def test_admin_can_delete_a_mistaken_month(loaded):
 
 # ---------------------------------------------------------------- v1.5: locations end to end
 
-def test_locations_page_suggestions_and_office_check(loaded):
+def test_locations_page_uses_built_in_place_names(loaded):
     from sqlalchemy import select
     from app.db import session_scope
     from app.models import MonthResult
     c = loaded
     page = c.get("/locations").text
-    assert "Locations" in page and "Acme Pharma" in page and "Name your offices" in page
-    assert "Andheri East, Mumbai Suburban, Maharashtra" in page                       # offline name for T004's WFH
-    st = c.get("/settings").text
-    assert "Suggested places" in st and 'data-name="Acme Pharma (BKC)"' in st and 'data-cat="Client"' in st
-    assert "probably not an office" in st          # a spot only one person tags 'Office' is not offered as an office
-    # name the office (as the "Name it" button would fill it) → office sign-ins are verified on recalculation
-    r = c.post("/settings/geofences", data={"csrf": csrf_of(c, "/settings"), "name": "Head office", "category": "Office",
-                                            "lat": "18.93860", "lon": "72.82950", "radius_m": "200"}, follow_redirects=True)
-    assert r.status_code == 200
+    assert "Locations" in page and "Acme Pharma" in page
+    assert "Andheri East, Mumbai Suburban, Maharashtra" in page                       # built-in map name, T004's WFH
+    assert "Name your offices" not in page and "Office check" not in page and "/settings#locations" not in page
+    assert "Tagged &#39;Office&#39; from a phone" in page or "Tagged 'Office' from a phone" in page
     with session_scope() as db:
-        flags = {r.emp_no: [f["code"] for f in r.flags] for r in db.scalars(select(MonthResult))}
-    assert "OFF_SITE_OFFICE" in flags["T005"] and "OFF_SITE_OFFICE" not in flags["T002"]
-    q = c.get("/flags?code=OFF_SITE_OFFICE").text
-    assert "Esha Patel" in q and "Kalachowki" in q
-    page = c.get("/locations").text
-    assert "Away from office" in page and "At office" in page and "Head office (Office)" in page
+        codes = {f["code"] for r in db.scalars(select(MonthResult)) for f in r.flags}
+    assert "OFF_SITE_OFFICE" not in codes
     # rejected sign-in ignored, remark visible in the day view
     emp = c.get("/periods/2026-10/employee/T006").text
     assert "rejected sign-in(s) ignored" in emp
@@ -823,7 +815,8 @@ def test_location_exports(loaded):
     assert lw.sheetnames == ["Punches", "Places", "By person"]
     rows = [[cell.value for cell in row] for row in lw["Punches"].iter_rows(min_row=6)]
     assert any(r[3] == "Astra" and str(r[5]).startswith("Office biometric") for r in rows)       # biometric punches too
-    assert any(r[6] == "At Acme Pharma (BKC)" and r[11] == 19.066 for r in rows)                # remark + coordinates
+    assert any(r[6] == "At Acme Pharma (BKC)" and r[10] == 19.066 for r in rows)                # remark + coordinates
+    assert "Office check" not in [c.value for c in lw["Punches"][5]]
     assert c.get("/exports/2099-01/locations.xlsx").status_code == 404
     assert "/exports/2026-10/locations.xlsx" in c.get("/locations").text and "/exports/2026-10/locations.xlsx" in c.get("/exports").text
     assert "Sign-ins &amp; places" in c.get("/periods/2026-10/employee/T001").text

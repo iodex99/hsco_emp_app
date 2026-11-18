@@ -28,7 +28,7 @@ assistants), Trainee. HR software: **greytHR** (biometric device "Astra" + greyt
 See CHANGELOG. In short: importers for all 4 greytHR exports + manual MIS + templates; policy engine; leave & comp-off
 ledgers; 25 flag types; board dashboard; payroll leave sheet; employee drill-down with calendar & punches; day/month
 overrides with mandatory reasons; period finalise/lock; reconciliation vs manual MIS and vs greytHR summary;
-Excel workbook (live formulas) + standalone HTML board pack (removed in v1.6.0 — see below); offline location naming + geofences; users/roles;
+Excel workbook (live formulas) + standalone HTML board pack (removed in v1.6.0 — see below); offline location naming; users/roles;
 TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows installer, HTTPS, nightly backup.
 
 ## Decisions taken (and why)
@@ -41,7 +41,7 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 | LOP shown under Leaves (G) by default | HR did so 3 of 4 times; setting available |
 | Persistent late = > 60 min late on ≥ 10 days | 15-min rule flagged 66 of 94 → not actionable (BUSINESS_RULES §7) |
 | WFH counted as distinct days | HR's swipes ÷ 2 gives half-days for mixed days |
-| Offline gazetteer + geofences for place names; online OSM off by default | "Data stays on the server" |
+| Offline gazetteer for place names (admin-named places removed in v1.6.2); online OSM off by default | "Data stays on the server" |
 | 2FA mandatory by default | Requirement; admin can relax in Settings |
 | Place names from a bundled GeoNames India gazetteer (566k places, offline) rather than an online API | Automatic, free (CC-BY), and no coordinates leave the server |
 | Importer matches fields by meaning + checks values; unsure → user maps once, layout remembered | Never import a misread file silently; never ask twice for the same layout |
@@ -55,11 +55,13 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 5. LOP: leave column or absent column? (default leave).
 6. ~~Which greytHR report carries sign-in coordinates?~~ Answered 2026-11-18: the newer *Employee Swipe Details*
    export (Longitude/Latitude columns, phone, remarks) — supported from v1.5.0.
-7. Office/client geofences: name the Mumbai and Delhi offices (Settings → Locations suggests both); client names
-   as HR prefers. Is a second "Office" spot near Sion a real office? (suggested as "Mumbai office — Sion").
+7. ~~Office/client geofences~~ Closed 2026-11-18: the owner removed named places — names come from the built-in
+   map only.
 8. Is "late" for the board > 1 hour (default) or another threshold?
 
 ## Decisions 2026-11-18
 - **Board pack removed** (owner): "the app does it in a much better way". Board members use the app (viewer role).
 - **Bradford factor removed** (owner); absence shown as plain unplanned days and spells.
 - Punch locations must also be available in Excel → punches & locations workbook + Places column in Daily Detail.
+- **Named places removed** (owner, v1.6.2): "we are using locations from the package" — no Settings Locations tab; the
+  office check that depended on named offices went with it; shared-phone check kept.

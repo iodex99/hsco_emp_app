@@ -9,7 +9,6 @@
 <div class="tabs" data-tabs id="set-tabs">
   <button class="on" data-tab="policy">{{ ui.icon('sliders-horizontal','sm') }} Calculation rules</button>
   <button data-tab="holidays">{{ ui.icon('calendar','sm') }} Holiday calendars</button>
-  <button data-tab="locations">{{ ui.icon('map-pin','sm') }} Locations</button>
   <button data-tab="general">{{ ui.icon('shield-check','sm') }} Security &amp; system</button>
   <button data-tab="updates">{{ ui.icon('refresh-cw','sm') }} Updates{% if upd and upd.available %} <span class="n" style="background:var(--brand-100);color:var(--brand-700)">new</span>{% endif %}</button>
 </div>
@@ -84,37 +83,6 @@
   {% else %}<div class="card"><div class="bd">{% call ui.empty('No calendars yet', 'greytHR holiday marks are being used.', 'calendar') %}{% endcall %}</div></div>{% endfor %}
   </div>
 </div>
-</section>
-
-<section class="pane" data-pane="locations">
-<div class="grid g-1-2" style="align-items:start">
-  <form class="card" method="post" action="/settings/geofences">{{ ui.csrf_field() }}
-    <div class="hd"><h2>Name a place</h2></div><div class="bd">
-    <p class="small muted" style="margin-top:0">Sign-ins within the radius show this name, e.g. "ABC Ltd, Andheri (Client)". Others show the nearest locality from the built-in offline map{% if general.online_geocoding %} or OpenStreetMap{% endif %}.</p>
-    <div class="field"><label>Name</label><input name="name" id="g-name" required placeholder="e.g. Head office"></div>
-    <div class="field"><label>Type</label><select name="category" id="g-cat"><option>Office</option><option selected>Client</option><option>Home</option><option>Other</option></select></div>
-    <div class="row"><div class="field"><label>Latitude</label><input name="lat" required inputmode="decimal" id="g-lat"></div><div class="field"><label>Longitude</label><input name="lon" required inputmode="decimal" id="g-lon"></div></div>
-    <div class="field"><label>Radius (metres)</label><input name="radius_m" id="g-r" value="200" inputmode="numeric"></div>
-    <button class="btn block">Save place</button></div></form>
-  <div>
-    <div class="card flush"><div class="hd"><h2>Named places</h2><span class="sub">{{ fences|length }}</span></div><div class="bd"><table class="compact"><thead><tr><th>Name</th><th>Type</th><th>Coordinates</th><th class="num">Radius</th><th></th></tr></thead><tbody>
-      {% for f in fences %}<tr><td class="strong">{{ f.name }}</td><td><span class="tag">{{ f.category }}</span></td><td class="mono">{{ f.lat }}, {{ f.lon }}</td><td class="num">{{ f.radius_m }} m</td>
-        <td class="right"><form method="post" action="/settings/geofences/{{ f.id }}/delete" class="inline">{{ ui.csrf_field() }}<button class="btn sm ghost">{{ ui.icon('trash-2','sm') }}</button></form></td></tr>
-      {% else %}<tr><td colspan="5" class="muted">None yet.</td></tr>{% endfor %}</tbody></table></div></div>
-  </div>
-</div>
-<div class="card flush mt" id="suggested"><div class="hd"><h2>Suggested places</h2><span class="sub">frequent sign-in spots not named yet — busiest first</span></div><div class="bd">
-  {% if clusters %}<div class="tw"><table class="compact" id="spots" data-table data-toolbar="none"><thead><tr><th data-key="name" data-type="text">Suggested name</th><th data-key="type" data-type="enum">Usually tagged</th><th data-key="where" data-type="text">Nearest locality</th><th data-key="n" data-type="num" class="num">Sign-ins</th><th data-key="who" data-type="text">People</th><th data-type="none"></th></tr></thead><tbody>
-  {% for b in clusters %}<tr>
-    <td><b>{{ b.suggestion }}</b>{% if b.warning %}<div class="small" style="color:var(--warn)">{{ ui.icon('triangle-alert','sm') }} {{ b.warning }} — probably not an office</div>{% endif %}{% if b.notes %}<div class="small muted">remarks: {{ b.notes|join('; ') }}</div>{% endif %}</td>
-    <td><span class="tag">{{ b.main_type }}</span><div class="small muted">{{ b.types }}</div></td>
-    <td class="small">{{ b.place }}<div class="mono muted">{{ '%.5f'|format(b.lat) }}, {{ '%.5f'|format(b.lon) }}</div></td>
-    <td class="num" data-v="{{ b.count }}">{{ b.count }}</td>
-    <td class="small" data-v="{{ b.people|length }}">{{ b.people[:4]|join(', ') }}{% if b.people|length > 4 %} +{{ b.people|length - 4 }}{% endif %}</td>
-    <td><button class="btn sm sec name-spot" type="button" data-name="{{ b.suggestion }}" data-cat="{{ b.category }}" data-lat="{{ '%.6f'|format(b.lat) }}" data-lon="{{ '%.6f'|format(b.lon) }}" data-r="{{ b.radius }}">Name it</button></td></tr>{% endfor %}</tbody></table></div>
-  <p class="small muted mt-s">{{ ui.icon('info','sm') }} Name your offices first: sign-ins tagged "Office" are then checked against them, and any that are elsewhere show up in the review queue.</p>
-  {% else %}{% call ui.empty('No coordinates yet', 'Import the greytHR Employee Swipe Details export with its Latitude and Longitude columns to see frequent sign-in spots here.', 'map-pin') %}{% endcall %}{% endif %}
-</div></div>
 </section>
 
 <section class="pane" data-pane="general">
@@ -212,12 +180,6 @@
 </section>
 {% endblock %}
 {% block scripts %}<script>
-// "Name it" on a suggested place fills the form (name, type, coordinates, radius) — the admin reviews and saves
-document.querySelectorAll('.name-spot').forEach(b=>b.addEventListener('click',()=>{
-  const f=id=>document.getElementById(id);
-  f('g-name').value=b.dataset.name; f('g-cat').value=b.dataset.cat; f('g-lat').value=b.dataset.lat; f('g-lon').value=b.dataset.lon; f('g-r').value=b.dataset.r;
-  f('g-name').scrollIntoView({behavior:'smooth',block:'center'}); f('g-name').focus(); f('g-name').select();
-}));
 const cb=document.getElementById('chk-now'); if(cb) cb.onclick=async()=>{cb.disabled=true;cb.textContent='Checking…';
   try{const s=await HSCO.post('/api/update/check'); if(s.check_error){alert('Could not check: '+s.check_error);} location.hash='updates'; location.reload();}catch(e){alert(e.message);cb.disabled=false;}};
 </script>{% endblock %}

@@ -79,24 +79,21 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
         r = mobile.get((s.emp_no, s.ts))
         if r:
             rows.append([s.ts, s.emp_no, names.get(s.emp_no, s.emp_no), r["swipe_type"] or "Mobile", r["type"], r["place"],
-                         r["note"], r["office_check"], r["reason"], r["device"], r["approval"], s.lat, s.lon])
+                         r["note"], r["reason"], r["device"], r["approval"], s.lat, s.lon])
         else:
             rows.append([s.ts, s.emp_no, names.get(s.emp_no, s.emp_no), s.swipe_type or "", s.location_type or "",
-                         s.place or ("Office biometric" + (f" ({s.door})" if s.door else "")), s.note or "", "",
+                         s.place or ("Office biometric" + (f" ({s.door})" if s.door else "")), s.note or "",
                          s.reason or "", s.device or "", s.approval or "", s.lat, s.lon])
-    _table(ws, 5, ["When", "Employee No", "Name", "Punch type", "Tagged as", "Place", "Remark", "Office check",
+    _table(ws, 5, ["When", "Employee No", "Name", "Punch type", "Tagged as", "Place", "Remark",
                    "Permission reason", "Phone", "Status", "Latitude", "Longitude"], rows,
-           [16, 10, 22, 13, 15, 46, 30, 15, 22, 16, 10, 11, 11], org,
-           f"Punches and where they were made — {period.label} (offline place names; named places take priority)")
-    for i, r in enumerate(rows, start=6):
+           [16, 10, 22, 13, 15, 46, 30, 22, 16, 10, 11, 11], org,
+           f"Punches and where they were made — {period.label} (place names from the built-in offline map of India)")
+    for i in range(6, 6 + len(rows)):
         ws.cell(row=i, column=1).number_format = "dd-mmm-yyyy hh:mm"
-        if r[7] == "Away from office":
-            ws.cell(row=i, column=8).fill = RED
     k = L["kpis"]
     ws.cell(row=4, column=1, value=(f"{len(rows)} punches: {k['mobile']} mobile sign-ins ({k['with_gps']} with GPS), "
                                     f"{k['biometric']} office biometric · {k['client_visits']} client visits · "
-                                    f"{k['wfh']} WFH sign-ins" + (f" · {k['away']} tagged 'Office' but not at an office"
-                                                                 if k["offices_named"] else "")))
+                                    f"{k['wfh']} WFH sign-ins"))
     ws2 = wb.create_sheet("Places")
     _table(ws2, 5, ["Place", "Mostly tagged", "Tags", "Sign-ins", "People", "Who", "Remarks", "First", "Last"],
            [[b["place"], b["main_type"], b["types"], b["count"], b["people"], ", ".join(b["people_names"]), b["notes"],
@@ -104,10 +101,10 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
            [46, 14, 30, 9, 8, 44, 36, 16, 16], org, f"Places people signed in from — {period.label}")
     ws3 = wb.create_sheet("By person")
     _table(ws3, 5, ["Employee No", "Name", "Mobile sign-ins", "With GPS", "Places", "Client", "WFH", "On duty",
-                    "Tagged Office", "…not at an office", "Permission requests"],
+                    "Tagged Office", "Permission requests"],
            [[p["emp_no"], p["name"], p["sign_ins"], p["gps"], p["places"], p["client"], p["wfh"], p["onduty"],
-             p["office_tagged"], p["away"], p["permission"]] for p in L["people"]],
-           [10, 24] + [12] * 9, org, f"Mobile sign-ins by person — {period.label}")
+             p["office_tagged"], p["permission"]] for p in L["people"]],
+           [10, 24] + [12] * 8, org, f"Mobile sign-ins by person — {period.label}")
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -334,17 +331,15 @@ def build_workbook(db: Session, period: Period) -> bytes:
     L = LOC.report(db, period)
     if L["rows"]:
         ws = wb.create_sheet("Sign-ins & Places")
-        _table(ws, 5, ["When", "Employee No", "Name", "Tagged as", "Place", "Remark", "Office check", "Permission reason",
+        _table(ws, 5, ["When", "Employee No", "Name", "Tagged as", "Place", "Remark", "Permission reason",
                        "Phone", "Status", "Latitude", "Longitude"],
                [[r["ts"], r["emp_no"], r["name"], r["type"] if r["swipe_type"].lower() != "permission" else "Permission",
-                 r["place"], r["note"], r["office_check"], r["reason"], r["device"], r["approval"], r["lat"], r["lon"]]
+                 r["place"], r["note"], r["reason"], r["device"], r["approval"], r["lat"], r["lon"]]
                 for r in L["rows"]],
-               [16, 10, 22, 14, 44, 30, 16, 22, 16, 10, 11, 11], org,
-               f"Mobile sign-ins and places — {period.label} (offline place names; named places take priority)")
-        for i, r in enumerate(L["rows"], start=6):
+               [16, 10, 22, 14, 44, 30, 22, 16, 10, 11, 11], org,
+               f"Mobile sign-ins and places — {period.label} (place names from the built-in offline map of India)")
+        for i in range(6, 6 + len(L["rows"])):
             ws.cell(row=i, column=1).number_format = "dd-mmm-yyyy hh:mm"
-            if r["office_check"] == "Away from office":
-                ws.cell(row=i, column=7).fill = RED
         ws = wb.create_sheet("Places")
         _table(ws, 5, ["Place", "Mostly tagged", "Tags", "Sign-ins", "People", "Who", "Remarks", "First", "Last"],
                [[b["place"], b["main_type"], b["types"], b["count"], b["people"], ", ".join(b["people_names"]),

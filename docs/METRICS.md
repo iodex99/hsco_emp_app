@@ -102,11 +102,11 @@ from one month's last working day into the next month's first working day counts
 | Mobile sign-ins | punches that are not office-biometric (Astra); % with GPS |
 | Client visits | distinct (person, day, place) with Location Type "Client Location" |
 | WFH sign-ins | Location Type Work from Home (count and people) |
-| 'Office' but not at an office | Office-tagged mobile sign-ins outside every named Office (+150 m) — only when offices are named |
+| Tagged 'Office' from a phone | mobile sign-ins tagged Office (count and people) |
 | Shared phones | phone ids used by 2+ people in the month |
 | By place | sign-ins, people, tags and top remarks per place name |
-Flags: `OFF_SITE_OFFICE` (medium) "Tagged 'Office' but not at an office", `SHARED_DEVICE` (high) "Phone used to sign
-in for several people" — see BUSINESS_RULES §9a.
+Flag: `SHARED_DEVICE` (high) "Phone used to sign in for several people" — see BUSINESS_RULES §9a.
+(`OFF_SITE_OFFICE` was removed in v1.6.2 with the named places; its label is kept only for old history.)
 
 *v1.5.2:* the Bradford factor was removed on request. 12-month absence is reported as **unplanned absence days** and
 **spells** (a spell = consecutive working days with unplanned absence; offs/holidays between don't break it; a spell

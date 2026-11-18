@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`130 passed` (v1.6.1; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`130 passed` (v1.6.2 and v1.6.1; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
@@ -98,3 +98,10 @@ Flags review columns, payroll figure changed); daily backup is verified, copies 
 retention rule (14 days + newest per older month), restore round-trip with safety copy, a corrupt backup is refused;
 *Back up now*; supervisor refuses a package that contains `data/` (code and data untouched, result recorded) with the
 data folder inside the app folder (PC layout); pre-update backup verified and pruned to 10.
+
+## v1.6.2 — named places removed
+Tests updated: Settings has no Locations tab and `/settings/geofences` is gone (404/405); the Locations page uses
+built-in map names with no office-check column or "Name your offices" prompt and no OFF_SITE_OFFICE flag;
+location checks only flag a shared phone (rejected and biometric punches ignored); Punches sheet without the
+office-check column (latitude/longitude in columns 11–12); real-data flow: every GPS punch has a map place name.
+130 passed.

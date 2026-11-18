@@ -104,29 +104,22 @@ but absent from the latest DOJ (active list). Work anniversaries listed. Headcou
 
 ## 9. Location names for coordinates
 Swipe importer captures coordinates from `Latitude/Longitude` (any similar header) or a `lat, long` pair in any text
-cell. Naming order: (1) admin **geofences** (name, lat, lon, radius m, category Office/Client/Home/Other);
-(2) **offline gazetteer** bundled in `app/data/in_places.csv.gz` (GeoNames, CC-BY 4.0: 566,055 Indian towns, villages,
+cell. Naming order (v1.6.2 — admin-named places removed): (1) **offline gazetteer** bundled in `app/data/in_places.csv.gz` (GeoNames, CC-BY 4.0: 566,055 Indian towns, villages,
 neighbourhoods, localities, stations and landmarks with district and state), indexed on first start into
 `DATA_DIR/geo/places-*.sqlite` (≈ 0.05° grid). The nearest place within `geocode_max_km` (15 km) is used; a named
 neighbourhood is preferred when it is within max(1.5 km, 1.6 × the nearest place's distance); a landmark within 600 m is
 appended. Label: `Place, District, State`, prefixed "near … (x km)" when ≥ 1 km away, suffixed "· by <landmark>".
-No user input and nothing leaves the server. (3) optional **online OSM Nominatim** lookup — off by default because it
+No user input and nothing leaves the server. (2) optional **online OSM Nominatim** lookup — off by default because it
 sends coordinates outside the server. Results are cached (`geo_cache`). When the gazetteer version changes
-(`geo.NAMES_VERSION`), cached offline names are dropped once, stored swipes renamed and draft months recalculated.
-Unnamed clusters are suggested to admin for naming.
+(`geo.NAMES_VERSION`, now 3), cached offline names are dropped once, stored swipes renamed and draft months
+recalculated.
 
 ## 9a. Checks on mobile sign-ins (v1.5)
 - **Rejected** sign-ins (approval Rejected/Declined/Cancelled/Denied) never count as attendance; the day notes them.
-- **OFF_SITE_OFFICE (medium):** a mobile sign-in tagged "Office" with GPS that is not within any named place of type
-  *Office* (radius + 150 m GPS slack). Only checked once at least one office is named (Settings → Locations).
-  Biometric (Astra) punches are never checked.
 - **SHARED_DEVICE (high):** the same phone id used to sign in for two or more people in the month (each is flagged
   with the others' names).
-- **Suggested places:** punches bucketed ≈110 m, neighbouring buckets within 250 m merged; category from the usual
-  tag (Office → Office, Client Location → Client, Work from Home → Home, On-Duty → Other); a spot tagged "Office" by
-  only one person is offered as Other with a warning; Office names use the city from Settings → Locations list
-  ("Mumbai office"); a Client spot is named after a remark only if that remark is ≥ 30 % of the remarks there and
-  occurs ≥ 2 times; radius = spread of the punches + 60 m, 100–400 m.
+- *Removed in v1.6.2 with the named places:* OFF_SITE_OFFICE ("tagged Office but not at an office") and suggested
+  places. Biometric (Astra) punches are never checked.
 - A month with punches but no muster is **not calculated**: its pages say so; Locations works from the punches.
 
 ## 10. Period lifecycle

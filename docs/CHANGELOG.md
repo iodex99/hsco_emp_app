@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.2 — 2026-11-18 — place names only from the built-in map
+Owner: "remove Locations from Rules & calendars, since we are using locations from the package".
+- *Settings → Rules & calendars → Locations* tab removed (named places / geofences, suggested places, *Name it*). Every
+  sign-in is named from the built-in offline map of India — no setup.
+- With it went the check that needed named offices: *Tagged 'Office' but not at an office* (`OFF_SITE_OFFICE`), the
+  Locations page's office-check column and chip, and the office-check columns in the Excel downloads. The Locations KPI
+  is now *Tagged 'Office' from a phone*. The shared-phone check (`SHARED_DEVICE`) stays.
+- Places that had a name typed by an admin are renamed once from the map (`geo.NAMES_VERSION` 3; draft months
+  recalculated in the background). The old `geofences` table is left untouched in the database (nothing deleted).
+
 ## 1.6.1 — 2026-11-18 — data safety; exports show every correction and review
 **Exports** are always built at the moment of download from the app's current figures — every day correction, month
 adjustment, setting and review is already in them. New: the *Flags* sheet shows each exception's review status,

@@ -129,20 +129,12 @@ def test_real_signins_with_coordinates(client):
     page = c.get("/locations?period=2026-11")
     assert page.status_code == 200 and "November 2026" in page.text and "Bandra Kurla Complex" in page.text
     assert c.get("/").status_code == 200 and "October 2026" in c.get("/").text              # default view stays October
-    st = c.get("/settings").text
-    assert "Suggested places" in st and 'data-name="Mumbai office" data-cat="Office"' in st and 'data-cat="Client"' in st
-    assert 'data-name="Delhi office" data-cat="Office"' in st and "probably not an office" in st
-    # name the Mumbai office from its suggestion → office-tagged sign-ins elsewhere are now visible
-    m = re.search(r'data-name="(Mumbai office)" data-cat="Office" data-lat="([\d.]+)" data-lon="([\d.]+)" data-r="(\d+)"', st)
-    assert m
-    c.post("/settings/geofences", data={"csrf": csrf_of(c, "/settings"), "name": "Mumbai office", "category": "Office",
-                                        "lat": m.group(2), "lon": m.group(3), "radius_m": m.group(4)})
     page = c.get("/locations?period=2026-11").text
-    assert "Mumbai office (Office)" in page and "Away from office" in page and "At office" in page
+    assert "Ghatkopar, Mumbai Suburban, Maharashtra" in page and "Office check" not in page
     # November isn't calculated, but its punches & locations can be downloaded
     from openpyxl import load_workbook
     r = c.get("/exports/2026-11/locations.xlsx")
     assert r.status_code == 200
     rows = [[x.value for x in row] for row in load_workbook(io.BytesIO(r.content))["Punches"].iter_rows(min_row=6)]
-    assert len(rows) > 1000 and sum(1 for x in rows if x[11] is not None) > 100
-    assert any(x[5] == "Mumbai office (Office)" for x in rows)
+    assert len(rows) > 1000 and sum(1 for x in rows if x[10] is not None) > 100
+    assert all(x[5] for x in rows if x[10] is not None)                       # every GPS punch has a place name

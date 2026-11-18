@@ -1,6 +1,6 @@
 """Coordinates → human place names, without sending data off the server by default.
 
-Order (docs/BUSINESS_RULES.md §9): admin geofences → offline GeoNames gazetteer (app/data/in_places.csv.gz,
+Order (docs/BUSINESS_RULES.md §9): offline GeoNames gazetteer (app/data/in_places.csv.gz,
 CC-BY 4.0 geonames.org: 566k Indian places — towns, villages, neighbourhoods, localities, railway stations, airports —
 with district and state; indexed into DATA_DIR/geo on first use) → optional online OSM Nominatim (off by default) →
 raw coordinates. Nothing is sent off the server unless online lookup is switched on.
@@ -12,20 +12,18 @@ import gzip
 import json
 import math
 import os
-import re
 import pathlib
 import sqlite3
 import threading
 import urllib.parse
 import urllib.request
-from collections import Counter, defaultdict
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import APP_DIR
-from app.models import GeoCache, Geofence
+from app.models import GeoCache
 from app.services.settings import get_general
 
 _LOCK = threading.Lock()
@@ -84,7 +82,7 @@ def gazetteer_db() -> Optional[str]:
         return _DB
 
 
-NAMES_VERSION = 2   # bump when the offline gazetteer changes so cached/stored names are refreshed once
+NAMES_VERSION = 3   # bump when the offline gazetteer changes so cached/stored names are refreshed once
 
 
 def warm_up() -> None:
@@ -96,8 +94,8 @@ def warm_up() -> None:
 def upgrade_place_names() -> int:
     """Once per gazetteer version: re-name swipes stored with older offline names, then recalculate draft months.
 
-    Never holds the database write lock for long: names are worked out first (reads only, offline gazetteer and
-    geofences only — no online lookups), then written in short batches; each draft month is recalculated in its own
+    Never holds the database write lock for long: names are worked out first (reads only, offline gazetteer only —
+    no online lookups), then written in short batches; each draft month is recalculated in its own
     transaction. Finalised months are left untouched (their results are frozen)."""
     from sqlalchemy import delete, update
     from app.db import session_scope
@@ -108,7 +106,6 @@ def upgrade_place_names() -> int:
         if st and (st.value or {}).get("v", 0) >= NAMES_VERSION:
             return 0
         drafts = {p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT"))}
-        fences = db.scalars(select(Geofence)).all()
         max_km = float(get_general(db).get("geocode_max_km") or 15)
         rows = db.execute(select(SwipeRow.id, SwipeRow.period_id, SwipeRow.lat, SwipeRow.lon, SwipeRow.place)
                           .where(SwipeRow.lat.is_not(None), SwipeRow.period_id.in_(drafts or {-1}))).all()
@@ -118,8 +115,7 @@ def upgrade_place_names() -> int:
     for rid, pid, lat, lon, place in rows:
         key = f"{lat:.4f},{lon:.4f}"
         if key not in names:
-            fence = _fence_name(fences, lat, lon)
-            names[key] = fence or offline_name(lat, lon, max_km) or f"{lat:.5f}, {lon:.5f}"
+            names[key] = offline_name(lat, lon, max_km) or f"{lat:.5f}, {lon:.5f}"
         if names[key] != place:
             changes.append({"i": rid, "p": names[key]})
             touched.add(pid)
@@ -142,15 +138,6 @@ def upgrade_place_names() -> int:
         else:
             st.value = {"v": NAMES_VERSION}
     return len(changes)
-
-
-def _fence_name(fences, lat: float, lon: float) -> Optional[str]:
-    best = None
-    for f in fences:
-        d = haversine_m(lat, lon, f.lat, f.lon)
-        if d <= f.radius_m and (best is None or d < best[0]):
-            best = (d, f)
-    return f"{best[1].name} ({best[1].category})" if best else None
 
 
 _TL = threading.local()
@@ -236,7 +223,6 @@ def online_name(lat: float, lon: float) -> Optional[str]:  # pragma: no cover - 
 class Namer:
     def __init__(self, db: Session):
         self.db = db
-        self.fences = db.scalars(select(Geofence)).all()
         g = get_general(db)
         self.online = bool(g.get("online_geocoding"))
         self.max_km = float(g.get("geocode_max_km") or 15)
@@ -247,9 +233,6 @@ class Namer:
     def name(self, lat: Optional[float], lon: Optional[float]) -> str:
         if lat is None or lon is None:
             return ""
-        fence = _fence_name(self.fences, lat, lon)
-        if fence:
-            return fence
         key = f"{lat:.4f},{lon:.4f}"
         if key in self.cache:
             return self.cache[key]
@@ -272,122 +255,3 @@ class Namer:
         for g in self.new:
             self.db.merge(g)
         self.new = []
-
-
-def rename_swipes(db: Session, period_ids: Optional[set] = None) -> set:
-    """Re-name stored swipes (e.g. after a geofence change) for draft months; one lookup per distinct coordinate and a
-    bulk update. Returns the ids of periods whose names changed (to recalculate)."""
-    from sqlalchemy import bindparam, update
-    from app.models import Period, SwipeRow
-    drafts = {p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT"))}
-    if period_ids is not None:
-        drafts &= set(period_ids)
-    if not drafts:
-        return set()
-    namer = Namer(db)
-    changes, touched = [], set()
-    for rid, pid, lat, lon, place in db.execute(select(SwipeRow.id, SwipeRow.period_id, SwipeRow.lat, SwipeRow.lon,
-                                                       SwipeRow.place)
-                                                .where(SwipeRow.lat.is_not(None), SwipeRow.period_id.in_(drafts))):
-        new = namer.name(lat, lon)
-        if new != place:
-            changes.append({"i": rid, "p": new})
-            touched.add(pid)
-    namer.flush_cache()
-    if changes:
-        db.execute(update(SwipeRow.__table__).where(SwipeRow.__table__.c.id == bindparam("i")).values(place=bindparam("p")), changes)
-    return touched
-
-
-CATEGORY_FOR_TYPE = {"office": "Office", "client location": "Client", "work from home": "Home", "wfh": "Home",
-                     "on-duty": "Other"}
-
-
-_TIMEISH = re.compile(r"(?i)^\s*(shift\s+(in|out)|\d{1,2}([:.]\d{2})?\s*(am|pm)?|in|out|wfh|office)\s*$")
-
-
-def _clean_note(n: str) -> str:
-    """A remark as a possible place name: drop times ('7:10 pm'), 'Shift In', and lead-ins like 'At …'."""
-    n = re.sub(r"\s+", " ", (n or "")).strip(" .-")
-    if not n or _TIMEISH.match(n):
-        return ""
-    n = re.sub(r"(?i)^(at|in|visit(ed)? to|visit|meeting at|meeting with)\s+", "", n)
-    return n[:60]
-
-
-def unnamed_clusters(db: Session, limit: int = 30, merge_m: float = 250) -> list[dict]:
-    """Frequent sign-in spots not yet covered by a named place, with a suggested name and type.
-
-    Punches are bucketed in SQL (≈110 m grid, never loading every swipe), neighbouring buckets within merge_m are
-    merged (one office often spans two buckets), and each spot gets: its usual location type → suggested category
-    (Office / Client / Home / Other), the remarks people typed there (client names), the people, a suggested name and
-    a radius that covers its punches."""
-    from sqlalchemy import func
-    from app.models import Employee, SwipeRow
-
-    fences = db.scalars(select(Geofence)).all()
-    q = (select(func.round(SwipeRow.lat, 3), func.round(SwipeRow.lon, 3), func.count(), func.avg(SwipeRow.lat),
-                func.avg(SwipeRow.lon), func.max(SwipeRow.place), func.group_concat(SwipeRow.emp_no, "|"),
-                func.group_concat(func.coalesce(SwipeRow.location_type, ""), "|"),
-                func.group_concat(func.coalesce(SwipeRow.note, ""), "|"),
-                func.max(SwipeRow.lat) - func.min(SwipeRow.lat), func.max(SwipeRow.lon) - func.min(SwipeRow.lon))
-         .where(SwipeRow.lat.is_not(None)).group_by(func.round(SwipeRow.lat, 3), func.round(SwipeRow.lon, 3))
-         .order_by(func.count().desc()).limit(2000))
-    spots: list = []
-    for _, _, n, lat, lon, place, emps, types, notes, dlat, dlon in db.execute(q):
-        if any(haversine_m(lat, lon, f.lat, f.lon) <= f.radius_m for f in fences):
-            continue
-        b = {"count": n, "lat": lat, "lon": lon, "place": place or "", "emps": Counter((emps or "").split("|")),
-             "types": Counter(t.strip() for t in (types or "").split("|")),
-             "notes": Counter(_clean_note(x) for x in (notes or "").split("|") if _clean_note(x)),
-             "spread": haversine_m(0, 0, dlat or 0, dlon or 0) / 2}
-        for c in spots:                                # merge into a bigger neighbour
-            if haversine_m(lat, lon, c["lat"], c["lon"]) <= merge_m:
-                tot = c["count"] + n
-                c["lat"], c["lon"] = (c["lat"] * c["count"] + lat * n) / tot, (c["lon"] * c["count"] + lon * n) / tot
-                c["spread"] = max(c["spread"], haversine_m(lat, lon, c["lat"], c["lon"]) + b["spread"])
-                c["count"] = tot
-                for k in ("emps", "types", "notes"):
-                    c[k].update(b[k])
-                break
-        else:
-            spots.append(b)
-    names = {e.emp_no: e.name for e in db.scalars(select(Employee))}
-    cities = [x for x in (get_general(db).get("locations") or []) if x]
-    out = []
-    for c in sorted(spots, key=lambda x: -x["count"])[:limit]:
-        main_type = next((t for t, _ in c["types"].most_common() if t), "")
-        category = CATEGORY_FOR_TYPE.get(main_type.lower(), "Other")
-        locality = (c["place"] or "").replace("near ", "").split(" (")[0].split(",")[0].split(" · ")[0]
-        people = [e for e, _ in c["emps"].most_common() if e]
-        # a remark names the place only if it is what people there usually write (not a one-off)
-        note, ncount = c["notes"].most_common(1)[0] if c["notes"] else ("", 0)
-        named_by_note = ncount >= 2 and ncount >= 0.3 * sum(c["notes"].values())
-        warning = ""
-        if category == "Office" and len(people) < 2:
-            # an office is shared; one person calling a spot "Office" is more likely home or a client
-            category, warning = "Other", f"only {names.get(people[0], people[0]) if people else 'one person'} tags this 'Office'"
-            suggestion = locality or f"{c['lat']:.4f}, {c['lon']:.4f}"
-        elif category == "Client" and named_by_note:
-            suggestion = note
-        elif category == "Office":
-            city = next((x for x in cities if x.lower() in (c["place"] or "").lower()), "")
-            suggestion = f"{city} office" if city else (f"Office — {locality}" if locality else "Office")
-        elif category == "Home" and len(people) == 1:
-            suggestion = f"Home — {names.get(people[0], people[0])}"
-        else:
-            suggestion = locality or f"{c['lat']:.4f}, {c['lon']:.4f}"
-        if any(o["suggestion"] == suggestion[:80] for o in out):   # the busiest spot keeps the plain name
-            extra = locality if locality and locality.lower() not in suggestion.lower() else (main_type or category)
-            suggestion = f"{suggestion} — {extra}"
-            n = 2
-            while any(o["suggestion"] == suggestion[:80] for o in out):
-                suggestion = f"{suggestion.rsplit(' #', 1)[0]} #{n}"
-                n += 1
-        out.append({"count": c["count"], "lat": c["lat"], "lon": c["lon"], "place": c["place"],
-                    "emps": sorted(people), "people": [names.get(e, e) for e in people],
-                    "main_type": main_type or "—", "types": ", ".join(f"{t or '—'} {n}" for t, n in c["types"].most_common()),
-                    "notes": [n for n, _ in c["notes"].most_common(3)], "category": category, "suggestion": suggestion[:80],
-                    "warning": warning,
-                    "radius": int(min(400, max(100, round((c["spread"] + 60) / 25) * 25)))})
-    return out

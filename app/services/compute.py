@@ -121,9 +121,8 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
         m_ovr.setdefault(o.emp_no, {})[o.field] = v
 
     results = compute_month(y, m, employees, muster, swipes, policy, d_ovr, m_ovr)
-    from app.models import Geofence
     from app.services.location_checks import flags_by_employee
-    loc_flags = flags_by_employee(swipes, db.scalars(select(Geofence)).all(), {k: e.name for k, e in emps_db.items()})
+    loc_flags = flags_by_employee(swipes, {k: e.name for k, e in emps_db.items()})
 
     # ledgers
     prev = previous_period(db, period)

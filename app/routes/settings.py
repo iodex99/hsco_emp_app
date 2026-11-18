@@ -1,4 +1,4 @@
-"""Admin settings: policy rules, status codes, shifts, general/security/SMTP, holiday calendars, geofences."""
+"""Admin settings: policy rules, status codes, shifts, general/security/SMTP, holiday calendars, logo, backups."""
 from __future__ import annotations
 
 from datetime import date
@@ -10,11 +10,10 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from app.engine.model import BUCKETS
-from app.models import Geofence, Holiday, HolidayCalendar, Period, SwipeRow
+from app.models import Holiday, HolidayCalendar, Period, SwipeRow
 from app.services import branding
 from app.services.audit import audit
 from app.services.compute import compute_period
-from app.services.geo import rename_swipes, unnamed_clusters
 from app.services.settings import get_general, get_policy_json, save_general, save_policy
 from app.web import Ctx, admin, hr, redirect, render
 
@@ -48,7 +47,6 @@ def _recompute_drafts(c: Ctx):
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(c: Ctx = Depends(hr)):
     cals = c.db.scalars(select(HolidayCalendar).order_by(HolidayCalendar.name)).all()
-    fences = c.db.scalars(select(Geofence).order_by(Geofence.name)).all()
     from app.engine.compute import parse_shift
     from app.models import MusterRow
     from app.services.settings import get_policy
@@ -57,7 +55,7 @@ def settings_page(c: Ctx = Depends(hr)):
     from app.services import backups as BK
     return render(c, "settings.html", backups=BK.list_backups()[:12], bk=BK.summary(),
                   pol=get_policy_json(c.db), g=get_general(c.db), numbers=POLICY_NUMBERS,
-                  buckets=BUCKETS, cals=cals, fences=fences, clusters=unnamed_clusters(c.db), shift_names=shift_names)
+                  buckets=BUCKETS, cals=cals, shift_names=shift_names)
 
 
 @router.post("/settings/policy")
@@ -207,39 +205,6 @@ def delete_holiday(hid: int, c: Ctx = Depends(hr)):
         c.db.flush()
         _recompute_drafts(c)
     return redirect("/settings#holidays", "Holiday removed.")
-
-
-# ---------------------------------------------------------------- geofences
-
-@router.post("/settings/geofences")
-def add_geofence(name: str = Form(...), category: str = Form("Client"), lat: float = Form(...), lon: float = Form(...),
-                 radius_m: int = Form(200), c: Ctx = Depends(hr)):
-    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-        return redirect("/settings#locations", "Invalid coordinates.")
-    c.db.add(Geofence(name=name.strip(), category=category, lat=lat, lon=lon, radius_m=max(25, radius_m)))
-    audit(c.db, c.user, "geofence.add", "geofence", name, {"lat": lat, "lon": lon, "radius": radius_m}, c.ip)
-    c.db.flush()
-    _rename_swipes(c)
-    return redirect("/settings#locations", f"Location '{name}' saved and swipes renamed.")
-
-
-@router.post("/settings/geofences/{gid}/delete")
-def delete_geofence(gid: int, c: Ctx = Depends(hr)):
-    g = c.db.get(Geofence, gid)
-    if g:
-        audit(c.db, c.user, "geofence.delete", "geofence", g.name, ip=c.ip)
-        c.db.delete(g)
-        c.db.flush()
-        _rename_swipes(c)
-    return redirect("/settings#locations", "Location removed.")
-
-
-def _rename_swipes(c: Ctx):
-    for pid in rename_swipes(c.db):
-        p = c.db.get(Period, pid)
-        if p and p.computed_at:
-            compute_period(c.db, p, cascade=False)
-            c.db.commit()
 
 
 @router.post("/settings/updates")

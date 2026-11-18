@@ -164,10 +164,11 @@ only — nothing is dropped or altered; idempotent; logged. New columns must the
 default. First used for `swipes.note/reason/approval/device/device_id`.
 
 ## Locations (v1.5)
-`services/location_checks.py` (pure: office fences, at-office test with slack, shared phones, flags per employee — used
-by `compute_period` and the Locations report) · `services/locations.py` (report for a month from `SwipeRow`, no muster
-needed) · `geo.unnamed_clusters` (suggested places, grouped in SQL then merged) · `routes/pages.py`: `/locations`,
-`pending_month()` for months without results.
+`services/location_checks.py` (pure: shared phones → SHARED_DEVICE flags per employee — used by `compute_period`) ·
+`services/locations.py` (report for a month from `SwipeRow`, no muster needed) · `routes/pages.py`: `/locations`,
+`pending_month()` for months without results. Place names: `geo.Namer` (cache → offline gazetteer → optional OSM).
+v1.6.2 removed named places (Settings Locations tab, `/settings/geofences*`, `geo.unnamed_clusters`, office check);
+the `Geofence` model/table stays so existing databases are untouched.
 
 ## Branding (v1.5.1)
 `services/branding.py` — `save()` validates by magic bytes (PNG/JPEG/WebP) or sanitises SVG (`sanitize_svg`: element
@@ -180,7 +181,7 @@ Templates read `brand_info()` (Jinja global).
 ## Exports (v1.6)
 `GET /exports/<key>.xlsx` — payroll workbook (calculated months). `GET /exports/<key>/locations.xlsx` —
 `excel.build_locations_workbook`: sheets Punches (every SwipeRow; mobile rows enriched by `locations.report`: place,
-remark, office check, phone, status, coordinates), Places, By person; any month with punches (404 otherwise);
+remark, permission reason, phone, status, coordinates), Places, By person; any month with punches (404 otherwise);
 audit `export.locations`.
 
 ## Data safety (v1.6.1)

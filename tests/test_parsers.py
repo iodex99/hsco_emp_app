@@ -321,11 +321,8 @@ def test_swapped_latitude_longitude_are_corrected():
 
 def test_location_checks():
     from datetime import datetime
-    from types import SimpleNamespace as NS
     from app.engine.model import Swipe
     from app.services import location_checks as LC
-    office = NS(category="Office", lat=18.9386, lon=72.8295, radius_m=200)
-    client = NS(category="Client", lat=19.066, lon=72.868, radius_m=200)
     t = datetime(2026, 11, 3, 10)
     sw = [Swipe("A", t, location_type="Office", swipe_type="Mobile Sign In", lat=18.9390, lon=72.8299, device_id="d1"),
           Swipe("B", t, location_type="Office", swipe_type="Mobile Sign In", lat=18.9844, lon=72.8397, device_id="d2",
@@ -334,11 +331,11 @@ def test_location_checks():
                 approval="Rejected"),
           Swipe("D", t, location_type="Work from Home", swipe_type="Mobile Sign In", lat=19.2, lon=72.9, device_id="d1"),
           Swipe("E", t, location_type="Office", swipe_type="Astra")]
-    f = LC.flags_by_employee(sw, [office, client], {"A": "Asha", "D": "Dev"})
-    assert [x["code"] for x in f["B"]] == ["OFF_SITE_OFFICE"] and "Kalachowki" in f["B"][0]["message"]
-    assert "A" in f and [x["code"] for x in f["A"]] == ["SHARED_DEVICE"] and "Dev" in f["A"][0]["message"]
-    assert "C" not in f and "E" not in f                         # rejected and biometric punches never flagged
-    assert LC.flags_by_employee(sw[1:2], [client]) == {}          # no office named → nothing to check against
+    f = LC.flags_by_employee(sw, {"A": "Asha", "D": "Dev"})
+    assert [x["code"] for x in f["A"]] == ["SHARED_DEVICE"] and "Dev" in f["A"][0]["message"]
+    assert [x["code"] for x in f["D"]] == ["SHARED_DEVICE"]
+    assert "B" not in f and "C" not in f and "E" not in f        # one user per phone; rejected/biometric ignored
+    assert LC.flags_by_employee(sw[1:2]) == {}
 
 
 @pytest.mark.skipif(not (REF / "logo.svg").exists(), reason="firm logo (git-ignored) not present")
