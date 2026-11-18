@@ -23,12 +23,12 @@ def _ints(s: str) -> tuple:
     return tuple(int(x) for x in (s or "").replace(" ", "").split(",") if x.strip().lstrip("-").isdigit())
 
 
-def engine_employee(e: Employee, holidays: Optional[dict]) -> M.Employee:
+def engine_employee(e: Employee, holidays: Optional[dict], targeted: Optional[dict] = None) -> M.Employee:
     return M.Employee(
         emp_no=e.emp_no, name=e.name, group=e.group or "", location=e.location or "", doj=e.doj, dol=e.dol,
         weekly_off=e.weekly_off or M.P_MUSTER, off_weekdays=_ints(e.off_weekdays) or (5, 6),
         working_saturdays=_ints(e.working_saturdays), hours_per_day=e.hours_per_day, exempt=bool(e.exempt),
-        exempt_reason=e.exempt_reason or "", holidays=holidays,
+        exempt_reason=e.exempt_reason or "", holidays=holidays, targeted_holidays=targeted or {},
     )
 
 
@@ -95,10 +95,12 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
     y, m = period.year, period.month
     emps_db = {e.emp_no: e for e in db.scalars(select(Employee)).all()}
     cal_days, default_cal = calendars_for_month(db, y, m)
+    from app.services import holidays as TH
+    targeted = TH.by_employee(TH.for_month(db, y, m), emps_db.values())
     employees = {}
     for k, e in emps_db.items():
         cal_id = e.holiday_calendar_id or default_cal
-        employees[k] = engine_employee(e, cal_days.get(cal_id) if cal_id else None)
+        employees[k] = engine_employee(e, cal_days.get(cal_id) if cal_id else None, targeted.get(k))
 
     # plain rows, not ORM objects (thousands per month)
     muster = [M.MusterDay(*r) for r in db.execute(

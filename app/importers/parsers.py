@@ -270,6 +270,13 @@ F = {
     "as_of": (["as of", "as on", "as at", "balance date", "date"], "date"),
     "holiday_name": (["holiday", "holiday name", "occasion", "festival", "description"], "text"),
     "calendar": (["calendar", "holiday calendar", "location"], "text"),
+    # targeted holidays (v1.6.4): who a holiday-list row is for; any of these makes the row a targeted holiday
+    "for_locations": (["for locations", "for location", "applies to locations", "applies to location",
+                       "target locations", "target location", "only for locations", "only for location"], "text"),
+    "for_groups": (["for groups", "for group", "applies to groups", "applies to group", "target groups", "target group",
+                    "only for groups", "only for group"], "text"),
+    "for_employees": (["for employees", "for employee", "applies to employees", "applies to employee",
+                       "target employees", "target employee", "only for employees", "only for employee"], "text"),
     # greytHR Attendance Summary / manual MIS figures
     "present": (["present days", "days present", "present"], "number"),
     "absent": (["absent days", "days absent", "absent"], "number"),
@@ -315,7 +322,7 @@ SCHEMAS = {
                         ["name", "location", "weekly_off", "working_saturdays", "hours_per_day", "exempt", "exempt_reason",
                          "holiday_calendar", "doj", "dol", "email", "department", "designation", "group"], 0.9),
     "leave_opening": (["emp_no", "leave_balance"], ["name", "compoff_balance", "as_of"], 1.1),
-    "holidays": (["date", "holiday_name"], ["calendar"], 0.7),
+    "holidays": (["date", "holiday_name"], ["calendar", "for_locations", "for_groups", "for_employees"], 0.7),
 }
 KIND_LABELS = {
     "muster": "Attendance Muster Report (day-wise status)",
@@ -902,7 +909,9 @@ def parse_holidays(rows, ds) -> list[dict]:
         d = parse_date(_g(r, ds, "date"))
         if d:
             out.append({"date": d, "name": str(_g(r, ds, "holiday_name") or "").strip(),
-                        "calendar": str(_g(r, ds, "calendar") or "").strip() if "calendar" in ds.map else ""})
+                        "calendar": str(_g(r, ds, "calendar") or "").strip() if "calendar" in ds.map else "",
+                        **{k: str(_g(r, ds, k) or "").strip() if k in ds.map else ""
+                           for k in ("for_locations", "for_groups", "for_employees")}})
     return out
 
 

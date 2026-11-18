@@ -200,6 +200,57 @@ def test_wfh_methods_and_late():
     assert rp.late_days == 0
 
 
+def test_wfh_counts_only_on_the_persons_own_working_days():
+    """v1.6.4 (owner): WFH on a person's weekly off or holiday is not WFH — it is off-day work. Weekly offs and holidays
+    are the person's own: weekly-off pattern, holiday calendar, targeted holidays, day corrections."""
+    def wfh(d):
+        return [Swipe("E1", datetime(2026, 10, d, 11, 0), "Mobile Sign In", "Work from Home", "Mobile Sign In"),
+                Swipe("E1", datetime(2026, 10, d, 15, 0), "Mobile Sign In", "Work from Home", "Mobile Sign In")]
+    rows = month()                                        # 1st Sat working, Sat 10 off, Tue 20 holiday (greytHR)
+    sw = wfh(3) + wfh(5) + wfh(6) + wfh(7) + wfh(10) + wfh(20)
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, sw, POL)
+    assert r.wfh_days == 4 and r.offday_wfh_days == 2                 # Sat 10 (weekly off) and Tue 20 (holiday) excluded
+    d10 = next(d for d in r.days if d.day.day == 10)
+    assert not d10.is_wfh and d10.is_extra_work and any("weekly off" in n and "not counted as WFH" in n for n in d10.notes)
+    assert any("holiday" in n for n in next(d for d in r.days if d.day.day == 20).notes)
+    assert Policy(wfh_method="swipes_half") and compute_employee_month(
+        Employee("E1", group="BSS"), 2026, 10, rows, sw, Policy(wfh_method="swipes_half")).wfh_days == 4   # 8 swipes / 2
+    # someone whose Saturdays are all off: Sat 3 is their weekly off → not WFH for them
+    r = compute_employee_month(Employee("E1", group="BSS", weekly_off=P_ALL_SAT_OFF), 2026, 10, rows, sw, POL)
+    assert r.wfh_days == 3 and r.offday_wfh_days == 3
+    # their own holiday calendar (7 Oct) and a targeted holiday (6 Oct) also exclude WFH
+    e = Employee("E1", group="BSS", holidays={date(2026, 10, 7): "Local holiday", date(2026, 10, 20): "Dussehra"},
+                 targeted_holidays={date(2026, 10, 6): "Delhi festival"})
+    r = compute_employee_month(e, 2026, 10, rows, sw, POL)
+    d6 = next(d for d in r.days if d.day.day == 6)
+    assert d6.day_type == HOLIDAY and d6.holiday_name == "Delhi festival" and not d6.is_wfh
+    assert r.wfh_days == 2 and r.offday_wfh_days == 4                 # only Sat 3 and Mon 5 remain
+    # a day corrected to a weekly off
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, sw, POL,
+                               day_overrides={date(2026, 10, 5): DayOverride("E1", date(2026, 10, 5), day_type=WEEKLY_OFF)})
+    assert r.wfh_days == 3 and r.offday_wfh_days == 3
+
+
+def test_targeted_holiday_without_calendar_and_matching():
+    from types import SimpleNamespace as NS
+    from app.services import holidays as TH
+    # no calendar (greytHR marks used) + a targeted holiday on a working day
+    r = compute_employee_month(Employee("E1", group="BSS", targeted_holidays={date(2026, 10, 9): "Chhath"}), 2026, 10,
+                               month(), [], POL)
+    d9 = next(d for d in r.days if d.day.day == 9)
+    assert d9.day_type == HOLIDAY and d9.holiday_name == "Chhath" and "Holiday calendar differs from greytHR" in d9.notes
+    assert r.holidays == 2 and next(d for d in r.days if d.day.day == 20).day_type == HOLIDAY   # greytHR's H still used
+    # who it applies to: listed employees always; locations AND groups (blank = any); case/space-insensitive
+    h = NS(locations="Delhi", groups=" article ,ATA", emp_nos="HS009")
+    assert TH.applies(h, "E1", "delhi", "Article") and TH.applies(h, "E1", "Delhi", "ata")
+    assert not TH.applies(h, "E1", "Mumbai", "Article") and not TH.applies(h, "E1", "Delhi", "BSS")
+    assert TH.applies(h, "HS009", "Mumbai", "BSS")
+    assert TH.applies(NS(locations="Delhi", groups="", emp_nos=""), "E1", "Delhi", "BSS")
+    assert not TH.applies(NS(locations="", groups="", emp_nos=""), "E1", "Delhi", "BSS")   # must target someone
+    assert TH.split("Mumbai, Delhi; mumbai|Pune") == ["Mumbai", "Delhi", "Pune"]
+    assert TH.describe(h) == "Delhi & article / ATA · plus HS009"
+
+
 def test_missing_punch_and_regularisation():
     rows = month()
     sw = []

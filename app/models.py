@@ -150,6 +150,19 @@ class Employee(Base):
     holiday_calendar: Mapped[HolidayCalendar | None] = relationship()
 
 
+class TargetedHoliday(Base):
+    """A holiday for some people only (chosen locations / groups / employees), on top of their holiday calendar."""
+    __tablename__ = "targeted_holidays"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    name: Mapped[str] = mapped_column(String(128), default="")
+    locations: Mapped[str] = mapped_column(String(512), default="")   # comma-separated, blank = any
+    groups: Mapped[str] = mapped_column(String(512), default="")      # comma-separated, blank = any
+    emp_nos: Mapped[str] = mapped_column(Text, default="")            # comma-separated employee numbers
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 class Geofence(Base):
     __tablename__ = "geofences"
     id: Mapped[int] = mapped_column(primary_key=True)

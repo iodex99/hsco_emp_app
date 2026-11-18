@@ -91,6 +91,7 @@ class Employee:
     exempt: bool = False
     exempt_reason: str = ""
     holidays: Optional[dict] = None        # {date: name} from assigned calendar, None = use muster
+    targeted_holidays: dict = field(default_factory=dict)   # {date: name} holidays aimed at this person (v1.6.4)
 
 
 @dataclass
@@ -214,6 +215,7 @@ class EmployeeMonth:
     permission_swipes: int = 0
     partial_wfh_days: int = 0
     wfh_swipes: int = 0
+    offday_wfh_days: int = 0      # WFH sign-ins on the person's weekly off / holiday: off-day work, not WFH
     client_days: int = 0
     onduty_days: int = 0
     mobile_office_swipes: int = 0

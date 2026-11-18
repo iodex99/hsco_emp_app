@@ -544,10 +544,106 @@ def test_ranked_lists_cover_everyone_and_heatmap_total(loaded):
     assert len(top["shortfall"]) == 30 and top["shortfall"][0]["value"] == 30                # all who are short
     assert len(top["excess_hours"]) == 9
     html = loaded.get("/?period=2026-10").text
+    from app.web import ASSET_V                 # v1.6.4: versioned asset URLs, so an update never runs on cached JS/CSS
+    assert len(ASSET_V) == 10 and f'/static/app.css?v={ASSET_V}"' in html and f'/static/app.js?v={ASSET_V}"' in html
+    assert f'/static/table.js?v={ASSET_V}"' in html and f'/static/icons.svg?v={ASSET_V}#i-' in html
+    assert 'href="/static/app.css"' not in html and 'src="/static/app.js"' not in html
     assert html.count("data-toplist") == 8                                     # every ranked list on the Overview
     page = loaded.get("/insights?period=2026-10").text
     assert 'data-key="tot"' in page and 'id="hm-tot-sub"' in page and "<tfoot>" in page and 'class="hm-fd"' in page
     assert page.count('class="num hm-tot" data-v=') == page.count('class="hm-name"') > 0
+
+
+def test_targeted_holidays_settings_import_and_wfh(loaded):
+    """v1.6.4: targeted holidays (Rules & calendars and holiday-list import) apply only to the chosen people; WFH on
+    the person's own holiday is not WFH."""
+    import io
+    from datetime import date
+    import openpyxl
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import AuditLog, TargetedHoliday
+    c = loaded
+    day_of = lambda emp, iso: next(d for d in _result_days(emp) if d["date"] == iso)  # noqa: E731
+    wfh_dates = [d["date"] for d in _result_days("T004") if d["wfh"]]
+    before, _ = _result("T004")
+    assert before["wfh_days"] == len(wfh_dates) == 4 and before.get("offday_wfh_days", 0) == 0
+    st = c.get("/settings").text
+    assert 'id="targeted"' in st and 'name="groups" value="Article"' in st and 'name="locations" value="Mumbai"' in st
+    csrf = csrf_of(c, "/settings")
+    r = c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-07", "name": "X"}, follow_redirects=True)
+    assert "Choose who the holiday is for" in r.text
+    r = c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-07", "emp_nos": ["NOPE1"]},
+               follow_redirects=True)
+    assert "Unknown employee number" in r.text
+    # a holiday for the Article group on one of T004's WFH days
+    wd = wfh_dates[0]
+    r = c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": wd, "name": "Article day off",
+                                                    "groups": ["Article"]}, follow_redirects=True)
+    assert r.status_code == 200 and "Article day off" in r.text and "Targeted holiday" in r.text
+    d4 = day_of("T004", wd)
+    assert d4["type"] == "HOLIDAY" and d4["holiday"] == "Article day off" and not d4["wfh"]
+    assert any("not counted as WFH" in n for n in d4["notes"])
+    after, _ = _result("T004")
+    assert after["wfh_days"] == 3 and after["offday_wfh_days"] == 1 and after["holidays"] == before["holidays"] + 1
+    assert day_of("T001", wd)["type"] == "WORKDAY"                       # BSS: not targeted
+    # named employee on top of a location filter
+    c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-09", "name": "Pune fest",
+                                                "locations": ["Pune"], "emp_nos": ["T001"]})
+    assert day_of("T001", "2026-10-09")["type"] == "HOLIDAY" and day_of("T002", "2026-10-09")["type"] == "WORKDAY"
+    with session_scope() as db:
+        hs = {h.name: h.id for h in db.scalars(select(TargetedHoliday))}
+        assert {"holiday.targeted.add"} <= {a.action for a in db.scalars(select(AuditLog))}
+    c.post(f"/settings/targeted-holidays/{hs['Article day off']}/delete", data={"csrf": csrf})
+    assert day_of("T004", wd)["type"] == "WORKDAY" and _result("T004")[0]["wfh_days"] == 4
+    # holiday list import with targeted columns (+ an unknown employee is reported, not guessed)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Date", "Holiday", "Calendar", "For Locations", "For Groups", "For Employees"])
+    ws.append([date(2026, 10, 14), "Navratri (Article)", "", "", "Article", ""])
+    ws.append([date(2026, 10, 15), "Asha's day", "", "", "", "Asha Rao, Nobody Here"])
+    ws.append([date(2026, 10, 16), "Firm day", "Standard", "", "", ""])
+    buf = io.BytesIO()
+    wb.save(buf)
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")},
+               files=[("files", ("holidays.xlsx", buf.getvalue(), "application/octet-stream"))])
+    assert r.status_code == 200 and "Holiday list" in r.text and "Nobody Here" in r.text
+    assert day_of("T004", "2026-10-14")["type"] == "HOLIDAY" and day_of("T001", "2026-10-14")["type"] == "WORKDAY"
+    assert day_of("T001", "2026-10-15")["holiday"] == "Asha's day" and day_of("T002", "2026-10-15")["type"] == "WORKDAY"
+    assert day_of("T002", "2026-10-16")["type"] == "HOLIDAY"                 # calendar row: everyone
+    t = c.get("/exports/templates/holidays.xlsx")
+    hdr = [x.value for x in openpyxl.load_workbook(io.BytesIO(t.content)).active[1]]
+    assert hdr[:6] == ["Date", "Holiday", "Calendar", "For Locations", "For Groups", "For Employees"]
+
+
+def test_rule_change_recalculates_draft_months_once(loaded):
+    """An update that changes a calculation rule (RULES_VERSION) recalculates draft months once at start-up."""
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.engine.compute import RULES_VERSION
+    from app.models import MonthResult, Setting
+    from app.services import maintenance
+    with session_scope() as db:
+        r = db.scalar(select(MonthResult).where(MonthResult.emp_no == "T004"))
+        r.data = {**r.data, "wfh_days": 99}                       # a figure calculated under older rules
+        st = db.get(Setting, "rules_version")
+        if st is None:
+            db.add(Setting(key="rules_version", value={"v": RULES_VERSION - 1}))
+        else:
+            st.value = {"v": RULES_VERSION - 1}
+    assert maintenance.recalc_on_rules_change() >= 1
+    assert _result("T004")[0]["wfh_days"] == 4
+    with session_scope() as db:
+        assert db.get(Setting, "rules_version").value == {"v": RULES_VERSION}
+    assert maintenance.recalc_on_rules_change() == 0                # only once per rules version
+
+
+def _result_days(emp):
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import MonthResult
+    with session_scope() as db:
+        return list(db.scalar(select(MonthResult).where(MonthResult.emp_no == emp)).days)
 
 
 # ---------------------------------------------------------------- v1.4.1 review & performance regressions

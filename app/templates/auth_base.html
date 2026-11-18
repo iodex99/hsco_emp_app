@@ -2,7 +2,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="{{ csrf }}">
-<title>{% block title %}Sign in{% endblock %} · {{ org }}</title><link rel="stylesheet" href="/static/app.css">
+<title>{% block title %}Sign in{% endblock %} · {{ org }}</title><link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
 {% set B = brand_info() %}{% if B.logo and B.kind == 'svg' %}<link rel="icon" type="image/svg+xml" href="/branding/favicon.svg?v={{ B.v }}">{% elif B.logo %}<link rel="icon" href="/branding/logo?v={{ B.v }}">{% endif %}</head>
 <body>
 <div class="auth">
@@ -23,4 +23,4 @@
     {% block content %}{% endblock %}
   </div></section>
 </div>
-<script src="/static/app.js"></script>{% block scripts %}{% endblock %}</body></html>
+<script src="/static/app.js?v={{ asset_v }}"></script>{% block scripts %}{% endblock %}</body></html>

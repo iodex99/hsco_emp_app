@@ -6,7 +6,7 @@
 <meta name="csrf" content="{{ csrf }}">
 <title>{% block title %}Attendance & Leave{% endblock %} · {{ org or "HSCO" }}</title>
 <link rel="preload" href="/static/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
 {% set B = brand_info() %}{% if B.logo and B.kind == 'svg' %}<link rel="icon" type="image/svg+xml" href="/branding/favicon.svg?v={{ B.v }}">{% elif B.logo %}<link rel="icon" href="/branding/logo?v={{ B.v }}">{% endif %}
 <script src="/static/vendor/chart.umd.min.js"></script>
 </head>
@@ -95,8 +95,9 @@
 <script>window.HSCO_UPD = {{ upd|tojson_safe }};</script>
 {% endif %}
 <div class="toasts" id="toasts">{% if flash %}<div class="toast" role="status">{{ ui.icon('circle-check') }}<span>{{ flash }}</span><button type="button" aria-label="Dismiss" onclick="this.parentNode.remove()">{{ ui.icon('x','sm') }}</button></div>{% endif %}</div>
-<script src="/static/app.js"></script>
-<script src="/static/table.js"></script>
+<script>window.HSCO_ICONS = "/static/icons.svg?v={{ asset_v }}";</script>
+<script src="/static/app.js?v={{ asset_v }}"></script>
+<script src="/static/table.js?v={{ asset_v }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

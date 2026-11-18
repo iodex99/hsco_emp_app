@@ -39,6 +39,12 @@ def test_population(run):
     assert len(res) == 97 == len(b["mis"])
 
 
+def _hr(r, k):
+    """The app's figure as HR's sheet would show it. HR counted WFH sign-ins on weekly offs / holidays as WFH; the app
+    no longer does (owner, 2026-11-18 — BUSINESS_RULES §6), so those days are added back for the comparison."""
+    return getattr(r, k) + (r.offday_wfh_days if k == "wfh_days" else 0)
+
+
 def test_every_column_matches_manual_mis(run):
     b, res = run
     unexpected = []
@@ -46,11 +52,24 @@ def test_every_column_matches_manual_mis(run):
         m = b["mis"][emp]
         allowed = KNOWN.get(emp, (set(), ""))[0]
         for k in KEYS:
-            if abs((m.get(k) or 0) - getattr(r, k)) > 0.02 and k not in allowed:
-                unexpected.append((emp, k, m.get(k), round(getattr(r, k), 2)))
+            if abs((m.get(k) or 0) - _hr(r, k)) > 0.02 and k not in allowed:
+                unexpected.append((emp, k, m.get(k), round(_hr(r, k), 2)))
     assert not unexpected, unexpected
-    exact = [e for e in res if all(abs((b["mis"][e].get(k) or 0) - getattr(res[e], k)) <= 0.02 for k in KEYS)]
+    exact = [e for e in res if all(abs((b["mis"][e].get(k) or 0) - _hr(res[e], k)) <= 0.02 for k in KEYS)]
     assert len(exact) == 91
+
+
+def test_wfh_on_own_off_days_not_counted(run):
+    """October: 18 WFH sign-ins fell on the person's own weekly off or holiday (17 people). They are off-day work, carry
+    a note, and no longer count as WFH — which takes HS020, HS045 and HS093 back within the 2-day limit."""
+    b, res = run
+    off = {e: r.offday_wfh_days for e, r in res.items() if r.offday_wfh_days}
+    assert sum(off.values()) == 18 and len(off) == 17 and off["HS045"] == 2
+    for e in off:
+        days = [d for d in res[e].days if any("not counted as WFH" in n for n in d.notes)]
+        assert len(days) == off[e] and all(d.day_type != "WORKDAY" and not d.is_wfh and d.is_extra_work for d in days)
+    for e in ("HS020", "HS045", "HS093"):
+        assert res[e].wfh_days <= 2 < res[e].wfh_days + res[e].offday_wfh_days
 
 
 def test_deductions_match_manual_remarks(run):
@@ -75,7 +94,7 @@ def test_summary_total_hours_reconcile(run):
 def test_behaviour_metrics_on_real_data(run):
     b, res = run
     wfh_over = sorted(e for e, r in res.items() if r.wfh_days > 2)
-    assert wfh_over == ["HS016", "HS020", "HS045", "HS093", "HS179", "HS195"]
+    assert wfh_over == ["HS016", "HS179", "HS195"]          # HS020/HS045/HS093: their extra WFH was on off days
     assert sum(r.missing_punch_days for r in res.values()) > 0
     assert res["HS079"].days_present == 0 and any(f[0] == "NO_ATTENDANCE" for f in res["HS079"].flags)
     assert res["HS001"].auto_attendance  # partner: present all month, no punches

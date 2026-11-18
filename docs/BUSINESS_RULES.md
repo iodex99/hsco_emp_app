@@ -27,6 +27,11 @@ with the default shown. Engine code: `app/engine/compute.py` (pure functions, un
      working when Saturday is an off day, e.g. `1,3`).
    - Holiday: if the employee has a **holiday calendar** assigned (or a default calendar exists) → date in calendar;
      otherwise greytHR `H`. A holiday on a weekly‑off day stays a weekly off.
+   - **Targeted holiday** (v1.6.4, `targeted_holidays`, `services/holidays.py`): a holiday for some people only, on top
+     of their calendar. Applies to every employee listed by number, plus everyone whose location is in *locations*
+     (blank = any) **and** whose group is in *groups* (blank = any); at least one of the three must be set. Matching
+     ignores case/spaces. Also stays a weekly off when it falls on one. Bulk: holiday list with *For Locations /
+     For Groups / For Employees* columns.
    - Result: `WORKDAY`, `WEEKLY_OFF` or `HOLIDAY`.
 2. **Status** per session half (0.5 day each) from greytHR code via a mapping table (Settings → Status codes):
    `P→present`, `A→absent`, `PL/CL/SL/EL/ML→leave`, `COF→compoff`, `LOP→lop`, `OFF/H→off`, `WFH/OD→present`.
@@ -74,9 +79,13 @@ Opening manual. Availed > balance ⇒ flag `COMPOFF_OVERDRAWN`; overdraft debite
 HR's manual reclassification (e.g. HS134).
 
 ## 6. WFH
-Swipes whose Location Type ∈ {`Work from Home`, `WFH`}. Method `distinct_days` (default): each date with ≥1 WFH swipe
-counts 1 (partial‑WFH days reported separately). Method `swipes_half` reproduces HR's legacy count ÷ 2.
-Flag `WFH_OVER_LIMIT` when > **2**.
+Swipes whose Location Type ∈ {`Work from Home`, `WFH`}, **on the employee's own WORKDAY only** (v1.6.4, owner): the
+day type after their weekly-off pattern, holiday calendar, targeted holidays and day corrections. A WFH sign-in on
+their weekly off / holiday is *off-day work* (extra day, hours, comp-off ≥ 5 h as usual), not WFH; the day gets the
+note "Work from home on a weekly off/holiday — not counted as WFH" and the month stores `offday_wfh_days`.
+Method `distinct_days` (default): each working date with ≥1 WFH swipe counts 1 (partial‑WFH days reported
+separately). Method `swipes_half` reproduces HR's legacy count ÷ 2 (working-day swipes only).
+Flag `WFH_OVER_LIMIT` when > **2**. HR's manual sheet counted off-day WFH too (DATA_ANALYSIS §2).
 
 ## 7. Behaviour metrics (never affect pay)
 Computed on WORKDAYs with a present first session; groups in `metrics_exclude_groups` (default `Partner`) skipped.
@@ -140,3 +149,7 @@ imports, results, corrections and reviews; later draft months are recalculated.
 - **Status words** are translated (Present, Absent, Week Off, Holiday, Leave, Half Day…; "Half Day Leave" = leave +
   present, "Half Day" = present + absent); **codes** (P, A, PL, WO, PH, AB…) are kept exactly as in the file and mapped
   by the status map in Settings (unknown codes are flagged).
+
+## 12. Calculation-rule changes (v1.6.4)
+`engine.compute.RULES_VERSION` is bumped whenever a rule changes; on the next start the app recalculates every
+calculated **draft** month once (`maintenance.recalc_on_rules_change`). Finalised months keep their figures.

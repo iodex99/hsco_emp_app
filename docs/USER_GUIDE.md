@@ -80,6 +80,17 @@ Policy numbers (8.5 h/day, 4 h block = ½ day, WFH limit 2, comp-off ≥ 5 h, la
 greytHR status-code meanings, shift timings and holiday calendars (default + special). Changes apply to draft months
 only. Place names need no setup: they come from the built-in map of India (v1.6.2).
 
+## Targeted holidays
+Rules & calendars → *Holiday calendars* → **Targeted holidays**: pick the date and name, tick the locations and/or
+groups (ticking both means people in that location *and* group), and/or add people by name or number. The line above
+the button shows who will get it. Saving recalculates draft months. For many at once, use the holiday-list template's
+*For Locations / For Groups / For Employees* columns.
+
+## Work from home on a day off
+WFH is counted only on a person's own working days. If someone signs in "Work from Home" on their weekly off or a
+holiday, the day is shown as off-day work (and can earn a comp-off) with a note — it does not count towards the WFH
+limit.
+
 ## A month that isn't calculated yet
 If you import the swipe export during the month, that month shows "Not calculated yet": what's been imported, the
 sign-ins so far and a link to Locations. Everything else (leave, hours, Insights, downloads) appears once the

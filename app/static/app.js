@@ -26,7 +26,7 @@
   // ---------- toasts ----------
   H.toast = (msg) => {
     const t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status");
-    t.innerHTML = `<svg class="ic"><use href="/static/icons.svg#i-circle-check"></use></svg><span>${esc(msg)}</span><button type="button" aria-label="Dismiss">✕</button>`;
+    t.innerHTML = `<svg class="ic"><use href="${window.HSCO_ICONS || "/static/icons.svg"}#i-circle-check"></use></svg><span>${esc(msg)}</span><button type="button" aria-label="Dismiss">✕</button>`;
     t.querySelector("button").onclick = () => t.remove();
     $("#toasts").appendChild(t); setTimeout(() => t.remove(), 6000);
   };

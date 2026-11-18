@@ -81,7 +81,7 @@ const inp=document.getElementById('files'), drop=document.getElementById('drop')
 const guess=n=>{n=n.toLowerCase();return n.includes('muster')?'Attendance muster':n.includes('swipe')?'Swipe details':n.includes('joining')||n.includes('doj')?'Date of joining':
   n.includes('summary')?'Attendance summary':n.includes('mis')?'Manual MIS (reconciliation)':n.includes('master')?'Employee master':n.includes('holiday')?'Holiday list':n.includes('opening')||n.includes('leave')?'Leave opening balances':'Detected after upload';};
 function show(){const fs=[...inp.files];btn.disabled=!fs.length;btn.innerHTML=btn.innerHTML.replace(/Import.*$/, fs.length?`Import ${fs.length} file${fs.length>1?'s':''} &amp; calculate`:'Import &amp; calculate');
-  list.innerHTML=fs.map(f=>`<li><svg class="ic"><use href="/static/icons.svg#i-file-spreadsheet"></use></svg><span><b>${HSCO.esc(f.name)}</b><br><span class="muted small">${guess(f.name)} · ${(f.size/1024).toFixed(0)} KB</span></span></li>`).join('');}
+  list.innerHTML=fs.map(f=>`<li><svg class="ic"><use href="${window.HSCO_ICONS || "/static/icons.svg"}#i-file-spreadsheet"></use></svg><span><b>${HSCO.esc(f.name)}</b><br><span class="muted small">${guess(f.name)} · ${(f.size/1024).toFixed(0)} KB</span></span></li>`).join('');}
 inp.addEventListener('change',show);
 ['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over');}));
 ['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over');}));

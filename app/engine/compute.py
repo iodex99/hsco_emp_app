@@ -115,6 +115,12 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
     return None if t is None else t.hour * 60 + t.minute
 
 
+# Bump when a calculation rule changes: on the next start the app recalculates every draft month once
+# (services/maintenance.recalc_on_rules_change); finalised months never change.
+# 2 = v1.6.4: WFH only on the person's own working days; targeted holidays.
+RULES_VERSION = 2
+
+
 def compute_employee_month(
     emp: Employee,
     year: int,
@@ -186,10 +192,14 @@ def compute_employee_month(
             elif muster_type == HOLIDAY:
                 day_type = HOLIDAY
                 holiday_name = "Holiday (greytHR)"
+        if day_type == WORKDAY and d in emp.targeted_holidays:
+            day_type = HOLIDAY
+            holiday_name = emp.targeted_holidays[d] or "Holiday"
         if ov and ov.day_type:
             day_type = ov.day_type
         notes = []
-        if emp.holidays is not None and (muster_type == HOLIDAY) != (day_type == HOLIDAY) and day_type != WEEKLY_OFF:
+        if (emp.holidays is not None or d in emp.targeted_holidays) and (muster_type == HOLIDAY) != (day_type == HOLIDAY) \
+                and day_type != WEEKLY_OFF:
             notes.append("Holiday calendar differs from greytHR")
         if ptype and (ptype == WEEKLY_OFF) != (muster_type == WEEKLY_OFF) and muster_type != HOLIDAY:
             notes.append(f"Weekly-off pattern differs from greytHR ({'off' if ptype == WEEKLY_OFF else 'working'} per pattern)")
@@ -221,11 +231,17 @@ def compute_employee_month(
             if s.swipe_type.lower().startswith("mobile") and s.location_type.lower() == "office":
                 dd.mobile_office_swipes += 1
         dd.location_types = lt
+        # WFH counts only on the person's own working days (their weekly-off pattern, holiday calendar, targeted
+        # holidays and day corrections decide); WFH sign-ins on an off day / holiday are off-day work, not WFH.
         wfh_sw = [s for s in sw if s.location_type.strip().lower() in policy.wfh_location_types]
-        if wfh_sw:
+        if wfh_sw and day_type == WORKDAY:
             dd.is_wfh = True
             dd.is_partial_wfh = len(wfh_sw) < len(sw)
-        res.wfh_swipes += len(wfh_sw)
+            res.wfh_swipes += len(wfh_sw)
+        elif wfh_sw:
+            res.offday_wfh_days += 1
+            notes.append(f"Work from home on a {'holiday' if day_type == HOLIDAY else 'weekly off'} — "
+                         "not counted as WFH (off-day work)")
         if day_type != WORKDAY and (worked or m.in_time or sw):
             dd.is_extra_work = True
             dd.compoff_earned = work_min >= policy.comp_off_min_hours * 60

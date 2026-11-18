@@ -78,12 +78,14 @@ def test_real_month_end_to_end(client):
     # --- reconciliation page
     html = c.get("/reconciliation?period=2026-10").text
     m = re.search(r"Identical employees</div>\s*<div class=\"v\">(\d+) / (\d+)", html)
-    assert m and (int(m.group(1)), int(m.group(2))) == (91, 97), m and m.groups()
+    assert m and (int(m.group(1)), int(m.group(2))) == (74, 97), m and m.groups()
+    # the other 17 of the earlier 91 differ only because HR counted WFH on their weekly off / holiday (v1.6.4)
+    assert "17 more differ only by an app rule" in html and "not WFH under the app" in html
 
     # --- dashboard + flags + drill-down on real data
     html = c.get("/?period=2026-10").text
     assert "October 2026" in html and "Over WFH limit" in html
-    assert c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT").text.count("WFH days (limit 2)") == 6
+    assert c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT").text.count("WFH days (limit 2)") == 3      # HS016, HS179, HS195 (v1.6.4: WFH on own off days not counted)
     for e in ("HS001", "HS068", "HS207", "PC006"):
         assert c.get(f"/periods/2026-10/employee/{e}").status_code == 200
 

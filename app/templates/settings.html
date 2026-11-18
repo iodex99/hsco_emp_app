@@ -64,7 +64,10 @@
   <div class="card"><div class="hd"><h2>How holidays work</h2></div><div class="bd small" style="color:var(--text-2)">
     <p style="margin-top:0">With <b>no calendars</b>, greytHR's own holiday marks are used.</p>
     <p>Once a calendar exists, the <b>default calendar</b> applies to everyone, unless an employee is given a different one on their page.</p>
-    <p class="muted">Bulk load: import a holiday list (Date, Holiday, Calendar).</p>
+    <p><b>Targeted holidays</b> (below) apply only to the locations, groups or people you choose, on top of their calendar.</p>
+    <p>Weekly offs follow each person's weekly-off pattern (employee page). Work from home on a person's own weekly off
+      or holiday is not counted as WFH — it is off-day work.</p>
+    <p class="muted">Bulk load: import a holiday list (Date, Holiday, Calendar; optional For Locations, For Groups, For Employees → targeted).</p>
     <form method="post" action="/settings/calendars" class="mt" style="border-top:1px solid var(--border);padding-top:14px">{{ ui.csrf_field() }}
       <div class="field"><label>New calendar</label><input name="name" required placeholder="e.g. Mumbai 2027"></div>
       <label class="check mb"><input type="checkbox" name="is_default" value="1"> Make it the default</label>
@@ -83,6 +86,32 @@
   {% else %}<div class="card"><div class="bd">{% call ui.empty('No calendars yet', 'greytHR holiday marks are being used.', 'calendar') %}{% endcall %}</div></div>{% endfor %}
   </div>
 </div>
+
+<div class="card mt" id="targeted"><div class="hd"><h2>Targeted holidays</h2><span class="sub">a holiday for some people only — chosen locations, groups or employees</span></div>
+  <div class="bd">
+  {% if targeted %}<div class="tw"><table class="compact" id="th-list">
+    <thead><tr><th>Date</th><th>Holiday</th><th>For</th><th class="num">People</th><th>Added by</th><th></th></tr></thead><tbody>
+    {% for t in targeted %}<tr><td style="white-space:nowrap"><span class="badge b-violet">{{ t.h.day.strftime('%d %b %Y') }}</span> <span class="muted small">{{ t.h.day.strftime('%a') }}</span></td>
+      <td class="strong">{{ t.h.name }}</td><td class="small">{{ t.who }}{% if t.unknown %} <span class="badge b-warn" title="Not in the employee list">unknown: {{ t.unknown|join(', ') }}</span>{% endif %}</td>
+      <td class="num" title="{{ t.people }}">{{ t.count }}</td><td class="small muted">{{ t.h.created_by }}</td>
+      <td class="num"><form method="post" action="/settings/targeted-holidays/{{ t.h.id }}/delete" class="inline" data-confirm="Remove {{ t.h.name }} ({{ t.h.day.strftime('%d %b %Y') }}) for {{ t.who }}?">{{ ui.csrf_field() }}<button class="btn sm ghost" title="Remove">{{ ui.icon('x','sm') }}</button></form></td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="muted small" style="margin-top:0">None yet. Example: a Delhi-only festival, or a holiday given to a few named people.</p>{% endif %}
+
+  <form method="post" action="/settings/targeted-holidays" class="th-form mt" id="th-form">{{ ui.csrf_field() }}
+    <div class="row"><div class="field" style="flex:0 0 170px"><label>Date</label><input type="date" name="day" required></div>
+      <div class="field"><label>Holiday</label><input name="name" placeholder="e.g. Chhath Puja" maxlength="128"></div></div>
+    <div class="field"><label>Locations <span class="muted small">(blank = any)</span></label><div class="th-chips">
+      {% for l in th_locations %}<label class="th-chip"><input type="checkbox" name="locations" value="{{ l }}"> {{ l }}</label>{% else %}<span class="muted small">No locations in the employee master.</span>{% endfor %}</div></div>
+    <div class="field"><label>Groups <span class="muted small">(blank = any)</span></label><div class="th-chips">
+      {% for g in th_groups %}<label class="th-chip"><input type="checkbox" name="groups" value="{{ g }}"> {{ g }}</label>{% else %}<span class="muted small">No groups in the employee master.</span>{% endfor %}</div></div>
+    <div class="field"><label>Employees <span class="muted small">(also given the holiday, whatever their location or group)</span></label>
+      <div class="th-picked" id="th-picked"></div>
+      <input list="th-people" id="th-pick" placeholder="Type a name or employee number, then Enter" autocomplete="off">
+      <datalist id="th-people">{% for no, nm, _l, _g in th_people %}<option value="{{ no }} — {{ nm }}"></option>{% endfor %}</datalist></div>
+    <p class="small muted" id="th-preview" style="margin:0 0 10px"></p>
+    <button class="btn">{{ ui.icon('plus','sm') }} Add targeted holiday</button>
+  </form></div></div>
+<script type="application/json" id="th-emps">{{ th_people|tojson_safe }}</script>
 </section>
 
 <section class="pane" data-pane="general">
@@ -180,6 +209,39 @@
 </section>
 {% endblock %}
 {% block scripts %}<script>
+// targeted holidays: employee picker (chips) + live "who gets it" preview — same rule as services/holidays.applies
+(function(){
+  const f=document.getElementById('th-form'); if(!f) return;
+  const people=JSON.parse(document.getElementById('th-emps').textContent||'[]');   // [emp_no, name, location, group]
+  const byNo=Object.fromEntries(people.map(p=>[p[0].toLowerCase(),p]));
+  const pick=document.getElementById('th-pick'), box=document.getElementById('th-picked'), pv=document.getElementById('th-preview');
+  const chosen=new Set();
+  const lc=s=>(s||'').trim().toLowerCase();
+  function find(v){ v=lc(v); if(!v) return null; const no=v.split(' — ')[0].trim();
+    return byNo[no]||people.find(p=>lc(p[1])===v)||null; }
+  function draw(){
+    box.innerHTML=''; chosen.forEach(no=>{const p=byNo[no.toLowerCase()]; const s=document.createElement('span');
+      s.textContent=p?`${p[1]} (${p[0]})`:no; const x=document.createElement('button'); x.type='button'; x.textContent='×';
+      x.title='Remove'; x.onclick=()=>{chosen.delete(no);draw();}; s.appendChild(x);
+      const h=document.createElement('input'); h.type='hidden'; h.name='emp_nos'; h.value=no; s.appendChild(h); box.appendChild(s);});
+    preview();
+  }
+  function add(){ const p=find(pick.value); if(p){chosen.add(p[0]); pick.value=''; draw();} }
+  pick.addEventListener('change',add);
+  pick.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();add();}});
+  function preview(){
+    const locs=[...f.querySelectorAll('input[name=locations]:checked')].map(x=>lc(x.value));
+    const grps=[...f.querySelectorAll('input[name=groups]:checked')].map(x=>lc(x.value));
+    const emps=new Set([...chosen].map(lc));
+    const who=people.filter(p=>emps.has(lc(p[0]))||((locs.length||grps.length)&&(!locs.length||locs.includes(lc(p[2])))&&(!grps.length||grps.includes(lc(p[3])))));
+    pv.textContent=who.length?`Applies to ${who.length} ${who.length===1?'person':'people'}: `+who.slice(0,12).map(p=>p[1]).join(', ')+(who.length>12?' …':'')
+      :'Choose a location, a group or employees.';
+  }
+  f.addEventListener('change',preview);
+  f.addEventListener('submit',e=>{ if(pick.value.trim()) add();
+    if(!f.querySelector('input[name=locations]:checked,input[name=groups]:checked,input[name=emp_nos]')){e.preventDefault();preview();pv.classList.add('neg');} });
+  preview();
+})();
 const cb=document.getElementById('chk-now'); if(cb) cb.onclick=async()=>{cb.disabled=true;cb.textContent='Checking…';
   try{const s=await HSCO.post('/api/update/check'); if(s.check_error){alert('Could not check: '+s.check_error);} location.hash='updates'; location.reload();}catch(e){alert(e.message);cb.disabled=false;}};
 </script>{% endblock %}

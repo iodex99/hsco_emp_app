@@ -64,6 +64,9 @@ times and regularised days).
 Count of `Count` per Name → `Final = count/2` = **WFH days** (feeds MIS column J).
 Flaw: a day with one WFH swipe + one office swipe becomes 0.5; 7 employees differ from a distinct‑day count
 (e.g. HS179: 3 by HR method, 4 distinct WFH days).
+HR's count also includes WFH sign-ins on the person's own weekly off / holiday: **18 such days for 17 people** in
+October 2026 (mostly Sat 31, Sun 25; HS045 on Sat 10 and Sat 17; HS051 on 2-Oct, HS093 on 20-Oct). From v1.6.4 the app
+does not count them as WFH (owner rule) — they are off-day work; the Reconciliation page labels them *App rule*.
 
 ## 2b. `Employee Swipe Details.xlsx` (newer greytHR export, November 2026 — first file with GPS)
 `Sheet0`, header row 1, 17 columns: Employee No, Employee Name, Access Card, Shift, **Swipe Date** (timestamp),

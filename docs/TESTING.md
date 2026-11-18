@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`131 passed` (v1.6.3; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`136 passed` (v1.6.4; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
@@ -113,3 +113,15 @@ cell per row), `tfoot` and per-day footer cells. Browser check on real October d
 57 / 43 / 31 people in late / regularisation / missing-punch lists, Top 5 → all lists follow, All, search "shah" →
 real ranks 10/16/19, no-match message, choice remembered; heatmap Total = Late column when Late highlighted (1,018
 days in total), Late + WFH adds up, sort by Total, search "Article" → footer 15 people / 252; no console errors. 131 passed.
+
+## v1.6.4 — WFH on working days only; targeted holidays; asset URLs
+Engine: WFH on a weekly off (pattern), a greytHR holiday, an ALL_SAT_OFF Saturday, the person's own calendar holiday,
+a targeted holiday and a day corrected to weekly off is not WFH (note, off-day work, `offday_wfh_days`; also with
+`swipes_half`); targeted holiday without a calendar keeps greytHR's H; matching rules (locations AND groups, listed
+employees always, case-insensitive, at least one target). Real October: 18 off-day WFH days for 17 people, over-limit
+3 (HS016, HS179, HS195); manual-MIS comparison unchanged once those days are added back. Web: add/validate/delete a
+targeted holiday (group and named employee), recalculation, audit, holiday-list import with targeted columns and an
+unknown name reported, template headers; rules-version recalculation runs once; pages use `?v=` asset URLs;
+Reconciliation 74/97 identical + 17 "app rule" only. Browser on real data: preview "Applies to 5 people" (Delhi),
+picker, saved list "Delhi · plus <name> (HS004)", 21-Oct holiday for the four Delhi staff + HS004 while HS068
+keeps their Wednesday weekly off. 136 passed.

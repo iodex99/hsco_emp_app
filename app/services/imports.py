@@ -318,7 +318,37 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                 n += 1
         elif kind == "holidays":
             recs = P.parse_holidays(rows, ds)
+            from app.models import TargetedHoliday
+            from app.services import holidays as TH
+            emp_lookup = None
             for r in recs:
+                if r["for_locations"] or r["for_groups"] or r["for_employees"]:
+                    # targeted holiday: employees given by number or exact name
+                    if emp_lookup is None:
+                        emp_lookup = {}
+                        for no, nm in db.execute(select(Employee.emp_no, Employee.name)):
+                            emp_lookup[no.lower()] = no
+                            emp_lookup.setdefault((nm or "").strip().lower(), no)
+                    emps = []
+                    for x in TH.split(r["for_employees"]):
+                        no = emp_lookup.get(x.lower())
+                        if no:
+                            emps.append(no)
+                        else:
+                            warnings.append(f"{r['date']:%d-%b-%Y} {r['name'] or 'holiday'}: employee '{x}' not found")
+                    locs, grps, emps = TH.join([r["for_locations"]]), TH.join([r["for_groups"]]), TH.join(emps)
+                    if not (locs or grps or emps):
+                        continue
+                    same = db.scalar(select(TargetedHoliday).where(
+                        TargetedHoliday.day == r["date"], TargetedHoliday.locations == locs,
+                        TargetedHoliday.groups == grps, TargetedHoliday.emp_nos == emps))
+                    if same is None:
+                        db.add(TargetedHoliday(day=r["date"], name=r["name"] or "Holiday", locations=locs, groups=grps,
+                                               emp_nos=emps, created_by=user.username if user else ""))
+                    else:
+                        same.name = r["name"] or same.name
+                    n += 1
+                    continue
                 cname = r["calendar"] or "Standard"
                 cal = db.scalar(select(HolidayCalendar).where(HolidayCalendar.name == cname))
                 if cal is None:

@@ -87,7 +87,7 @@ start child → /healthz == new build within 90 s ? done : restore previous code
 | users, mfa_methods, recovery_codes, email_otps, sessions | identity, 2FA, server-side sessions |
 | audit_log | every login, import, override, setting, user change |
 | settings | `policy` and `general` JSON |
-| employees, holiday_calendars, holidays, geofences, geo_cache | master data |
+| employees, holiday_calendars, holidays, targeted_holidays, geofences, geo_cache | master data |
 | periods | month + status DRAFT/FINALISED |
 | flag_reviews | review-queue state per period/employee/flag (note, who, when); survives recomputation |
 | imports | file name, sha256, sheet, rows, warnings, who/when |
@@ -199,3 +199,13 @@ fallback); `app.js` adds Top N (localStorage `hsco.toplist.n`, synced across lis
 returns every qualifying row. Heatmap Total: inline script in `insights.html` recounts cells per row (sets `data-v`),
 then calls `HSCO.tables.hm.apply()` so sorting and the footer (`data-sum`) use the new totals; `tt:apply` refreshes the
 per-day footer.
+
+## Targeted holidays, rule versions, asset URLs (v1.6.4)
+`models.TargetedHoliday` (day, name, locations, groups, emp_nos — comma-separated; created_by/at) — a new table, created
+by `create_all` on upgrade. `services/holidays.py`: `applies`, `by_employee`, `for_month`, `describe`, `split`.
+`compute_period` passes each person's `{date: name}` as `engine.Employee.targeted_holidays`. Routes:
+`POST /settings/targeted-holidays`, `/settings/targeted-holidays/{id}/delete` (HR, audit `holiday.targeted.*`).
+Holiday-list import: fields `for_locations`, `for_groups`, `for_employees`. `engine.compute.RULES_VERSION` +
+`maintenance.recalc_on_rules_change` (setting `rules_version`). `web.ASSET_V` = SHA-1 of app.css/app.js/table.js/
+icons.svg (10 hex), Jinja global `asset_v`, appended as `?v=` to those URLs; `window.HSCO_ICONS` carries the sprite
+URL for icons built in JS.

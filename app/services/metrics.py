@@ -327,7 +327,12 @@ def reconciliation(db: Session, period: Period) -> dict:
                 if mv is None or av is None:
                     continue
                 if abs(float(mv) - float(av)) > 0.02:
-                    diffs.append({"field": label, "manual": round(float(mv), 2), "app": round(float(av), 2)})
+                    d = {"field": label, "manual": round(float(mv), 2), "app": round(float(av), 2), "rule": ""}
+                    off = r.data.get("offday_wfh_days") or 0
+                    if k == "wfh_days" and off and abs(float(mv) - float(av) - off) <= 0.51:
+                        # HR counts WFH on weekly offs / holidays; the app does not (BUSINESS_RULES §6)
+                        d["rule"] = f"{off} WFH day(s) on a weekly off / holiday — not WFH under the app's rule"
+                    diffs.append(d)
             mremark = (mrow.get("remark") or "").lower()
             mded = 0.0
             if "deduction" in mremark:
@@ -336,7 +341,7 @@ def reconciliation(db: Session, period: Period) -> dict:
                 except ValueError:
                     mded = 0.0
             if abs(mded - (r.data.get("deduction_days") or 0)) > 0.001:
-                diffs.append({"field": "Deduction days", "manual": mded, "app": r.data.get("deduction_days")})
+                diffs.append({"field": "Deduction days", "manual": mded, "app": r.data.get("deduction_days"), "rule": ""})
         rows.append({"emp_no": emp_no, "name": (r.name if r else mrow.get("name", "")),
                      "in_app": bool(r), "in_manual": bool(mrow), "diffs": diffs,
                      "manual_remark": (mrow or {}).get("remark", ""), "app_remark": r.data.get("remark", "") if r else ""})
@@ -354,5 +359,6 @@ def reconciliation(db: Session, period: Period) -> dict:
                                "greythr": wk, "app": r.data.get("total_week_days")})
     return {"has_manual": bool(manual), "has_summary": bool(summ), "rows": rows,
             "matched": sum(1 for x in rows if x["in_app"] and x["in_manual"] and not x["diffs"]),
+            "rule_only": sum(1 for x in rows if x["diffs"] and all(d["rule"] for d in x["diffs"])),
             "compared": sum(1 for x in rows if x["in_app"] and x["in_manual"]),
             "summary_diffs": summ_diffs}

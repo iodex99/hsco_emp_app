@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.4 — 2026-11-18 — WFH only on working days; targeted holidays; no stale JS/CSS after updates
+Owner: "employees working from home on their weekly offs, holidays, those wfh shall not be counted as wfh; these weekly
+offs and holidays will differ from person to person, in the future we are going to have targeted holidays as well".
+- **WFH counts only on the person's own working days** — decided by their weekly-off pattern, their holiday calendar,
+  targeted holidays and any day correction. A WFH sign-in on their weekly off / holiday is off-day work (hours,
+  comp-off as before), not WFH; the day carries a note; `offday_wfh_days` is stored per month. October 2026: 18 such
+  days (17 people); HS020, HS045 and HS093 are no longer over the 2-day limit (3 people over instead of 6).
+- **Targeted holidays** (Rules & calendars → Holiday calendars → *Targeted holidays*): a holiday for chosen
+  locations and/or groups (both = people matching both) plus named employees, on top of each person's calendar; live
+  "applies to N people" preview, employee picker, list with who it covers, audit-logged, recalculates draft months.
+  Holiday-list import: optional columns *For Locations*, *For Groups*, *For Employees* (numbers or exact names) make a
+  row a targeted holiday; the template has them. A targeted holiday on someone's weekly off stays a weekly off.
+- **Reconciliation:** differences caused only by this WFH rule are labelled *App rule* with the reason; the KPI says
+  how many employees differ only by an app rule (October: 74 identical + 17 rule-only of 97).
+- **Rule changes recalculate draft months automatically** once after an update (`RULES_VERSION`); finalised months
+  never change.
+- **Fix — features not appearing after an update:** the browser kept its cached `app.css`/`app.js`, so v1.6.3's Top N
+  lists showed every row and the search/selector stacked. CSS, JS and icon URLs now carry a content fingerprint
+  (`?v=…`), so every update is picked up on the next page load.
+
 ## 1.6.3 — 2026-11-18 — ranked lists for everyone; heatmap Total
 Owner: "the data should be for all employees … show top 5, 10 etc and also a search … employee name wise"; "in the
 attendance heatmap … one more column 'total' … based on the user selected filters".

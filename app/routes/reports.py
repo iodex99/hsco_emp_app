@@ -89,8 +89,13 @@ def template(name: str, c: Ctx = Depends(hr)):
                    "Hours Per Day: blank = policy default (8.5).\nExempt From Deduction: Yes/No.\n"
                    "Holiday Calendar: name of a calendar created in Rules & calendars.\nBlank cells leave existing values unchanged.")
     elif name == "holidays":
-        data = _wb(["Date", "Holiday", "Calendar"], [], "Holiday list import. Date as dd-mm-yyyy or an Excel date. "
-                                                        "Calendar = calendar name (created automatically; blank = 'Standard').")
+        data = _wb(["Date", "Holiday", "Calendar", "For Locations", "For Groups", "For Employees"], [],
+                   "Holiday list import. Date as dd-mm-yyyy or an Excel date.\n"
+                   "Calendar = calendar name (created automatically; blank = 'Standard') — the holiday is for everyone "
+                   "on that calendar.\n"
+                   "Targeted holiday: fill For Locations and/or For Groups (comma-separated; both = people matching "
+                   "both) and/or For Employees (employee numbers or exact names; always included). Calendar is then "
+                   "ignored for that row.")
     elif name == "leave_opening":
         latest = c.db.scalar(select(Period).where(Period.computed_at.is_not(None)).order_by(Period.year.desc(), Period.month.desc()))
         rows = []

@@ -57,6 +57,24 @@ templates.env.filters["dmy"] = lambda d: d.strftime("%d-%b-%Y") if isinstance(d,
 templates.env.globals["now"] = datetime.now
 
 
+def _asset_version() -> str:
+    """Fingerprint of the app's own CSS/JS/icons. Added to their URLs (?v=…) so a browser fetches the new files right
+    after an update instead of reusing its cached copies (v1.6.4 — a cached app.js/app.css hid new features)."""
+    import hashlib
+    from app.config import APP_DIR
+    h = hashlib.sha1()
+    for n in ("app.css", "app.js", "table.js", "icons.svg"):
+        try:
+            h.update((APP_DIR / "static" / n).read_bytes())
+        except OSError:
+            pass
+    return h.hexdigest()[:10]
+
+
+ASSET_V = _asset_version()
+templates.env.globals["asset_v"] = ASSET_V
+
+
 async def get_db():
     """One DB session per request, committed before the response is sent (Depends(..., scope="function")).
 

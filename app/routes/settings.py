@@ -10,7 +10,8 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from app.engine.model import BUCKETS
-from app.models import Holiday, HolidayCalendar, Period, SwipeRow
+from app.models import Employee, Holiday, HolidayCalendar, Period, SwipeRow, TargetedHoliday
+from app.services import holidays as TH
 from app.services import branding
 from app.services.audit import audit
 from app.services.compute import compute_period
@@ -53,9 +54,20 @@ def settings_page(c: Ctx = Depends(hr)):
     pol = get_policy(c.db)
     shift_names = [(x, *parse_shift(x, pol)) for x in sorted(c.db.scalars(select(MusterRow.shift).distinct())) if x]
     from app.services import backups as BK
+    emps = c.db.scalars(select(Employee).order_by(Employee.name)).all()
+    names = {e.emp_no: e.name for e in emps}
+    targeted = []
+    for h in c.db.scalars(select(TargetedHoliday).order_by(TargetedHoliday.day.desc())):
+        who = [e for e in emps if TH.applies(h, e.emp_no, e.location or "", e.group or "") and not e.dol]
+        targeted.append({"h": h, "who": TH.describe(h, names), "count": len(who),
+                         "people": ", ".join(e.name for e in who[:40]) + (" …" if len(who) > 40 else ""),
+                         "unknown": [x for x in TH.split(h.emp_nos) if x not in names]})
     return render(c, "settings.html", backups=BK.list_backups()[:12], bk=BK.summary(),
                   pol=get_policy_json(c.db), g=get_general(c.db), numbers=POLICY_NUMBERS,
-                  buckets=BUCKETS, cals=cals, shift_names=shift_names)
+                  buckets=BUCKETS, cals=cals, shift_names=shift_names, targeted=targeted,
+                  th_locations=sorted({e.location for e in emps if e.location}),
+                  th_groups=sorted({e.group for e in emps if e.group}),
+                  th_people=[(e.emp_no, e.name, e.location or "", e.group or "") for e in emps if not e.dol])
 
 
 @router.post("/settings/policy")
@@ -205,6 +217,43 @@ def delete_holiday(hid: int, c: Ctx = Depends(hr)):
         c.db.flush()
         _recompute_drafts(c)
     return redirect("/settings#holidays", "Holiday removed.")
+
+
+@router.post("/settings/targeted-holidays")
+def add_targeted_holiday(day: str = Form(...), name: str = Form(""), locations: list[str] = Form([]),
+                         groups: list[str] = Form([]), emp_nos: list[str] = Form([]), c: Ctx = Depends(hr)):
+    try:
+        d = date.fromisoformat(day)
+    except ValueError:
+        return redirect("/settings#holidays", "Enter a valid date.")
+    locs, grps, emps = TH.join(locations), TH.join(groups), TH.join(emp_nos)
+    if not (locs or grps or emps):
+        return redirect("/settings#holidays", "Choose who the holiday is for: a location, a group or employees. "
+                                              "A holiday for everyone belongs in a holiday calendar.")
+    known = set(c.db.scalars(select(Employee.emp_no)))
+    bad = [x for x in TH.split(emps) if x not in known]
+    if bad:
+        return redirect("/settings#holidays", f"Unknown employee number(s): {', '.join(bad)}.")
+    h = TargetedHoliday(day=d, name=name.strip() or "Holiday", locations=locs, groups=grps, emp_nos=emps,
+                        created_by=c.user.username)
+    c.db.add(h)
+    audit(c.db, c.user, "holiday.targeted.add", "holiday", d.isoformat(),
+          {"name": h.name, "locations": locs, "groups": grps, "employees": emps}, c.ip)
+    c.db.flush()
+    _recompute_drafts(c)
+    return redirect("/settings#holidays", f"Targeted holiday {d:%d-%b-%Y} added ({TH.describe(h)}).")
+
+
+@router.post("/settings/targeted-holidays/{hid}/delete")
+def delete_targeted_holiday(hid: int, c: Ctx = Depends(hr)):
+    h = c.db.get(TargetedHoliday, hid)
+    if h:
+        audit(c.db, c.user, "holiday.targeted.delete", "holiday", h.day.isoformat(),
+              {"name": h.name, "for": TH.describe(h)}, c.ip)
+        c.db.delete(h)
+        c.db.flush()
+        _recompute_drafts(c)
+    return redirect("/settings#holidays", "Targeted holiday removed.")
 
 
 @router.post("/settings/updates")
