@@ -97,9 +97,8 @@ def test_real_month_end_to_end(client):
     assert ded == {"HS112": 1.0, "HS138": 0.5, "HS205": 0.5, "HS207": 0.5}
     assert ws.max_row >= 5 + 97
     assert "Reconciliation" in wb.sheetnames
-    html = c.get("/exports/2026-10.html").text
     from tests.reference_setup import build
-    assert build()["mis"]["PC003"]["name"] in html and len(html) > 300_000
+    assert build()["mis"]["PC003"]["name"] in c.get("/insights").text
 
 
 @pytest.mark.skipif(not (REF / "Employee Swipe Details.xlsx").exists(), reason="Nov-2026 swipe export not present")
@@ -140,3 +139,10 @@ def test_real_signins_with_coordinates(client):
                                         "lat": m.group(2), "lon": m.group(3), "radius_m": m.group(4)})
     page = c.get("/locations?period=2026-11").text
     assert "Mumbai office (Office)" in page and "Away from office" in page and "At office" in page
+    # November isn't calculated, but its punches & locations can be downloaded
+    from openpyxl import load_workbook
+    r = c.get("/exports/2026-11/locations.xlsx")
+    assert r.status_code == 200
+    rows = [[x.value for x in row] for row in load_workbook(io.BytesIO(r.content))["Punches"].iter_rows(min_row=6)]
+    assert len(rows) > 1000 and sum(1 for x in rows if x[11] is not None) > 100
+    assert any(x[5] == "Mumbai office (Office)" for x in rows)

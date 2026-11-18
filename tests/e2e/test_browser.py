@@ -1,7 +1,7 @@
 """Browser end-to-end test (Playwright + Chromium) against a real uvicorn server.
 
 Covers: first-login TOTP enrolment, recovery codes, real-file upload, dashboard charts, payroll sheet filtering,
-employee drill-down, day correction, Excel + board-pack downloads, the offline board pack's drill-down modal,
+employee drill-down, day correction, Excel downloads (payroll + punches & locations),
 passkey (WebAuthn) registration and sign-in via Chromium's virtual authenticator, and JS-error-free pages.
 Screenshots go to test-results/ (git-ignored).
 Run: .venv\\Scripts\\python -m pytest tests/e2e -q
@@ -173,28 +173,16 @@ def test_full_browser_journey(server):
         dl.value.save_as(str(xlsx))
         assert xlsx.stat().st_size > 10_000
         with page.expect_download() as dl2:
-            page.click("a:has-text('Board pack (.html)')")
-        pack = OUT / "board_pack.html"
-        dl2.value.save_as(str(pack))
-
-        # ---- the offline board pack works on its own (file://, no server)
-        bp = ctx.new_page()
-        bp.on("pageerror", lambda e: errors.append(f"boardpack: {e}"))
-        bp.goto(pack.as_uri())
-        bp.wait_for_selector(".kpis .kpi")
-        bp.screenshot(path=str(OUT / "06_boardpack.png"), full_page=True)
-        bp.click("#bp-tabs [data-tab=sheet]")
-        bp.fill("[data-table-for='#res'] .tt-search input", emp_name)
-        bp.click(f"#res tbody tr:has-text('{emp_name}')")
-        bp.wait_for_selector("#modal.on .cal")
-        assert emp_name in bp.inner_text("#mbox")
-        bp.click("#m-days thead th[data-key='h']")               # toolkit works inside the drill-down
-        bp.keyboard.press("Escape")
-        for tab in ("score", "heat", "exc", "abs", "groups", "people"):
-            bp.click(f"#bp-tabs [data-tab={tab}]")
-            assert bp.locator(f".pane[data-pane={tab}]").is_visible()
-        bp.screenshot(path=str(OUT / "07_boardpack_drill.png"), full_page=True)
-        bp.close()
+            page.click("a:has-text('Punches & locations (.xlsx)')")
+        loc = OUT / "locations.xlsx"
+        dl2.value.save_as(str(loc))
+        assert loc.stat().st_size > 5_000
+        assert page.locator("a:has-text('Board pack')").count() == 0           # board pack removed (v1.6)
+        # ---- Locations page: punches with places, chips, download button
+        page.goto(base + "/locations")
+        page.wait_for_selector("#signins tbody tr")
+        assert page.locator("a:has-text('Download Excel')").count() == 1
+        page.screenshot(path=str(OUT / "06_locations.png"), full_page=True)
 
         # ---- passkey: register with a virtual authenticator, then sign in with it
         cdp = ctx.new_cdp_session(page)

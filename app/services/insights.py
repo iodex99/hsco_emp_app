@@ -1,7 +1,7 @@
 """Workforce insights: per-employee scorecards and firm-level KPIs beyond the payroll sheet.
 
 Every definition is documented in docs/METRICS.md ("Insights"). Pure read-only computation over MonthResult rows
-(no web dependencies) so the Insights page, the employee page, the Excel workbook and the HTML board pack all show
+(no web dependencies) so the Insights page, the employee page, and the Excel workbook all show
 identical numbers.
 """
 from __future__ import annotations

@@ -62,9 +62,8 @@ Add more methods under **My security** (several phones, keys).
    - *Opening balances* — first month only (or bulk via the Leave opening template).
 5. **Payroll leave sheet** → *Finalise for payroll* (locks the month) → **Download Excel** for payroll.
    Columns E–S mirror the old MIS sheet; extra columns give deduction days, leave ledger and payroll LOP days.
-6. Share the **Interactive board pack** (.html) with partners — one file that opens offline in any browser, with the
-   same sorting, filters, grouping, column choice and CSV as the app; click anyone for their month (← → for the next
-   person, Esc to close); *Print / PDF* prints every section.
+6. Partners and the board use the app itself (give them the *viewer* role): Overview, Insights, Locations and every
+   drill-down, with sorting, filters and CSV on every table.
 
 ## Permanent employee settings (Employees → name)
 Group, location, DOJ/DOL, weekly-off pattern (greytHR / standard 1st-Saturday / all Saturdays off / Sunday only /
@@ -86,7 +85,7 @@ Settings → Locations → **Suggested places** lists the busiest spots people s
 type. Click **Name it**, check the name and radius, **Save place**. Do your **offices first** (e.g. "Mumbai office",
 "Delhi office"): from then on, sign-ins tagged "Office" that were made somewhere else appear in the review queue. A
 spot marked "probably not an office" is one that only one person calls "Office" — usually their home. Named places
-replace the map's locality name everywhere (Locations, day view, Excel, board pack).
+replace the map's locality name everywhere (Locations, day view, Excel).
 
 ## A month that isn't calculated yet
 If you import the swipe export during the month, that month shows "Not calculated yet": what's been imported, the
@@ -95,4 +94,12 @@ month's Attendance Muster Report is imported.
 
 ## Logo
 Settings → Security & system → **Logo**: upload the firm's logo (SVG is sharpest). It appears in the sidebar, on the
-sign-in page, in the browser tab and on the board pack. *Remove* goes back to the firm's initials.
+sign-in page and in the browser tab. *Remove* goes back to the firm's initials.
+
+## Where to see punch locations
+- **Locations** (sidebar): every mobile sign-in with its place name, remark, phone and office check; *Download Excel*
+  gives every punch of the month (biometric and mobile) with place and coordinates.
+- An employee's month → **Sign-ins & places** (top right), or click a day in the calendar to see each punch and place.
+- Payroll Excel → *Daily Detail* → **Places** column.
+Place names need a swipe export **with GPS** (greytHR *Employee Swipe Details* with Latitude/Longitude — the October
+export had none). Import it like any other file, at any time in the month.

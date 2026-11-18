@@ -307,15 +307,9 @@ def test_exports(loaded):
     import math
     ded = 0 if bal >= 0 else math.ceil(round(-bal, 4) / 4) * 0.5
     assert ded == _result("T001")[0]["deduction_days"]
-    # HTML board pack: self-contained, includes data and chart library, no external URLs
-    r = c.get("/exports/2026-10.html")
-    assert r.status_code == 200
-    html = r.text
-    assert "board pack" in html.lower() and "Dev Mehta" in html and "Chart" in html
-    for marker in ('data-pane="sheet"', 'id="res"', 'id="sc"', 'id="hm"', 'id="fl"', 'id="gc"', "HSCO.Table", 'id="i-printer"'):
-        assert marker in html, marker
-    assert not re.search(r"""(src|href)=["']?(https?:)?//""", html), "board pack must not load external resources"
-    assert "data:font/woff2;base64," in html  # font embedded for offline use
+    # the HTML board pack was removed in v1.6 (the app itself is the board view)
+    assert c.get("/exports/2026-10.html").status_code == 404
+    assert "/exports/2026-10.html" not in c.get("/exports").text and "Board pack" not in c.get("/").text
     # templates
     for t in ("employee_master", "holidays", "leave_opening"):
         r = c.get(f"/exports/templates/{t}.xlsx")
@@ -643,7 +637,7 @@ def test_one_recalculation_per_upload(loaded, fixtures, monkeypatch):
     assert r.status_code == 200 and calls == ["2026-10"], calls
 
 
-def test_board_pack_and_excel_resist_injected_text(loaded):
+def test_excel_resists_injected_text(loaded):
     from openpyxl import load_workbook
     from app.db import session_scope
     from app.models import Employee
@@ -651,9 +645,8 @@ def test_board_pack_and_excel_resist_injected_text(loaded):
     with session_scope() as db:
         db.get(Employee, "T001").name = '</script><!--<script>alert(1)</script> =HYPERLINK("http://x")'
         compute_period(db, get_period(db, 2026, 10), cascade=False)
-    html = loaded.get("/exports/2026-10.html").text
-    data = html.split("const D = ", 1)[1].split("\n", 1)[0]
-    assert "<" not in data and "\\u003c/script" in data   # escaped, never raw
+    page = loaded.get("/periods/2026-10").text
+    assert "<script>alert(1)" not in page and "&lt;/script&gt;" in page       # escaped in the app
     wb = load_workbook(io.BytesIO(loaded.get("/exports/2026-10.xlsx").content))
     ws = wb["Payroll Leave Sheet"]
     vals = [c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str) and "HYPERLINK" in c.value]
@@ -807,7 +800,8 @@ def test_shared_phone_and_signins_only_month(loaded):
         # a month with punches but no muster: a clear "not calculated yet" page, correct counts, no dead downloads
         for path in ("/?period=2026-11", "/periods/2026-11", "/insights?period=2026-11", "/reconciliation?period=2026-11"):
             html = c.get(path).text
-            assert "Not calculated yet" in html and "/exports/2026-11" not in html, path
+            assert "Not calculated yet" in html and "/exports/2026-11.xlsx" not in html, path   # no payroll download
+            assert "/exports/2026-11/locations.xlsx" in html, path                                 # punches can be
         html = c.get("/?period=2026-11").text
         assert '3</div><div class="l">Mobile sign-ins (2 with GPS)' in html and '2</div><div class="l">Office biometric' in html
 
@@ -819,8 +813,20 @@ def test_location_exports(loaded):
     assert "Sign-ins & Places" in wb.sheetnames and "Places" in wb.sheetnames
     vals = [cell.value for row in wb["Sign-ins & Places"].iter_rows() for cell in row]
     assert "At Acme Pharma (BKC)" in vals and any(isinstance(v, str) and "Andheri East" in v for v in vals)
-    html = c.get("/exports/2026-10.html").text
-    assert 'data-pane="loc"' in html and "Acme Pharma" in html
+    # Daily Detail shows each punch's place and remark
+    dd = [cell.value for row in wb["Daily Detail"].iter_rows() for cell in row if isinstance(cell.value, str)]
+    assert any("Andheri East" in v and "Office biometric" not in v for v in dd) and any("“At Acme Pharma (BKC)”" in v for v in dd)
+    # punches & locations workbook (any month with punches)
+    r = c.get("/exports/2026-10/locations.xlsx")
+    assert r.status_code == 200 and "Punches_and_Locations_2026-10.xlsx" in r.headers["content-disposition"]
+    lw = load_workbook(io.BytesIO(r.content))
+    assert lw.sheetnames == ["Punches", "Places", "By person"]
+    rows = [[cell.value for cell in row] for row in lw["Punches"].iter_rows(min_row=6)]
+    assert any(r[3] == "Astra" and str(r[5]).startswith("Office biometric") for r in rows)       # biometric punches too
+    assert any(r[6] == "At Acme Pharma (BKC)" and r[11] == 19.066 for r in rows)                # remark + coordinates
+    assert c.get("/exports/2099-01/locations.xlsx").status_code == 404
+    assert "/exports/2026-10/locations.xlsx" in c.get("/locations").text and "/exports/2026-10/locations.xlsx" in c.get("/exports").text
+    assert "Sign-ins &amp; places" in c.get("/periods/2026-10/employee/T001").text
 
 
 def test_schema_upgrade_adds_columns(tmp_path):
@@ -887,8 +893,6 @@ def test_logo_upload_and_display(loaded):
     assert fav.status_code == 200 and b'viewBox="0 0 102 50"' in fav.content          # the left mark only
     page = c.get("/").text
     assert 'brand brand-img' in page and '/branding/logo?v=' in page and '/branding/favicon.svg?v=' in page
-    pack = c.get("/exports/2026-10.html").text
-    assert "data:image/svg+xml;base64," in pack and 'class="logo-chip"' in pack
     # the sign-in page shows it to people who aren't signed in yet
     from starlette.testclient import TestClient
     from app.main import create_app
@@ -926,7 +930,7 @@ def test_attention_absence_part_uses_12_month_days():
 
 
 def test_no_bradford_anywhere(loaded):
-    for path in ("/insights", "/periods/2026-10/employee/T005", "/exports/2026-10.html"):
+    for path in ("/insights", "/periods/2026-10/employee/T005"):
         assert "bradford" not in loaded.get(path).text.lower(), path
     from openpyxl import load_workbook
     wb = load_workbook(io.BytesIO(loaded.get("/exports/2026-10.xlsx").content))

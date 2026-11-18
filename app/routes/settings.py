@@ -290,7 +290,7 @@ async def upload_logo(file: UploadFile = File(...), c: Ctx = Depends(admin)):
         except ValueError as ex:
             return redirect("/settings#general", f"Logo not saved: {ex}.")
         audit(c.db, c.user, "branding.logo", "settings", name, {"type": kind, "bytes": len(data)}, c.ip)
-        return redirect("/settings#general", "Logo saved — it now appears in the app, the sign-in page and the board pack.")
+        return redirect("/settings#general", "Logo saved — it now appears in the app, on the sign-in page and in the browser tab.")
     return await anyio.to_thread.run_sync(run)
 
 

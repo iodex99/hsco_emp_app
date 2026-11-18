@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.0 — 2026-11-18 — punch locations in Excel; HTML board pack removed
+- **Punches & locations workbook** (`/exports/<month>/locations.xlsx`): every punch of the month — office biometric
+  and mobile — with time, punch type, tag, **place name**, the employee's remark, office check, permission reason,
+  phone, status and coordinates; plus *Places* and *By person* sheets. Available for any month with punches,
+  including one not calculated yet. Download it from Locations (*Download Excel*), Downloads, or a not-calculated
+  month's page.
+- Payroll Excel → *Daily Detail* gains **Places** (each punch: time · place · remark) next to the tag.
+- Employee page: **Sign-ins & places** button opens Locations filtered to that person.
+- **HTML board pack removed** on the owner's decision — the app (Overview, Insights, Locations, drill-downs) does the
+  job better. Its route, generator, template, buttons and tests are gone; old audit entries still read "Downloaded
+  board pack (old)".
+- Why punch places were not visible: the October swipe export has no GPS coordinates; the November
+  *Employee Swipe Details* export (with coordinates) has to be imported for place names to appear.
+
 ## 1.5.2 — 2026-11-18 — Bradford factor removed
 - Removed on the owner's request: the Bradford factor (S² × D), its bands chart, warning counts and every column/label
   in Insights, the employee Scorecard, Excel and the board pack.

@@ -28,7 +28,7 @@ assistants), Trainee. HR software: **greytHR** (biometric device "Astra" + greyt
 See CHANGELOG. In short: importers for all 4 greytHR exports + manual MIS + templates; policy engine; leave & comp-off
 ledgers; 25 flag types; board dashboard; payroll leave sheet; employee drill-down with calendar & punches; day/month
 overrides with mandatory reasons; period finalise/lock; reconciliation vs manual MIS and vs greytHR summary;
-Excel workbook (live formulas) + standalone HTML board pack; offline location naming + geofences; users/roles;
+Excel workbook (live formulas) + standalone HTML board pack (removed in v1.6.0 — see below); offline location naming + geofences; users/roles;
 TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows installer, HTTPS, nightly backup.
 
 ## Decisions taken (and why)
@@ -58,3 +58,8 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 7. Office/client geofences: name the Mumbai and Delhi offices (Settings → Locations suggests both); client names
    as HR prefers. Is a second "Office" spot near Sion a real office? (suggested as "Mumbai office — Sion").
 8. Is "late" for the board > 1 hour (default) or another threshold?
+
+## Decisions 2026-11-18
+- **Board pack removed** (owner): "the app does it in a much better way". Board members use the app (viewer role).
+- **Bradford factor removed** (owner); absence shown as plain unplanned days and spells.
+- Punch locations must also be available in Excel → punches & locations workbook + Places column in Daily Detail.

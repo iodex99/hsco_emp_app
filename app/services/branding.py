@@ -2,12 +2,11 @@
 
 Accepted: SVG (sanitised: shapes, gradients, clip paths and text only — no scripts, event handlers, external links,
 embedded documents or entity declarations), PNG, JPEG or WebP; up to 1 MB. Shown in the sidebar, the sign-in
-screens, the board pack header and as the browser-tab icon. For an SVG logo the tab icon is its left square-ish
+screens and as the browser-tab icon. For an SVG logo the tab icon is its left square-ish
 mark (a box twice as wide as high — e.g. the red "HSCo" block of a mark + wordmark logo).
 """
 from __future__ import annotations
 
-import base64
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -113,14 +112,6 @@ def logo() -> Optional[tuple[bytes, str]]:
     if not p:
         return None
     return p.read_bytes(), MIME.get(p.suffix[1:], "application/octet-stream")
-
-
-def data_uri() -> str:
-    """The logo as a data: URI (for the standalone board pack)."""
-    lg = logo()
-    if not lg:
-        return ""
-    return f"data:{lg[1]};base64," + base64.b64encode(lg[0]).decode()
 
 
 def favicon_svg() -> Optional[bytes]:

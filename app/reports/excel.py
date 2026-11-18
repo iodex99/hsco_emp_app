@@ -12,7 +12,7 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import MonthOverrideRow, Period
+from app.models import Employee, MonthOverrideRow, Period
 from app.services import metrics as MX
 from app.services.settings import get_general, get_policy
 
@@ -49,6 +49,68 @@ def _put(ws, row: int, col: int, value, text: bool = False):
         c.data_type = "s"
     _thin(c)
     return c
+
+
+def _day_places(dd: dict) -> str:
+    """'09:58 Office biometric; 19:05 Andheri East, Mumbai Suburban — “At Acme”' for one day's punches."""
+    out = []
+    for s in dd.get("swipes", []):
+        where = s.get("place") or ("Office biometric" if (s.get("type") or "").lower() == "astra"
+                                   else s.get("loc") or s.get("type") or "")
+        if s.get("note"):
+            where += f" — “{s['note']}”"
+        out.append(f"{(s.get('t') or '')[:5]} {where}".strip())
+    return "; ".join(out)
+
+
+def build_locations_workbook(db: Session, period: Period) -> bytes:
+    """Every punch of a month with where it was made — works before the month is calculated (no muster needed)."""
+    from app.models import SwipeRow
+    from app.services import locations as LOC
+    org = get_general(db)
+    L = LOC.report(db, period)
+    names = {e.emp_no: e.name for e in db.scalars(select(Employee))}
+    mobile = {(r["emp_no"], r["ts"]): r for r in L["rows"]}
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Punches"
+    rows = []
+    for s in db.scalars(select(SwipeRow).where(SwipeRow.period_id == period.id).order_by(SwipeRow.ts, SwipeRow.emp_no)):
+        r = mobile.get((s.emp_no, s.ts))
+        if r:
+            rows.append([s.ts, s.emp_no, names.get(s.emp_no, s.emp_no), r["swipe_type"] or "Mobile", r["type"], r["place"],
+                         r["note"], r["office_check"], r["reason"], r["device"], r["approval"], s.lat, s.lon])
+        else:
+            rows.append([s.ts, s.emp_no, names.get(s.emp_no, s.emp_no), s.swipe_type or "", s.location_type or "",
+                         s.place or ("Office biometric" + (f" ({s.door})" if s.door else "")), s.note or "", "",
+                         s.reason or "", s.device or "", s.approval or "", s.lat, s.lon])
+    _table(ws, 5, ["When", "Employee No", "Name", "Punch type", "Tagged as", "Place", "Remark", "Office check",
+                   "Permission reason", "Phone", "Status", "Latitude", "Longitude"], rows,
+           [16, 10, 22, 13, 15, 46, 30, 15, 22, 16, 10, 11, 11], org,
+           f"Punches and where they were made — {period.label} (offline place names; named places take priority)")
+    for i, r in enumerate(rows, start=6):
+        ws.cell(row=i, column=1).number_format = "dd-mmm-yyyy hh:mm"
+        if r[7] == "Away from office":
+            ws.cell(row=i, column=8).fill = RED
+    k = L["kpis"]
+    ws.cell(row=4, column=1, value=(f"{len(rows)} punches: {k['mobile']} mobile sign-ins ({k['with_gps']} with GPS), "
+                                    f"{k['biometric']} office biometric · {k['client_visits']} client visits · "
+                                    f"{k['wfh']} WFH sign-ins" + (f" · {k['away']} tagged 'Office' but not at an office"
+                                                                 if k["offices_named"] else "")))
+    ws2 = wb.create_sheet("Places")
+    _table(ws2, 5, ["Place", "Mostly tagged", "Tags", "Sign-ins", "People", "Who", "Remarks", "First", "Last"],
+           [[b["place"], b["main_type"], b["types"], b["count"], b["people"], ", ".join(b["people_names"]), b["notes"],
+             b["first"], b["last"]] for b in L["places"]],
+           [46, 14, 30, 9, 8, 44, 36, 16, 16], org, f"Places people signed in from — {period.label}")
+    ws3 = wb.create_sheet("By person")
+    _table(ws3, 5, ["Employee No", "Name", "Mobile sign-ins", "With GPS", "Places", "Client", "WFH", "On duty",
+                    "Tagged Office", "…not at an office", "Permission requests"],
+           [[p["emp_no"], p["name"], p["sign_ins"], p["gps"], p["places"], p["client"], p["wfh"], p["onduty"],
+             p["office_tagged"], p["away"], p["permission"]] for p in L["people"]],
+           [10, 24] + [12] * 9, org, f"Mobile sign-ins by person — {period.label}")
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def _title(ws, org: dict, title: str, ncols: int):
@@ -339,10 +401,10 @@ def build_workbook(db: Session, period: Period) -> bytes:
                                     ("COMP-OFF EARNED", dd.get("co_earned")), ("OVERRIDE", dd.get("overridden"))) if on]
             rows.append([r.emp_no, r.name, dd["date"], dd["wd"], dd["type"], dd["s1"], dd["s2"], dd["in"], dd["out"],
                          MX.hm(dd["work_min"]), dd.get("late_min") or "", ", ".join(dd.get("locs", [])),
-                         ", ".join(tags), "; ".join(dd.get("notes", []))])
+                         _day_places(dd), ", ".join(tags), "; ".join(dd.get("notes", []))])
     _table(ws, 5, ["Employee No", "Name", "Date", "Day", "Day type", "Session 1", "Session 2", "In", "Out", "Hours",
-                   "Minutes late", "Locations", "Tags", "Notes"], rows,
-           [10, 22, 11, 5, 11, 8, 8, 7, 7, 7, 8, 30, 36, 40], org, f"Daily detail — {period.label}")
+                   "Minutes late", "Tagged as", "Places (punch time · place · remark)", "Tags", "Notes"], rows,
+           [10, 22, 11, 5, 11, 8, 8, 7, 7, 7, 8, 22, 60, 30, 40], org, f"Daily detail — {period.label}")
 
     # ------------------------------------------------------------------ reconciliation
     rc = MX.reconciliation(db, period)

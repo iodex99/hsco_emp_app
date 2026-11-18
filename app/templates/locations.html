@@ -15,6 +15,7 @@
     {% if months|length > 1 %}<form method="get" action="/locations" class="inline"><select name="period" onchange="this.form.submit()" aria-label="Month">
       {% for p in months %}<option value="{{ p.key }}" {{ 'selected' if p.key == key }}>{{ p.label }}</option>{% endfor %}</select></form>{% endif %}
     {% if can_hr %}<a class="btn sec" href="/settings#locations">{{ ui.icon('map-pin','sm') }} Name places</a>{% endif %}
+    <a class="btn" href="/exports/{{ key }}/locations.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Download Excel</a>
   </div>
 </div>
 

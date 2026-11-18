@@ -1,4 +1,4 @@
-"""Where people signed in from: the Locations page, its Excel sheet and the board-pack tab (docs/METRICS.md).
+"""Where people signed in from: the Locations page and its Excel workbook (docs/METRICS.md).
 
 Works from the stored punches alone (SwipeRow), so it is available for a month as soon as its swipe export is
 imported — even before the muster exists (e.g. the month in progress).

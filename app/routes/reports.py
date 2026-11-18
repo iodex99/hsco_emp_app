@@ -1,4 +1,4 @@
-"""Downloads: Excel workbook, standalone HTML board pack, import templates."""
+"""Downloads: payroll Excel workbook, punches & locations workbook, import templates."""
 from __future__ import annotations
 
 import io
@@ -10,8 +10,7 @@ from openpyxl.styles import Font, PatternFill
 from sqlalchemy import select
 
 from app.models import Employee, HolidayCalendar, MonthResult, Period
-from app.reports.excel import build_workbook
-from app.reports.html_report import build_board_pack
+from app.reports.excel import build_locations_workbook, build_workbook
 from app.routes.periods import get_p
 from app.services.audit import audit
 from app.web import Ctx, hr, render, viewer
@@ -26,7 +25,9 @@ def _fname(p: Period, ext: str) -> str:
 
 @router.get("/exports", response_class=HTMLResponse)
 def exports_page(c: Ctx = Depends(viewer)):
-    return render(c, "exports.html")
+    from app.services.locations import months_with_signins
+    signin_ids = {p.id for p in months_with_signins(c.db)}
+    return render(c, "exports.html", signin_ids=signin_ids)
 
 
 @router.get("/exports/{key}.xlsx")
@@ -39,15 +40,17 @@ def export_xlsx(key: str, c: Ctx = Depends(viewer)):
     return Response(data, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{_fname(p, "xlsx")}"'})
 
 
-@router.get("/exports/{key}.html")
-def export_html(key: str, c: Ctx = Depends(viewer)):
+@router.get("/exports/{key}/locations.xlsx")
+def export_locations(key: str, c: Ctx = Depends(viewer)):
+    """Every punch of the month with its place — available as soon as the swipe export is in (no muster needed)."""
+    from app.models import SwipeRow
     p = get_p(c, key)
-    if not p.computed_at:
-        raise HTTPException(404, "Month not computed yet")
-    html = build_board_pack(c.db, p)
-    audit(c.db, c.user, "export.html", "period", p.key, ip=c.ip)
-    return Response(html, media_type="text/html; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="Board_Pack_{p.year}-{p.month:02d}.html"'})
+    if c.db.scalar(select(SwipeRow.id).where(SwipeRow.period_id == p.id).limit(1)) is None:
+        raise HTTPException(404, "No punches imported for this month")
+    data = build_locations_workbook(c.db, p)
+    audit(c.db, c.user, "export.locations", "period", p.key, ip=c.ip)
+    return Response(data, media_type=XLSX, headers={
+        "Content-Disposition": f'attachment; filename="Punches_and_Locations_{p.year}-{p.month:02d}.xlsx"'})
 
 
 def _wb(headers: list[str], rows: list[list], note: str) -> bytes:

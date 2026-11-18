@@ -52,6 +52,6 @@ Keep `run_server.py` stdlib-only and backwards compatible. Never put data in the
 ## Where things are
 - `app/engine/` — pure calculation engine (no web deps). Start at `compute.py`.
 - `app/importers/` — parsers for each greytHR export; `detect.py` auto‑identifies uploads.
-- `app/reports/` — Excel workbook + standalone interactive HTML board pack.
+- `app/reports/` — Excel workbooks (payroll + punches & locations). The HTML board pack was removed in v1.6.
 - `app/security/` — passwords, sessions, CSRF, TOTP, WebAuthn, email OTP, recovery codes.
 - `app/routes/` — FastAPI routers; `app/templates/` — Jinja2 pages.

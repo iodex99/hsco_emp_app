@@ -119,7 +119,7 @@
 
 <section class="pane" data-pane="general">
 {% set B = brand_info() %}
-<div class="card" id="branding"><div class="hd"><h2>Logo</h2><span class="sub">sidebar, sign-in page, browser tab and board pack</span></div><div class="bd">
+<div class="card" id="branding"><div class="hd"><h2>Logo</h2><span class="sub">sidebar, sign-in page and browser tab</span></div><div class="bd">
   <div class="row" style="align-items:center;gap:18px;flex-wrap:wrap">
     {% if B.logo %}<div class="logo-preview"><img src="/branding/logo?v={{ B.v }}" alt="Current logo"></div>
     {% else %}<p class="muted" style="margin:0">No logo yet — the firm's initials are shown instead.</p>{% endif %}

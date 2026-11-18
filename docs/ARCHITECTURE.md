@@ -24,7 +24,7 @@ app/services/              settings, audit, imports (pipeline, remembered layout
                            (scorecards, absence, heatmaps), attendance_stats (compact month summaries), geo,
                            maintenance (start-up background jobs)
 app/security/              core.py (passwords, sessions, CSRF, TOTP, recovery, email OTP), passkeys.py (WebAuthn)
-app/reports/               excel.py (workbook), html_report.py (standalone board pack)
+app/reports/               excel.py (payroll workbook; punches & locations workbook)
 app/routes/                auth, pages (dashboard/imports/flags/recon/audit), periods (sheet, drill-down, overrides,
                            finalise), employees, settings, users, reports (downloads, templates)
 app/templates/, app/static/ UI; app/data/in_places.csv.gz offline gazetteer (GeoNames CC-BY 4.0)
@@ -113,7 +113,7 @@ Schema is created with `create_all` at start-up (additive). For future column ch
 - **Data at rest**: on the server's disk; installer restricts `DATA_DIR` ACL to Administrators/SYSTEM; recommend
   BitLocker. `secret.key` lives in DATA_DIR — back it up with the DB (needed to decrypt TOTP secrets).
 - **Uploads**: size limit (40 MB), parsed in memory, never executed; unknown formats rejected.
-- Board pack HTML contains employee data — treat downloaded files as confidential.
+- Excel downloads contain employee data — treat downloaded files as confidential.
 
 ## Universal importer (v1.4)
 `parsers.F` lists every field (synonyms + value type: id, date, datetime, time, hours, number, status, lat, lon, coords,
@@ -135,17 +135,15 @@ specificity weight. `detect_sheet()`:
 ## Insights (v1.4)
 `services/insights.py` reads `MonthResult` rows (current month + the last 12 computed months for 12-month absence and FY leave) and returns KPIs, per-employee rows with the attention score, group comparison, arrival heatmap, hours histogram,
 employee × day matrix and a trend. Results are cached in-process keyed by (period, latest `computed_at`, latest settings
-change, employee count/last edit). Used by `/insights`, the employee Scorecard tab, Excel and the board pack.
+change, employee count/last edit). Used by `/insights`, the employee Scorecard tab and Excel.
 
-## Board pack (v1.4)
-`reports/html_report.py` renders `templates/board_pack.html` with the web app's Jinja environment and macros
-(`icon_base=""` so icons point to the inlined sprite). Inlined: `app.css` (+ Inter as base64), `icons.svg`,
-Chart.js, `table.js` (`window.HSCO_ICONS = ""`; `HSCO.Table` is exported so the drill-down's day table gets the toolkit).
-Tables are server-rendered; the per-employee drill-down is built in the browser from embedded JSON. No network access.
+## Board pack (v1.4 – v1.5.2, removed in v1.6.0)
+The standalone HTML board pack (`reports/html_report.py`, `templates/board_pack.html`) was removed at the owner's
+request; the app's own pages replace it. `table.js` keeps `window.HSCO_ICONS` and `HSCO.Table` as generic hooks.
 
 ## Performance notes (v1.4.1, measured on 300 employees × 12 months)
 - `MonthResult.days` (~20 KB JSON per employee-month) is only loaded where day detail is shown (current month's
-  Insights/dashboard charts, drill-down, board pack, Excel daily sheet). Everything historical reads
+  Insights/dashboard charts, drill-down, Excel daily sheet). Everything historical reads
   `MonthResult.data` incl. `data["_ins"]` (`attendance_stats.month_stats`: working days, unplanned days/spells,
   first/last-day absence for joining spells across months, present days, punctuality counts). Months calculated by
   older versions are back-filled by `maintenance.backfill_month_stats` (and derived on the fly until then).
@@ -175,6 +173,12 @@ needed) · `geo.unnamed_clusters` (suggested places, grouped in SQL then merged)
 `services/branding.py` — `save()` validates by magic bytes (PNG/JPEG/WebP) or sanitises SVG (`sanitize_svg`: element
 allow-list, no `on*` attributes, `href` only to `#ids`, no external `url()`, no DOCTYPE/ENTITY), stores
 `DATA_DIR/branding/logo.<ext>`; `favicon_svg()` crops an SVG logo's viewBox to its left mark (2.04 × height);
-`data_uri()` for the board pack. Routes: `GET /branding/logo`, `GET /branding/favicon.svg` (public, sandbox CSP,
+Routes: `GET /branding/logo`, `GET /branding/favicon.svg` (public, sandbox CSP,
 nosniff, cached with `?v=<mtime>`), `POST /settings/branding` and `/settings/branding/delete` (admin, audit-logged).
 Templates read `brand_info()` (Jinja global).
+
+## Exports (v1.6)
+`GET /exports/<key>.xlsx` — payroll workbook (calculated months). `GET /exports/<key>/locations.xlsx` —
+`excel.build_locations_workbook`: sheets Punches (every SwipeRow; mobile rows enriched by `locations.report`: place,
+remark, office check, phone, status, coordinates), Places, By person; any month with punches (404 otherwise);
+audit `export.locations`.

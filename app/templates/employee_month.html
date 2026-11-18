@@ -11,6 +11,7 @@
     <a class="btn ghost icon {{ 'disabled' if not prev_emp }}" {% if prev_emp %}href="/periods/{{ period.key }}/employee/{{ prev_emp }}"{% endif %} title="Previous employee (←)" id="prev-emp">{{ ui.icon('chevron-left') }}</a>
     <a class="btn ghost icon" {% if next_emp %}href="/periods/{{ period.key }}/employee/{{ next_emp }}"{% endif %} title="Next employee (→)" id="next-emp">{{ ui.icon('chevron-right') }}</a>
     {% if history|length > 1 %}<select data-nav aria-label="Month">{% for h in history %}<option value="/periods/{{ h.key }}/employee/{{ r.emp_no }}" {{ 'selected' if h.key == period.key }}>{{ h.label }}</option>{% endfor %}</select>{% endif %}
+    <a class="btn ghost" href="/locations?period={{ period.key }}&t_signins={{ ({'q': r.emp_no})|tojson|urlencode }}" title="Every sign-in of {{ r.name }} this month with its place">{{ ui.icon('map-pin','sm') }} Sign-ins &amp; places</a>
     <a class="btn sec" href="/employees/{{ r.emp_no }}">{{ ui.icon('user','sm') }} Employee settings</a>
   </div>
 </div>

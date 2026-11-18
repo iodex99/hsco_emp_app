@@ -45,7 +45,7 @@ def status(db: Session, period: Period) -> dict:
          "detail": f"{n_ovr} correction{'s' if n_ovr != 1 else ''} recorded", "url": f"/periods/{period.key}"},
         {"key": "finalise", "title": "Finalise for payroll", "done": final,
          "detail": "Locked" if final else "Not finalised yet", "url": f"/periods/{period.key}"},
-        {"key": "share", "title": "Download & share", "done": final, "detail": "Excel + board pack",
+        {"key": "share", "title": "Download & share", "done": final, "detail": "Excel workbook",
          "url": "/exports"},
     ]
     current = next((i for i, s in enumerate(steps) if not s["done"] and not s.get("optional")), len(steps) - 1)

@@ -60,7 +60,7 @@ place names, notes where the app calendar differs from greytHR.
 | GROUP_NOT_SET / NOT_IN_MASTER / UNKNOWN_STATUS | medium | data quality |
 | SHORTFALL_EXEMPT, MOBILE_AT_OFFICE, LATE_SITTING (≥ 5), SANDWICH_PATTERN (≥ 2), LOP, AUTO_ATTENDANCE, DOJ_MISSING, NEW_JOINEE, EXIT, CALENDAR_MISMATCH, MANUAL_OVERRIDE, NO_OPENING_BALANCE | info | |
 
-## Insights (v1.4 — `app/services/insights.py`; Insights page, employee Scorecard tab, Excel *Scorecard*, board pack)
+## Insights (v1.4 — `app/services/insights.py`; Insights page, employee Scorecard tab, Excel *Scorecard*)
 Working days = days of type WORKDAY for the employee. *Behaviour* measures (punctuality, regularisation, missing
 punches) exclude `metrics_exclude_groups` (default Partner).
 
@@ -96,7 +96,7 @@ firm value (others), otherwise "typical".
 History-based measures (12-month absence, FY leave used, trend) are computed from the stored month summaries; a spell that runs
 from one month's last working day into the next month's first working day counts once.
 
-## Locations (v1.5 — `app/services/locations.py`; Locations page, Excel "Sign-ins & Places"/"Places", board pack)
+## Locations (v1.5 — `app/services/locations.py`; Locations page, Excel "Sign-ins & Places"/"Places", punches & locations workbook)
 | Measure | Definition |
 |---|---|
 | Mobile sign-ins | punches that are not office-biometric (Astra); % with GPS |

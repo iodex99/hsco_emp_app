@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`125 passed` (v1.5.2; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`125 passed` (v1.6.0, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).

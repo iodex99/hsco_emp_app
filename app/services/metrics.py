@@ -1,4 +1,4 @@
-"""Organisation-level metrics for dashboards, Excel and the HTML board pack (docs/METRICS.md)."""
+"""Organisation-level metrics for the dashboard and the Excel workbook (docs/METRICS.md)."""
 from __future__ import annotations
 
 from collections import Counter, defaultdict
