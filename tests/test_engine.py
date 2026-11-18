@@ -254,8 +254,20 @@ def test_wfh_over_limit_deducts_half_day_per_extra_day():
     # setting 0 = flag only; exempt employees are not deducted; off-day WFH does not count (v1.6.4)
     r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, sw, Policy(wfh_excess_deduction_days=0))
     assert r.deduction_days == 0 and any(x[0] == "WFH_OVER_LIMIT" for x in r.flags)
-    r = compute_employee_month(Employee("E1", group="BSS", exempt=True), 2026, 10, rows, sw, POL)
+    # v1.6.6 (owner): hours-exempt people (employee flag, Article / SS / Trainee groups) ARE deducted for WFH;
+    # only wfh_deduction_exempt_groups (default Partner) and a month exception are not
+    for e in (Employee("E1", group="BSS", exempt=True), Employee("E1", group="Article"), Employee("E1", group="SS"),
+              Employee("E1", group="Trainee")):
+        r = compute_employee_month(e, 2026, 10, rows, sw, POL)
+        assert r.exempt and r.wfh_deduction_days == 1.5 and r.deduction_days == 1.5, e.group
+    r = compute_employee_month(Employee("E1", group="Article"), 2026, 10, month(hours=(7, 0)), sw, POL)
+    assert r.shortfall_deduction_days == 0 and r.deduction_days == 1.5 and "no hours deduction" in r.remark
+    r = compute_employee_month(Employee("E1", group="Partner"), 2026, 10, rows, sw, POL)
     assert r.deduction_days == 0 and "exempt, no deduction" in next(x for x in r.flags if x[0] == "WFH_OVER_LIMIT")[2]
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, sw, POL, month_overrides={"exempt": "yes"})
+    assert r.deduction_days == 0 and r.wfh_deduction_exempt
+    r = compute_employee_month(Employee("E1", group="Partner"), 2026, 10, rows, sw, Policy(wfh_deduction_exempt_groups=()))
+    assert r.wfh_deduction_days == 1.5
     r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, wfh(5) + wfh(6) + wfh(10) + wfh(11), POL)
     assert r.wfh_days == 2 and r.deduction_days == 0                # Sat 10 / Sun 11 are weekly offs
 

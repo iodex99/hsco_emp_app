@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`137 passed` (v1.6.5; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`137 passed` (v1.6.6 and v1.6.5; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
@@ -133,4 +133,10 @@ still equals HR's (HS112 1, HS138 ½, HS205 ½, HS207 ½) and WFH part HS016 2, 
 identical + 19 app-rule-only. Web: Excel deduction formula includes the WFH term and equals the app for T001/T004
 (T004 Article = exempt), ledger column, Settings field. Browser on a copy of the installed data: start-up
 recalculation applied the new rule; employee KPI, ledger line, review-queue messages and Settings field checked.
+137 passed.
+
+## v1.6.6 — WFH deduction for hours-exempt staff
+Engine: employee-exempt, Article, SS and Trainee over the limit are deducted (remark "no hours deduction"); Partner and a
+month exception are not; empty Partner list deducts Partners too. Web: T004 (Article, 4 WFH) → 1 day, Partner row has
+no WFH term in the Excel formula; e2e sort/filter/CSV expectations updated (deductions T001, T002, T004 = 2.5 d).
 137 passed.

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.6 — 2026-11-18 — Article, SS and Trainee are also deducted for WFH over the limit
+Owner: "yes they shall also lose half day".
+- The ½-day-per-extra-WFH-day deduction now applies to everyone except the groups in the new setting **Groups not
+  deducted for WFH** (default: Partner) and a month exception. Being exempt from the *hours* deduction (employee
+  master flag, or groups Partner/SS/Article/Trainee) no longer exempts from the WFH deduction.
+- Settings: "Groups never deducted" is now labelled *for hours shortfall*; the WFH section has its own group list.
+- Payroll Excel: the WFH part sits outside the hours exemption (`IF(U="Yes",0,hours) + WFH`); rows of people not
+  deducted for WFH have no WFH term. Column U is labelled *Exempt (hours)*.
+- October 2026 figures unchanged (the three people over the limit are BSS/Offshore). Draft months recalculate after
+  the update (`RULES_VERSION` 4).
+
 ## 1.6.5 — 2026-11-18 — half a day of leave per WFH day over the limit
 Owner: "more than 2 wfh, then we have to deduct half day for every additional wfh (more than 2 in a month)".
 - **Deduction:** each WFH day above the monthly limit (2) takes **½ day of leave** (Settings → Rules → Work from home →

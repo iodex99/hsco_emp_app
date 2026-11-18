@@ -93,8 +93,9 @@ limit.
 
 ## WFH over the limit
 Each WFH day above 2 in a month takes ½ day of leave (Rules & calendars → Work from home; 0 = only flag it). It
-appears in the employee's *Leave deduction*, the leave ledger, the review queue and the payroll Excel. Employees or
-groups exempt from deduction are flagged but not deducted; a month correction can change the deduction.
+appears in the employee's *Leave deduction*, the leave ledger, the review queue and the payroll Excel. It applies to
+everyone — including Article, SS and Trainee — except the groups in *Groups not deducted for WFH* (default Partner)
+or a month exception; a month correction can change the deduction.
 
 ## A month that isn't calculated yet
 If you import the swipe export during the month, that month shows "Not calculated yet": what's been imported, the

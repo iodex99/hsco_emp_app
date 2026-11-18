@@ -86,7 +86,7 @@ def _save_policy(c: Ctx, form):
                 data[key] = float(v)
             except ValueError:
                 return redirect("/settings#policy", f"'{key}' must be a number.")
-    for key in ("exempt_groups", "metrics_exclude_groups", "wfh_location_types"):
+    for key in ("exempt_groups", "metrics_exclude_groups", "wfh_location_types", "wfh_deduction_exempt_groups"):
         data[key] = [x.strip() for x in form.get(key, "").split(",") if x.strip()]
     data["wfh_location_types"] = [x.lower() for x in data["wfh_location_types"]]
     data["lop_bucket"] = form.get("lop_bucket", "leave")

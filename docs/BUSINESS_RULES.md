@@ -87,8 +87,10 @@ Method `distinct_days` (default): each working date with ≥1 WFH swipe counts 1
 separately). Method `swipes_half` reproduces HR's legacy count ÷ 2 (working-day swipes only).
 Flag `WFH_OVER_LIMIT` when > **2**. HR's manual sheet counted off-day WFH too (DATA_ANALYSIS §2).
 **Deduction (v1.6.5, owner):** `wfh_excess_days = ceil(max(0, wfh_days − wfh_limit_days))`;
-`wfh_deduction_days = wfh_excess_days × wfh_excess_deduction_days` (default **0.5**; 0 = flag only), 0 when the
-employee is exempt (same exemption as the shortfall: employee master, exempt groups, month exception).
+`wfh_deduction_days = wfh_excess_days × wfh_excess_deduction_days` (default **0.5**; 0 = flag only), 0 only when the
+employee's group is in `wfh_deduction_exempt_groups` (default Partner) or a month exception is granted. The hours
+exemption (employee master flag, `exempt_groups` Partner/SS/Article/Trainee) does **not** exempt from the WFH
+deduction (owner, v1.6.6: Article, SS and Trainee also lose ½ day).
 `deduction_days = shortfall_deduction_days + wfh_deduction_days` (a month correction of deduction days overrides the
 total) and is debited from leave (ledger `leave_debit_wfh`), then salary when leave runs out. The WFH days beyond the
 limit (in date order) get a note.

@@ -20,7 +20,7 @@
   <div class="form-sec"><div><h3>Hours &amp; deduction</h3><p>From the Work Schedules policy: monthly hours = working days × hours per day; shortfall deducted from leave in half-day blocks.</p></div><div>
     <div class="row">{{ num('hours_per_day') }}{{ num('shortfall_block_hours', 'Each started block = one deduction.') }}{{ num('deduction_per_block_days') }}</div>
     <div class="row">{{ num('shortfall_grace_hours', 'Shortfall up to this is ignored. Policy: none.') }}
-      <div class="field"><label>Groups never deducted</label><input name="exempt_groups" value="{{ pol.exempt_groups|join(', ') }}"><div class="help">Comma separated, exactly as in the employee group.</div></div></div>
+      <div class="field"><label>Groups never deducted for hours shortfall</label><input name="exempt_groups" value="{{ pol.exempt_groups|join(', ') }}"><div class="help">Comma separated, exactly as in the employee group. WFH over the limit has its own list below.</div></div></div>
   </div></div>
   <div class="form-sec"><div><h3>Leave &amp; comp-off</h3><p>15 paid days per financial year, pro-rata for joiners.</p></div><div>
     <div class="row">{{ num('annual_leave_days') }}{{ num('fy_start_month', '4 = April') }}
@@ -30,11 +30,12 @@
     <label class="check mb"><input type="checkbox" name="absent_debits_leave" value="1" {{ 'checked' if pol.absent_debits_leave }}> <span>Unauthorised absence is taken from the leave balance <span class="help" style="display:block">Policy: leave without approval is adjusted against leave, then salary.</span></span></label>
     <label class="check"><input type="checkbox" name="cof_overdraft_to_leave" value="1" {{ 'checked' if pol.cof_overdraft_to_leave }}> Comp-off taken beyond the balance is taken from leave</label>
   </div></div>
-  <div class="form-sec"><div><h3>Work from home</h3><p>Counted only on each person's own working days. Each WFH day above the limit is flagged and takes the set amount of leave (exempt employees / groups excepted).</p></div><div>
+  <div class="form-sec"><div><h3>Work from home</h3><p>Counted only on each person's own working days. Each WFH day above the limit is flagged and takes the set amount of leave — for everyone except the groups listed here (or a month exception).</p></div><div>
     <div class="row">{{ num('wfh_limit_days') }}{{ num('wfh_excess_deduction_days', 'e.g. 0.5 = half a day of leave for every WFH day above the limit; 0 = flag only.') }}</div>
     <div class="row">
       <div class="field"><label>How a WFH day is counted</label><select name="wfh_method"><option value="distinct_days" {{ 'selected' if pol.wfh_method=='distinct_days' }}>Any WFH punch on a date = 1 day</option><option value="swipes_half" {{ 'selected' if pol.wfh_method=='swipes_half' }}>WFH punches ÷ 2 (old manual method)</option></select></div>
       <div class="field"><label>Location types that mean WFH</label><input name="wfh_location_types" value="{{ pol.wfh_location_types|join(', ') }}"></div></div>
+    <div class="row"><div class="field"><label>Groups not deducted for WFH</label><input name="wfh_deduction_exempt_groups" value="{{ (pol.wfh_deduction_exempt_groups or [])|join(', ') }}"><div class="help">Comma separated. Default: Partner. Article, SS and Trainee are deducted (owner, 18-Nov-2026).</div></div></div>
   </div></div>
   <div class="form-sec"><div><h3>Punctuality (board metrics only)</h3><p>"Late coming" is not deducted under the policy — these only drive flags and reports.</p></div><div>
     <div class="row">{{ num('late_grace_min') }}{{ num('very_late_min') }}{{ num('early_exit_grace_min') }}</div>

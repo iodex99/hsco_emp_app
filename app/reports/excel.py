@@ -161,7 +161,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
              "Days Absent", "Days Present", "WFH", "Total Hours Present (HH:MM)", "Extra Working Days",
              "Total Days Worked", "Hours Required", "Total Hours Present (decimal)", "Working on Holiday/Off-day to exclude",
              "Actual Hours Worked", "Shortfall / Excess", "Remark",
-             "Hours / Day", "Exempt", "Deduction Days (½ per 4h short + per WFH day over limit)", "PL Taken", "Comp-off Taken",
+             "Hours / Day", "Exempt (hours)", "Deduction Days (½ per 4h short + per WFH day over limit)", "PL Taken", "Comp-off Taken",
              "Unauthorised Absent", "LOP (approved)", "Leave Opening", "Leave Credit", "Total Leave Debit",
              "Leave Closing", "Salary Deduction Days", "Payroll LOP Days", "Comp-off Earned", "Flags"]
     widths = [10, 24, 9, 9, 8, 8, 8, 8, 8, 6, 10, 8, 8, 9, 10, 10, 10, 10, 34, 7, 7, 10, 7, 8, 9, 7, 8, 7, 8, 8, 9, 8, 8, 40]
@@ -181,8 +181,11 @@ def build_workbook(db: Session, period: Period) -> bytes:
             14: f"=M{i}*T{i}", 15: round(th, 4), 16: round(d["extra_hours"], 4), 17: f"=O{i}-P{i}",
             18: f"=ROUND(Q{i}-N{i},2)", 19: d.get("remark", ""), 20: d.get("hours_per_day", pol.hours_per_day),
             21: "Yes" if d.get("exempt") else "No",
-            22: f'=IF(U{i}="Yes",0,IF(-R{i}>{grace},CEILING(ROUND(-R{i},4)/{blk},1)*{per_blk},0)'
-                f'+CEILING(MAX(0,J{i}-{pol.wfh_limit_days:g}),1)*{pol.wfh_excess_deduction_days:g})',
+            # hours part (0 when exempt: column U) + WFH part (row without it when the person is not deducted
+            # for WFH: Partner-type group or a month exception)
+            22: f'=IF(U{i}="Yes",0,IF(-R{i}>{grace},CEILING(ROUND(-R{i},4)/{blk},1)*{per_blk},0))'
+                + ("" if d.get("wfh_deduction_exempt") else
+                   f'+CEILING(MAX(0,J{i}-{pol.wfh_limit_days:g}),1)*{pol.wfh_excess_deduction_days:g}'),
             23: d.get("pl_days"), 24: d.get("cof_days"), 25: d.get("unauth_absent_days"), 26: d.get("lop_days"),
             27: d.get("leave_opening"), 28: d.get("leave_credit"), 29: d.get("leave_debit_total"),
             30: d.get("leave_closing"), 31: d.get("salary_deduction_days"), 32: d.get("payroll_lop_days"),

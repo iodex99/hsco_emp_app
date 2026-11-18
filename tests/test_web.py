@@ -301,7 +301,7 @@ def test_exports(loaded):
     i = rows["T001"]
     assert ws.cell(row=i, column=9).value == f"=E{i}-F{i}-G{i}-H{i}"
     assert ws.cell(row=i, column=22).value.startswith("=IF(U")
-    assert f"+CEILING(MAX(0,J{i}-2),1)*0.5)" in ws.cell(row=i, column=22).value          # WFH over the limit (v1.6.5)
+    assert ws.cell(row=i, column=22).value.endswith(f"))+CEILING(MAX(0,J{i}-2),1)*0.5")   # WFH over the limit (v1.6.5)
     # Excel formula logic replicated: balance + WFH -> deduction must equal the app's value
     import math
     for emp in ("T001", "T004"):
@@ -309,13 +309,14 @@ def test_exports(loaded):
         e, f, g, h, j = (ws.cell(row=i, column=k).value for k in (5, 6, 7, 8, 10))
         o, p, t = (ws.cell(row=i, column=k).value for k in (15, 16, 20))
         bal = round((o - p) - (e - f - g - h) * t, 2)
-        ded = (0 if bal >= 0 else math.ceil(round(-bal, 4) / 4) * 0.5) + math.ceil(max(0, j - 2)) * 0.5
-        if ws.cell(row=i, column=21).value == "Yes":
-            ded = 0
+        hours = 0 if bal >= 0 or ws.cell(row=i, column=21).value == "Yes" else math.ceil(round(-bal, 4) / 4) * 0.5
+        ded = hours + math.ceil(max(0, j - 2)) * 0.5
         assert ded == _result(emp)[0]["deduction_days"], emp
-    d4, f4 = _result("T004")                       # Article = exempt group: over the WFH limit, flagged, not deducted
-    assert d4["wfh_days"] == 4 and d4["wfh_excess_days"] == 2 and d4["wfh_deduction_days"] == 0 and d4["exempt"]
-    assert any("exempt, no deduction" in x["message"] for x in f4 if x["code"] == "WFH_OVER_LIMIT")
+    d4, f4 = _result("T004")             # Article: exempt for hours, but deducted for WFH over the limit (v1.6.6)
+    assert d4["wfh_days"] == 4 and d4["wfh_excess_days"] == 2 and d4["wfh_deduction_days"] == 1.0 and d4["exempt"]
+    assert any("1 day(s) deducted from leave" in x["message"] for x in f4 if x["code"] == "WFH_OVER_LIMIT")
+    i3 = rows["T003"]                    # Partner: the WFH term is not in the formula at all
+    assert "CEILING(MAX(0,J" not in ws.cell(row=i3, column=22).value
     led = [c_.value for c_ in wb["Leave & Comp-off Ledger"][5]]
     assert led[6:9] == ["Shortfall deduction", "WFH over-limit deduction", "Unauthorised absence"]
     # the HTML board pack was removed in v1.6 (the app itself is the board view)

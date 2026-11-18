@@ -1,7 +1,7 @@
 """Browser tests for the table toolkit (app/static/table.js) on a live server with synthetic data.
 
 Fixture employees (tests/fixtures/make_fixtures.py): T001 BSS (0.5 d deduction), T002 ATA (1 d), T003 Partner (exempt),
-T004 Article (WFH 4, very late), T005 BSS (1 absent, LOP), T006 Offshore (joined 13-Oct-2026).
+T004 Article (WFH 4 → 1 d deduction for WFH over the limit, very late), T005 BSS (1 absent, LOP), T006 Offshore (joined 13-Oct-2026).
 """
 import csv
 import io
@@ -147,12 +147,14 @@ def test_payroll_sheet_search_filter_sort_group_columns_views_csv(page):
     pg.click(f"{bar(pg)} .tt-clear")
 
     # sort: header click (numbers default to high → low), shift-click adds a 2nd level
+    # T002 (1 day, hours) and T004 (1 day, WFH over the limit — v1.6.6) share the largest deduction
     pg.click("#res th[data-key=deduction]")
-    assert visible_ids(pg)[0] == "T002"
+    assert visible_ids(pg)[:2] == ["T002", "T004"]
     pg.click("#res th[data-key=deduction]")
-    assert visible_ids(pg)[-1] == "T002"
-    pg.click("#res th[data-key=emp]", modifiers=["Shift"])
+    assert visible_ids(pg)[-2:] == ["T002", "T004"]
+    pg.click("#res th[data-key=emp]", modifiers=["Shift"])           # 2nd level breaks the tie: employee A→Z
     assert pg.get_attribute("#res th[data-key=emp]", "data-order") == "2"
+    assert visible_ids(pg)[-2:] == ["T002", "T004"]
     pg.click(f"{bar(pg)} .tt-btn[data-a=sort]")
     assert len(pg.query_selector_all(".tt-pop [data-i]")) == 2
     pg.keyboard.press("Escape")
@@ -184,10 +186,10 @@ def test_payroll_sheet_search_filter_sort_group_columns_views_csv(page):
     text = open(dl.value.path(), encoding="utf-8-sig").read()
     rows = list(csv.reader(io.StringIO(text)))
     assert rows[0][0] == "Employee" and "Deduction days" in rows[0] and "Remark" in rows[0]
-    assert len(rows) - 1 == len(visible_ids(pg)) == 2
+    assert len(rows) - 1 == len(visible_ids(pg)) == 3          # T001, T002, T004 (WFH, v1.6.6)
     assert any("T002" in r[0] for r in rows[1:])
     # footer total follows the filter
-    assert pg.inner_text("#res tfoot td[data-sum][data-unit]") == "1.50 d"
+    assert pg.inner_text("#res tfoot td[data-sum][data-unit]") == "2.50 d"
 
 
 def test_review_queue_employees_days_and_audit(page):

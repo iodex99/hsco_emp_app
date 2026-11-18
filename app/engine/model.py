@@ -57,6 +57,9 @@ class Policy:
     wfh_location_types: tuple = ("work from home", "wfh")
     wfh_method: str = "distinct_days"     # or 'swipes_half'
     wfh_excess_deduction_days: float = 0.5   # leave deducted per WFH day above the limit (0 = flag only) — v1.6.5
+    # groups never deducted for WFH over the limit (v1.6.6, owner: Article / SS / Trainee ARE deducted; exempt_groups
+    # and the employee "exempt" flag concern the hours shortfall only)
+    wfh_deduction_exempt_groups: tuple = ("Partner",)
     late_grace_min: int = 15
     very_late_min: int = 60
     early_exit_grace_min: int = 15
@@ -220,6 +223,7 @@ class EmployeeMonth:
     wfh_excess_days: float = 0    # WFH days above the monthly limit
     shortfall_deduction_days: float = 0   # part of deduction_days for hours shortfall
     wfh_deduction_days: float = 0         # part of deduction_days for WFH above the limit
+    wfh_deduction_exempt: bool = False    # not deducted for WFH (Partner-type group or month exception)
     client_days: int = 0
     onduty_days: int = 0
     mobile_office_swipes: int = 0
