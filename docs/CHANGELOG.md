@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.1 — 2026-11-18 — data safety; exports show every correction and review
+**Exports** are always built at the moment of download from the app's current figures — every day correction, month
+adjustment, setting and review is already in them. New: the *Flags* sheet shows each exception's review status,
+reviewer, date and note; a new *Corrections* sheet lists every day and month correction with what changed, the reason,
+who and when; the payroll sheet's footer says so.
+
+**Data safety**
+- *Automatic daily backup by the app itself* (works on every install, with or without the server's scheduled task):
+  an online SQLite snapshot checked with `PRAGMA integrity_check` before it is kept; the last 14 days in full, then one
+  per month for 2 years. The encryption key (`secret.key`, needed for two-step sign-in) is copied next to the backups.
+- *Settings → Security & system → Backups & data safety:* start-up health check, last backup, key copy, the backups,
+  **Back up now**. Restore: stop the app, `python -m app.cli restore <file>` (the current database is kept as a
+  safety copy; a backup that fails its check is refused).
+- *Updates:* the supervisor now refuses any package that would replace `data`, `.venv`, `.git`, `certs`, `backups`
+  or the data folder itself (in addition to the download check); the pre-update backup is verified and the update is
+  cancelled — code untouched — if it isn't sound; pre-update backups are pruned to the last 10.
+- SQLite commits are fully synchronous (`synchronous=FULL`): a confirmed save survives a power cut.
+
 ## 1.6.0 — 2026-11-18 — punch locations in Excel; HTML board pack removed
 - **Punches & locations workbook** (`/exports/<month>/locations.xlsx`): every punch of the month — office biometric
   and mobile — with time, punch type, tag, **place name**, the employee's remark, office check, permission reason,

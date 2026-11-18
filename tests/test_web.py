@@ -935,3 +935,90 @@ def test_no_bradford_anywhere(loaded):
     from openpyxl import load_workbook
     wb = load_workbook(io.BytesIO(loaded.get("/exports/2026-10.xlsx").content))
     assert not any("bradford" in str(c.value).lower() for ws in wb for row in ws.iter_rows() for c in row if c.value)
+
+
+# ---------------------------------------------------------------- v1.6.1: exports reflect corrections; backups
+
+def test_excel_is_built_from_current_figures_with_corrections_and_reviews(loaded):
+    from openpyxl import load_workbook
+    c = loaded
+
+    def wb():
+        return load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    before = wb()
+    assert before["Corrections"]["A6"].value == "No manual corrections this month."
+    base = "/periods/2026-10/employee/T001"
+    csrf = csrf_of(c, base)
+    c.post(base + "/day-override", data={"csrf": csrf, "day": "2026-10-05", "s1": "A", "s2": "A", "work_hm": "00:00",
+                                         "reason": "Was on unapproved leave"})
+    c.post(base + "/month-override", data={"csrf": csrf, "field": "remark", "value": "Checked by HR",
+                                           "reason": "Partner note"})
+    tok = csrf_of(c, "/flags")
+    c.post("/flags/review", json={"period": "2026-10", "emp_no": "T004", "code": "WFH_OVER_LIMIT", "action": "review",
+                                  "note": "Approved by partner"}, headers={"X-CSRF-Token": tok})
+    after = wb()                                                 # downloaded again: built fresh from the app
+    corr = [[x.value for x in r] for r in after["Corrections"].iter_rows(min_row=6) if r[0].value]
+    assert any(r[0] == "T001" and r[2] == "Day" and "session 1 A" in r[4] and r[5] == "Was on unapproved leave" for r in corr)
+    assert any(r[0] == "T001" and r[2] == "Month figure" and r[5] == "Partner note" for r in corr)
+    flags = [[x.value for x in r] for r in after["Flags"].iter_rows(min_row=6)]
+    assert any(r[0] == "T004" and r[6] == "Reviewed" and r[9] == "Approved by partner" for r in flags)
+    # the payroll sheet's figures changed with the correction (a working day marked absent; Days Present is a live
+    # formula = week days − holidays − leave − absent, so it follows)
+    def absent(w):
+        ws = w["Payroll Leave Sheet"]
+        hdr = next(r for r in ws.iter_rows(values_only=True) if r and "Days Absent" in r)
+        col = hdr.index("Days Absent")
+        return next(r[col] for r in ws.iter_rows(values_only=True) if r and r[0] == "T001")
+    assert absent(after) == absent(before) + 1
+
+
+def test_backups_daily_verified_and_restorable(tmp_path, monkeypatch):
+    import sqlite3
+    from datetime import datetime, timedelta
+    from types import SimpleNamespace
+    from app.services import backups as BK
+    dd = tmp_path / "data"
+    dd.mkdir()
+    monkeypatch.setattr(BK, "get_config", lambda: SimpleNamespace(data_dir=dd))
+    with sqlite3.connect(dd / "hsco.db") as con:
+        con.execute("create table t(x)")
+        con.execute("insert into t values ('v1')")
+    (dd / "secret.key").write_text("KEY")
+    assert BK.due()
+    info = BK.make_backup("daily")
+    assert info["check"] == "ok" and (dd / "backups" / info["file"]).exists()
+    assert (dd / "backups" / "secret.key").read_text() == "KEY" and not BK.due()
+    assert BK.check_health()["check"] == "ok" and BK.state()["last_backup"]["file"] == info["file"]
+    # retention: 14 days in full, then one per month
+    now = datetime(2026, 11, 18, 12)
+    for d in range(1, 70):
+        t = now - timedelta(days=d)
+        (dd / "backups" / f"hsco_{t:%Y%m%d}_020000_daily.db").write_text("x")
+    BK.prune(now)
+    left = {BK._ts(p) for p in (dd / "backups").glob("hsco_2026*_020000_daily.db")}
+    made = [now - timedelta(days=d) for d in range(1, 70)]
+    made = [t.replace(hour=2, minute=0) for t in made]
+    recent = {t for t in made if now - t <= timedelta(days=14)}
+    older_newest_per_month = {max(t for t in made if now - t > timedelta(days=14) and (t.year, t.month) == m)
+                              for m in {(t.year, t.month) for t in made if now - t > timedelta(days=14)}}
+    assert left == recent | older_newest_per_month                    # every recent one + newest of each older month
+    # restore: data comes back, the current database is kept as a safety copy
+    with sqlite3.connect(dd / "hsco.db") as con:
+        con.execute("update t set x='v2'")
+    safety = BK.restore(dd / "backups" / info["file"])
+    with sqlite3.connect(dd / "hsco.db") as con:
+        assert con.execute("select x from t").fetchone() == ("v1",)
+    with sqlite3.connect(safety) as con:
+        assert con.execute("select x from t").fetchone() == ("v2",)
+    bad = dd / "backups" / "hsco_20261118_000000_bad.db"
+    bad.write_bytes(b"not a database")
+    import pytest
+    with pytest.raises(RuntimeError):
+        BK.restore(bad)
+
+
+def test_backup_now_button(loaded):
+    c = loaded
+    r = c.post("/settings/backup", data={"csrf": csrf_of(c, "/settings")}, follow_redirects=True)
+    assert "Backup written and verified" in r.text and "Backups &amp; data safety" in r.text
+    assert "manual" in c.get("/settings").text

@@ -29,6 +29,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 RESTART = 75
 CORE = ("app", "run_server.py", "BUILD.json")       # always replaced/rolled back as a unit
+# never moved or replaced by an update, whatever a package contains (data, environment, certificates, backups)
+PROTECTED = {"data", ".venv", "venv", ".git", "reference", "certs", "backups", "logs"}
+PRE_UPDATE_KEEP = 10
 
 
 def data_dir() -> Path:
@@ -53,14 +56,30 @@ def write_result(dd: Path, **kw) -> None:
 
 
 def backup_db(dd: Path, label: str) -> Path | None:
+    """Verified snapshot before an update. Raises RuntimeError if the copy is not sound (the update is then skipped)."""
     src = dd / "hsco.db"
     if not src.exists():
         return None
     dst = dd / "backups" / f"pre-update-{label}-{datetime.now():%Y%m%d_%H%M%S}.db"
     dst.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(src) as a, sqlite3.connect(dst) as b:
+    a, b = sqlite3.connect(src, timeout=60), sqlite3.connect(dst)
+    try:
         a.backup(b)
+        check = b.execute("PRAGMA integrity_check").fetchone()[0]
+    finally:
+        a.close()
+        b.close()
+    if check != "ok":
+        raise RuntimeError(f"the pre-update database backup failed its integrity check ({check}) — update not applied")
+    olds = sorted((dd / "backups").glob("pre-update-*.db"), key=lambda p: p.stat().st_mtime)
+    for old in olds[:-PRE_UPDATE_KEEP]:
+        old.unlink()
     return dst
+
+
+def _is_protected(name: str, root: Path, dd: Path) -> bool:
+    target = (root / name).resolve()
+    return name.lower() in PROTECTED or target == dd or dd.is_relative_to(target)
 
 
 def apply_staged(dd: Path, root: Path = ROOT, pip: bool = True) -> dict | None:
@@ -75,8 +94,19 @@ def apply_staged(dd: Path, root: Path = ROOT, pip: bool = True) -> dict | None:
     rb = dd / "updates" / "rollback" / f"build{frm}-{datetime.now():%Y%m%d_%H%M%S}"
     rb.mkdir(parents=True, exist_ok=True)
     log(f"applying update build {frm} → {info.get('build')} (v{info.get('version')})")
-    backup_db(dd, f"build{info.get('build')}")
     new_items = sorted(p.name for p in staged.iterdir() if p.name != "READY")
+    bad = [n for n in new_items if _is_protected(n, root, dd)]
+    try:
+        if bad:
+            raise RuntimeError(f"update package tries to replace protected items ({', '.join(bad)}) — refused")
+        backup_db(dd, f"build{info.get('build')}")
+    except Exception as ex:  # noqa: BLE001 — nothing has been touched yet
+        log(f"update refused: {ex}")
+        shutil.rmtree(staged, ignore_errors=True)
+        shutil.rmtree(rb, ignore_errors=True)
+        write_result(dd, status="failed", from_build=frm, to_build=info.get("build"), version=info.get("version"),
+                     error=str(ex))
+        return {"error": str(ex)}
     moved, added = [], []
     try:
         for name in sorted(set(new_items) | set(CORE)):

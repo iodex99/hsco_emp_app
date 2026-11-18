@@ -2,7 +2,8 @@
 
   python -m app.cli create-admin            create the first administrator (interactive)
   python -m app.cli reset-mfa <username>    remove a user's 2FA (break-glass, run on the server)
-  python -m app.cli backup                  consistent SQLite backup into data/backups
+  python -m app.cli backup                  verified SQLite backup into data/backups (the app also does this daily)
+  python -m app.cli restore [file]          restore a backup — stop the app first (lists backups without a file)
   python -m app.cli make-cert <hostname>    self-signed TLS certificate for HTTPS (data/certs)
   python -m app.cli import <files...>       import files from the command line (e.g. scheduled)
 """
@@ -53,16 +54,25 @@ def reset_mfa(argv):
 
 
 def backup(argv=None) -> Path:
-    cfg = get_config()
-    src = cfg.data_dir / "hsco.db"
-    dst = cfg.data_dir / "backups" / f"hsco_{datetime.now():%Y%m%d_%H%M%S}.db"
-    with sqlite3.connect(src) as a, sqlite3.connect(dst) as b:
-        a.backup(b)
-    keep = sorted((cfg.data_dir / "backups").glob("hsco_*.db"))
-    for old in keep[:-60]:
-        old.unlink()
-    print(f"Backup written: {dst}")
+    """Verified snapshot of the database (also made automatically every day by the running app)."""
+    from app.services import backups
+    init_db()
+    info = backups.make_backup((argv or ["manual"])[0] if argv else "manual")
+    dst = get_config().data_dir / "backups" / info["file"]
+    print(f"Backup written and verified: {dst}")
     return dst
+
+
+def restore(argv):
+    """python -m app.cli restore <backup file> — STOP THE APP FIRST. Keeps the current database as a safety copy."""
+    from app.services import backups
+    if not argv:
+        print("Usage: python -m app.cli restore <backup file in DATA_DIR\backups>")
+        for b in backups.list_backups()[:15]:
+            print(f"  {b['file']}  ({b['kind']}, {b['size'] // 1024} KB)")
+        return
+    safety = backups.restore(argv[0])
+    print(f"Restored {argv[0]}. The previous database was kept as {safety}. Start the app again.")
 
 
 def make_cert(argv):
@@ -113,7 +123,7 @@ def main():
         print(__doc__)
         return
     cmd, argv = sys.argv[1], sys.argv[2:]
-    {"create-admin": create_admin, "reset-mfa": reset_mfa, "backup": backup, "make-cert": make_cert,
+    {"create-admin": create_admin, "reset-mfa": reset_mfa, "backup": backup, "restore": restore, "make-cert": make_cert,
      "import": import_files}.get(cmd, lambda a: print(__doc__))(argv)
 
 

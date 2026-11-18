@@ -2,6 +2,7 @@
 import hashlib
 import http.server
 import json
+import os
 import sqlite3
 import sys
 import threading
@@ -218,3 +219,43 @@ def test_supervisor_apply_and_rollback(tmp_path):
     assert sup.current_build(root) == 3 and (root / "app" / "main.py").read_text() == "OLD"
     assert (root / "run_server.py").read_text() == "OLD SUPERVISOR"
     assert sup.apply_staged(dd, root, pip=False) is None   # nothing staged any more
+
+
+def test_supervisor_never_touches_data_even_if_a_package_tries(tmp_path):
+    """Defence in depth: even a package that slipped past validation can't replace data, .venv or certificates."""
+    root = _fake_install(tmp_path, 3)
+    dd = root / "data"                                   # the PC-install layout: data inside the app folder
+    dd.mkdir()
+    with sqlite3.connect(dd / "hsco.db") as con:
+        con.execute("create table t(x)")
+        con.execute("insert into t values (42)")
+    (dd / "secret.key").write_text("KEY")
+    staged = dd / "updates" / "staged"
+    (staged / "app").mkdir(parents=True)
+    (staged / "app" / "main.py").write_text("NEW")
+    (staged / "data").mkdir()
+    (staged / "data" / "hsco.db").write_text("EVIL")
+    (staged / "READY").write_text(json.dumps({"build": 4, "version": "9.9.9"}))
+    res = sup.apply_staged(dd, root, pip=False)
+    assert res and "error" in res and "protected" in res["error"]
+    assert (root / "app" / "main.py").read_text() == "OLD" and sup.current_build(root) == 3      # code untouched
+    with sqlite3.connect(dd / "hsco.db") as con:
+        assert con.execute("select x from t").fetchone() == (42,)                                   # data untouched
+    assert (dd / "secret.key").read_text() == "KEY" and not staged.exists()
+    assert json.loads((dd / "updates" / "last_result.json").read_text())["status"] == "failed"
+
+
+def test_pre_update_backups_are_verified_and_pruned(tmp_path):
+    root = _fake_install(tmp_path, 3)
+    dd = tmp_path / "data"
+    (dd / "backups").mkdir(parents=True)
+    with sqlite3.connect(dd / "hsco.db") as con:
+        con.execute("create table t(x)")
+    for i in range(14):
+        p = dd / "backups" / f"pre-update-build{i}-20260101_0000{i:02d}.db"
+        p.write_text("old")
+        os.utime(p, (1_700_000_000 + i, 1_700_000_000 + i))
+    out = sup.backup_db(dd, "build99")
+    assert out.exists() and len(list((dd / "backups").glob("pre-update-*.db"))) == sup.PRE_UPDATE_KEEP
+    with sqlite3.connect(out) as con:
+        assert con.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

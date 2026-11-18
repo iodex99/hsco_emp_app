@@ -3,6 +3,7 @@
 1. Build the offline gazetteer index (first start only, ~4 s) so the first import with coordinates is fast.
 2. Once per gazetteer version: re-name swipes stored with older offline names (geo.upgrade_place_names).
 3. Backfill the compact Insights summary (MonthResult.data["_ins"]) for months calculated by versions before 1.4.1.
+4. Health check (PRAGMA quick_check) at start, then a daily backup (services/backups.py) for as long as the app runs.
 
 Every database write happens in short transactions so users never wait on a long-held write lock
 (docs/ARCHITECTURE.md "Concurrency rule"). Disabled with HSCO_DISABLE_GEO_WARMUP=1 (tests).
@@ -25,12 +26,27 @@ def start() -> None:
 
 
 def run() -> None:
-    from app.services import geo
-    for step in (geo.gazetteer_db, geo.upgrade_place_names, backfill_month_stats):
+    from app.services import backups, geo
+    for step in (backups.check_health, geo.gazetteer_db, geo.upgrade_place_names, backfill_month_stats):
         try:
             step()
         except Exception:  # noqa: BLE001 — one failing step must not stop the others or the app
             log.exception("start-up maintenance step %s failed", getattr(step, "__name__", step))
+    backup_loop()
+
+
+def backup_loop(check_every_s: int = 1800) -> None:
+    """Daily automatic backup by the app itself (works on any install, with or without a scheduled task)."""
+    import time
+    from app.services import backups
+    while True:
+        try:
+            if backups.due():
+                info = backups.make_backup("daily")
+                log.info("daily backup written: %s", info["file"])
+        except Exception:  # noqa: BLE001
+            log.exception("daily backup failed")
+        time.sleep(check_every_s)
 
 
 def backfill_month_stats(batch: int = 200) -> int:

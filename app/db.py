@@ -27,7 +27,7 @@ def get_engine():
                 cur = dbapi_conn.cursor()
                 cur.execute("PRAGMA journal_mode=WAL")
                 cur.execute("PRAGMA foreign_keys=ON")
-                cur.execute("PRAGMA synchronous=NORMAL")
+                cur.execute("PRAGMA synchronous=FULL")      # a confirmed save survives a power cut
                 cur.execute("PRAGMA busy_timeout=30000")
                 cur.close()
         _Session = sessionmaker(bind=_engine, expire_on_commit=False, future=True)

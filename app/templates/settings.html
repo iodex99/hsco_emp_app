@@ -118,6 +118,21 @@
 </section>
 
 <section class="pane" data-pane="general">
+{% if can_admin %}
+<div class="card" id="backups"><div class="hd"><h2>Backups &amp; data safety</h2><span class="sub">stored in the data folder on this server</span>
+  <div class="tools"><form method="post" action="/settings/backup" class="inline">{{ ui.csrf_field() }}<button class="btn sm">{{ ui.icon('download','sm') }} Back up now</button></form></div></div>
+<div class="bd">
+  <div class="minis mb">
+    <div class="mini {{ 'good' if bk.check == 'ok' else 'bad' if bk.check else '' }}"><div class="v">{{ 'Healthy' if bk.check == 'ok' else (bk.check or 'not checked yet') }}</div><div class="l">Database check at start-up{% if bk.checked_at %} · {{ bk.checked_at.strftime('%d %b %Y, %H:%M') }}{% endif %}</div></div>
+    <div class="mini {{ 'good' if bk.last_at else 'warn' }}"><div class="v">{{ bk.last_at.strftime('%d %b, %H:%M') if bk.last_at else 'none yet' }}</div><div class="l">Last backup{% if bk.last_reason %} ({{ bk.last_reason }}){% endif %} — automatic every day</div></div>
+    <div class="mini {{ 'good' if bk.key_copy else 'warn' }}"><div class="v">{{ 'Saved' if bk.key_copy else 'Not yet' }}</div><div class="l">Copy of the encryption key with the backups</div></div>
+  </div>
+  {% if backups %}<div class="tw"><table class="compact"><thead><tr><th>Backup</th><th>Type</th><th class="num">Size</th><th>Taken</th></tr></thead><tbody>
+  {% for b in backups %}<tr><td class="mono small">{{ b.file }}</td><td><span class="tag">{{ b.kind }}</span></td><td class="num">{{ (b.size / 1048576)|round(1) }} MB</td><td class="small">{{ b.at.strftime('%d %b %Y, %H:%M') if b.at }}</td></tr>{% endfor %}
+  </tbody></table></div>{% endif %}
+  <p class="small muted mt-s">{{ ui.icon('shield-check','sm') }} Every backup is checked before it is kept: the last 14 days in full, then one per month for 2 years; updates also take a backup first and are cancelled if it isn't sound. Updates never touch the data folder. For protection against a failed disk, also copy the whole data folder (with <span class="mono">backups</span> and <span class="mono">secret.key</span>) to another drive regularly. To restore: stop the app, then <span class="mono">python -m app.cli restore &lt;file&gt;</span>.</p>
+</div></div>
+{% endif %}
 {% set B = brand_info() %}
 <div class="card" id="branding"><div class="hd"><h2>Logo</h2><span class="sub">sidebar, sign-in page and browser tab</span></div><div class="bd">
   <div class="row" style="align-items:center;gap:18px;flex-wrap:wrap">

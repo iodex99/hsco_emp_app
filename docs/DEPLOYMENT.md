@@ -62,9 +62,18 @@ Stop the task, extract the new release zip over the app folder (or `git pull`), 
 Data in `DATA_DIR` is untouched. Check `docs/CHANGELOG.md` for notes.
 
 ## Backup & restore
-- Nightly: `python -m app.cli backup` → `DATA_DIR\backups\hsco_YYYYMMDD_HHMMSS.db` (last 60 kept). Copy `DATA_DIR`
-  (DB backups **and** `secret.key`) to the firm's backup system.
-- Restore: stop the task, copy a backup over `DATA_DIR\hsco.db`, start the task.
+**Automatic (v1.6.1):** the running app backs itself up once a day into `DATA_DIR\backups\hsco_<date>_<time>_daily.db`
+(verified; last 14 days + one per month for 2 years) and copies `secret.key` there. Settings → Security & system →
+*Backups & data safety* shows the health check, last backup and **Back up now**. Updates take a verified
+`pre-update-build<n>-….db` first (last 10 kept) and never touch `DATA_DIR`.
+**Off the server (recommended):** copy the whole `DATA_DIR` (or at least `backups\` + `secret.key`) to another disk or a
+NAS regularly — backups on the same disk don't protect against that disk failing.
+**Restore:** stop the app (scheduled task / window), then `python -m app.cli restore` lists backups and
+`python -m app.cli restore <file>` restores one (the current database is saved as `before-restore-….db`; a backup that
+fails its integrity check is refused). Start the app again.
+**Where data lives:** `DATA_DIR` (server install: `C:\HSCOData`, admins/SYSTEM only; a PC copy: the `data` folder next
+to the app). It holds the database, `secret.key`, uploads, logo, place-name index, backups and update state — nothing
+in it is part of the code, so reinstalling or updating the code leaves it as it is.
 
 ## Operations
 | Task | Command |

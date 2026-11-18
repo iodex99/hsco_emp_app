@@ -182,3 +182,12 @@ Templates read `brand_info()` (Jinja global).
 `excel.build_locations_workbook`: sheets Punches (every SwipeRow; mobile rows enriched by `locations.report`: place,
 remark, office check, phone, status, coordinates), Places, By person; any month with punches (404 otherwise);
 audit `export.locations`.
+
+## Data safety (v1.6.1)
+`services/backups.py` — `make_backup` (sqlite backup API → `.partial` → integrity_check → rename; key copy; prune),
+`prune` (14 days full + newest per month ×24; pre-update ×10), `check_health` (quick_check at start), `restore`
+(verified backup only; safety copy first), `summary` for Settings. `maintenance.backup_loop` runs every 30 min and
+backs up when the last regular backup is ≥ 24 h old. Supervisor (`run_server.py`, stdlib only): `PROTECTED` names are
+never moved or replaced; `backup_db` verifies the pre-update copy and aborts the update before any file is touched.
+SQLite: WAL + `synchronous=FULL` + `busy_timeout=30000` + foreign keys. Exports read the database at download time
+(no cached files).

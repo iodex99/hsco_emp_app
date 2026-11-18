@@ -54,7 +54,9 @@ def settings_page(c: Ctx = Depends(hr)):
     from app.services.settings import get_policy
     pol = get_policy(c.db)
     shift_names = [(x, *parse_shift(x, pol)) for x in sorted(c.db.scalars(select(MusterRow.shift).distinct())) if x]
-    return render(c, "settings.html", pol=get_policy_json(c.db), g=get_general(c.db), numbers=POLICY_NUMBERS,
+    from app.services import backups as BK
+    return render(c, "settings.html", backups=BK.list_backups()[:12], bk=BK.summary(),
+                  pol=get_policy_json(c.db), g=get_general(c.db), numbers=POLICY_NUMBERS,
                   buckets=BUCKETS, cals=cals, fences=fences, clusters=unnamed_clusters(c.db), shift_names=shift_names)
 
 
@@ -299,3 +301,16 @@ def delete_logo(c: Ctx = Depends(admin)):
     if branding.remove():
         audit(c.db, c.user, "branding.logo_removed", "settings", "", ip=c.ip)
     return redirect("/settings#general", "Logo removed.")
+
+
+
+# ----------------------------------------------------------------------------- backups
+@router.post("/settings/backup")
+def backup_now(c: Ctx = Depends(admin)):
+    from app.services import backups as BK
+    try:
+        info = BK.make_backup("manual")
+    except Exception as ex:  # noqa: BLE001
+        return redirect("/settings#general", f"Backup failed: {ex}")
+    audit(c.db, c.user, "backup.manual", "settings", info["file"], {"bytes": info["size"]}, c.ip)
+    return redirect("/settings#general", f"Backup written and verified: {info['file']}.")

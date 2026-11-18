@@ -219,7 +219,9 @@ def build_workbook(db: Session, period: Period) -> bytes:
         ws.cell(row=tr, column=col, value=f"=SUBTOTAL(9,{L}{HR_ + 1}:{L}{last})").font = Font(bold=True)
     ws.cell(row=tr + 2, column=1, value="Yellow cells = manual override (hover for reason). Formulas are live: edit E–H, "
                                           "O, P or T and Excel recalculates the deduction. Generated "
-                                          f"{datetime.now():%d-%b-%Y %H:%M}.").font = Font(italic=True, color="666666")
+                                          f"{datetime.now():%d-%b-%Y %H:%M} from the app's figures at that moment, "
+                                          "including every correction (see the Corrections sheet) and review "
+                                          "(see Flags).").font = Font(italic=True, color="666666")
 
     # ------------------------------------------------------------------ 2. board summary
     ws = wb.create_sheet("Board Summary")
@@ -259,12 +261,44 @@ def build_workbook(db: Session, period: Period) -> bytes:
 
     # ------------------------------------------------------------------ 3. flags
     ws = wb.create_sheet("Flags")
-    rows = [[f["emp_no"], f["name"], f["group"], f["severity"].upper(), MX.FLAG_LABELS.get(f["code"], f["code"]),
-             f["message"]] for f in m["flags"]]
-    _table(ws, 5, ["Employee No", "Name", "Group", "Severity", "Flag", "Detail"], rows, [10, 24, 9, 10, 34, 70], org,
-           f"Exceptions & flags — {period.label}")
+    from app.models import FlagReview
+    rv = {(r.emp_no, r.code): r for r in db.scalars(select(FlagReview).where(FlagReview.period_id == period.id))}
+    rows = []
+    for f in m["flags"]:
+        r = rv.get((f["emp_no"], f["code"]))
+        status = "Reviewed" if r else ("Open" if f["severity"] in ("critical", "high", "medium") else "Info")
+        rows.append([f["emp_no"], f["name"], f["group"], f["severity"].upper(), MX.FLAG_LABELS.get(f["code"], f["code"]),
+                     f["message"], status, r.reviewed_by if r else "", r.reviewed_at if r else None, r.note if r else ""])
+    _table(ws, 5, ["Employee No", "Name", "Group", "Severity", "Flag", "Detail", "Review", "Reviewed by", "Reviewed on",
+                   "Review note"], rows, [10, 24, 9, 10, 34, 70, 10, 14, 16, 40], org, f"Exceptions & flags — {period.label}")
     for i, f in enumerate(m["flags"], start=6):
         ws.cell(row=i, column=4).fill = SEV_FILL.get(f["severity"], GREY)
+        ws.cell(row=i, column=9).number_format = "dd-mmm-yyyy hh:mm"
+        if rows[i - 6][6] == "Open":
+            ws.cell(row=i, column=7).fill = AMBER
+
+    # ------------------------------------------------------------------ every manual correction, with who and why
+    from app.models import DayOverrideRow
+    from app.routes.periods import OVERRIDE_LABELS
+    names = {r.emp_no: r.name for r in res}
+    corr = []
+    for o in db.scalars(select(DayOverrideRow).where(DayOverrideRow.period_id == period.id).order_by(DayOverrideRow.created_at)):
+        what = "; ".join(x for x in (f"day type {o.day_type}" if o.day_type else "",
+                                     f"session 1 {o.s1}" if o.s1 else "", f"session 2 {o.s2}" if o.s2 else "",
+                                     f"hours {MX.hm(o.work_min)}" if o.work_min is not None else "") if x)
+        corr.append([o.emp_no, names.get(o.emp_no, o.emp_no), "Day", o.day, what, o.reason, o.created_by, o.created_at])
+    for o in db.scalars(select(MonthOverrideRow).where(MonthOverrideRow.period_id == period.id).order_by(MonthOverrideRow.created_at)):
+        corr.append([o.emp_no, names.get(o.emp_no, o.emp_no), "Month figure", None,
+                     f"{OVERRIDE_LABELS.get(o.field, o.field)} = {o.value}", o.reason, o.created_by, o.created_at])
+    ws = wb.create_sheet("Corrections")
+    _table(ws, 5, ["Employee No", "Name", "Correction", "Day", "What was changed", "Reason", "By", "When"],
+           corr, [10, 24, 13, 12, 40, 50, 14, 17], org,
+           f"Manual corrections included in these figures — {period.label} ({len(corr)})")
+    for i in range(6, 6 + len(corr)):
+        ws.cell(row=i, column=4).number_format = "dd-mmm-yyyy"
+        ws.cell(row=i, column=8).number_format = "dd-mmm-yyyy hh:mm"
+    if not corr:
+        ws.cell(row=6, column=1, value="No manual corrections this month.")
 
     # ------------------------------------------------------------------ 4. behaviour
     ws = wb.create_sheet("Late & Punctuality")

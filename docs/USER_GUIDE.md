@@ -103,3 +103,12 @@ sign-in page and in the browser tab. *Remove* goes back to the firm's initials.
 - Payroll Excel → *Daily Detail* → **Places** column.
 Place names need a swipe export **with GPS** (greytHR *Employee Swipe Details* with Latitude/Longitude — the October
 export had none). Import it like any other file, at any time in the month.
+
+## Are the downloads up to date?
+Yes — every Excel is created the moment you click, from the app's current figures, so it always includes the
+corrections and reviews made so far. *Corrections* lists each correction with reason, who and when; *Flags* shows
+which exceptions were reviewed and the note. For a month you have finalised, the figures are frozen.
+
+## Backups
+The app backs itself up every day (Settings → Security & system → *Backups & data safety*; *Back up now* for an
+extra copy, e.g. before month-end). Ask IT to also copy the app's data folder to another drive regularly.
