@@ -216,6 +216,7 @@ if(I.trend.length>1){HSCO.chart('cTrendI',{type:'line',data:{labels:I.trend.map(
     const T=window.HSCO&&HSCO.tables&&HSCO.tables.hm; if(T) T.apply(false); else days();   // re-sort / re-total visible rows
   }
   t.addEventListener('tt:apply',days);
+  days();                                   // the table may already be built: fill the per-day footer now
   lg.querySelectorAll('button.lg').forEach(b=>b.addEventListener('click',()=>{on.has(b.dataset.lg)?on.delete(b.dataset.lg):on.add(b.dataset.lg);apply();}));
   document.getElementById('hm-clear').addEventListener('click',()=>{on.clear();apply();});
 })();

@@ -86,7 +86,8 @@ def template(name: str, c: Ctx = Depends(hr)):
                     "Email", "Department", "Designation"], rows,
                    "Employee master import.\nWeekly Off Pattern: MUSTER (follow greytHR), STD_FIRST_SAT, ALL_SAT_OFF, "
                    "SUN_ONLY or CUSTOM (set off weekdays in the app).\nWorking Saturdays: e.g. 1 or 1,3 (CUSTOM only).\n"
-                   "Hours Per Day: blank = policy default (8.5).\nExempt From Deduction: Yes/No.\n"
+                   "Hours Per Day: blank = policy default (8.5).\nExempt From Deduction: Yes/No — the hours-shortfall "
+                   "deduction only (WFH over the limit is still deducted).\n"
                    "Holiday Calendar: name of a calendar created in Rules & calendars.\nBlank cells leave existing values unchanged.")
     elif name == "holidays":
         data = _wb(["Date", "Holiday", "Calendar", "For Locations", "For Groups", "For Employees"], [],

@@ -69,6 +69,8 @@ October 2026 (mostly Sat 31, Sun 25; HS045 on Sat 10 and Sat 17; HS051 on 2-Oct,
 does not count them as WFH (owner rule) — they are off-day work; the Reconciliation page labels them *App rule*.
 HR's October sheet made no deduction for WFH above 2 (HS016 6, HS179 4, HS195 3 WFH days); from v1.6.5 the app deducts
 ½ day per extra day (2, 1 and ½ day) — labelled *App rule* on Reconciliation.
+Quirk: HS045 27-Oct-2026 is `COF/COF` (comp-off all day) in the muster but has two WFH sign-ins 09:49 → 19:36. From
+v1.6.7 such a day is not a WFH day (HR's sheet counted it); Punch exceptions lists it for HR to correct.
 
 ## 2b. `Employee Swipe Details.xlsx` (newer greytHR export, November 2026 — first file with GPS)
 `Sheet0`, header row 1, 17 columns: Employee No, Employee Name, Access Card, Shift, **Swipe Date** (timestamp),

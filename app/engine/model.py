@@ -220,6 +220,7 @@ class EmployeeMonth:
     partial_wfh_days: int = 0
     wfh_swipes: int = 0
     offday_wfh_days: int = 0      # WFH sign-ins on the person's weekly off / holiday: off-day work, not WFH
+    leaveday_wfh_days: int = 0    # WFH sign-ins on a working day of full leave / absence: not WFH (v1.6.7)
     wfh_excess_days: float = 0    # WFH days above the monthly limit
     shortfall_deduction_days: float = 0   # part of deduction_days for hours shortfall
     wfh_deduction_days: float = 0         # part of deduction_days for WFH above the limit

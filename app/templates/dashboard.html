@@ -26,7 +26,7 @@
 
 <div class="kpis">
   {{ ui.kpi('Leave deductions', k.deduction_employees, 'calendar-days', 'bad' if k.deduction_employees else '', '/periods/' ~ key ~ '?f=deduction',
-       ui.delta(k.deduction_employees, pk.deduction_employees if pk else none) or 'people with a shortfall deduction', 'people · ' ~ (k.deduction_days|n) ~ ' days') }}
+       ui.delta(k.deduction_employees, pk.deduction_employees if pk else none) or 'people with a leave deduction (hours or WFH)', 'people · ' ~ (k.deduction_days|n) ~ ' days') }}
   {{ ui.kpi('Payroll LOP days', k.payroll_lop_days|n, 'briefcase', 'bad' if k.payroll_lop_days else '', '/periods/' ~ key ~ '?f=lop',
        ui.delta(k.payroll_lop_days, pk.payroll_lop_days if pk else none) or 'loss of pay incl. leave exhausted') }}
   {{ ui.kpi('Attendance rate', (k.attendance_rate|n(1)) ~ '%', 'circle-check', '', none,

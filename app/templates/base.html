@@ -21,6 +21,7 @@
       <a href="/insights{{ '?period=' ~ pk if pk }}" class="{{ 'on' if path.startswith('/insights') }}">{{ ui.icon('gauge') }}Insights</a>
       {% if cur_period %}<a href="/periods/{{ pk }}" class="{{ 'on' if path.startswith('/periods') }}">{{ ui.icon('file-spreadsheet') }}Payroll leave sheet</a>{% endif %}
       <a href="/flags{{ '?period=' ~ pk if pk }}" class="{{ 'on' if path.startswith('/flags') }}">{{ ui.icon('list-checks') }}Review queue{% if nav_open %}<span class="count">{{ nav_open }}</span>{% endif %}</a>
+      <a href="/exceptions{{ '?period=' ~ pk if pk }}" class="{{ 'on' if path.startswith('/exceptions') }}">{{ ui.icon('triangle-alert') }}Punch exceptions</a>
       <a href="/employees" class="{{ 'on' if path.startswith('/employees') }}">{{ ui.icon('users') }}Employees</a>
       <a href="/locations" class="{{ 'on' if path.startswith('/locations') }}">{{ ui.icon('map-pin') }}Locations</a>
       <div class="grp">Reports</div>

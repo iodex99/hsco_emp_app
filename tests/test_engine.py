@@ -272,6 +272,53 @@ def test_wfh_over_limit_deducts_half_day_per_extra_day():
     assert r.wfh_days == 2 and r.deduction_days == 0                # Sat 10 / Sun 11 are weekly offs
 
 
+def test_wfh_deduction_review_fixes():
+    """v1.6.7 review: WFH on a full leave day is not WFH; flags follow the hours / WFH parts; manual corrections are
+    reported as such; swipes ÷ 2 has no per-day over-limit notes."""
+    def wfh(d):
+        return [Swipe("E1", datetime(2026, 10, d, 11, 0), "Mobile Sign In", "Work from Home", "Mobile Sign In"),
+                Swipe("E1", datetime(2026, 10, d, 19, 30), "Mobile Sign In", "Work from Home", "Mobile Sign In")]
+    sw = [s for d in (5, 6, 7, 8) for s in wfh(d)]
+    # 5 and 6 are full PL days, 7 is half PL: WFH days = 7 and 8 only → within the limit, no deduction
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, month(statuses={5: "PL", 6: "PL"}), sw, POL)
+    assert r.pl_days == 2 and r.wfh_days == 2 and r.leaveday_wfh_days == 2 and r.deduction_days == 0
+    assert any("day of leave / absence" in n for n in next(d for d in r.days if d.day.day == 5).notes)
+    # WFH-only deduction: no "hours shortfall" flag
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, month(), sw, POL)
+    codes = [f[0] for f in r.flags]
+    assert r.deduction_days == 1.0 and "WFH_OVER_LIMIT" in codes and "SHORTFALL_DEDUCTION" not in codes
+    # hours-exempt and short + WFH over the limit: SHORTFALL_EXEMPT (not a false "h short → deducted")
+    r = compute_employee_month(Employee("E1", group="Article"), 2026, 10, month(hours=(7, 0)), sw, POL)
+    codes = [f[0] for f in r.flags]
+    assert "SHORTFALL_EXEMPT" in codes and "SHORTFALL_DEDUCTION" not in codes and r.deduction_days == 1.0
+    # shortfall + WFH: the hours flag shows only the hours part
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, month(hours=(8, 20)), sw, POL)
+    f = next(x for x in r.flags if x[0] == "SHORTFALL_DEDUCTION")
+    assert r.deduction_days == 1.5 and "→ 0.5 day(s) deducted" in f[2]
+    # a manual correction of the deduction is reported as such everywhere
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, month(), sw, POL,
+                               month_overrides={"deduction_days": 0.5})
+    assert r.deduction_days == 0.5 and "0.5 day deduction (set manually; calculated 1)" in r.remark
+    assert "set manually to 0.5" in next(x for x in r.flags if x[0] == "WFH_OVER_LIMIT")[2]
+    assert not any("deducted from leave" in n for d in r.days for n in d.notes)
+    # swipes ÷ 2: deduction from the half-count, no misleading "WFH day n" notes
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, month(), sw, Policy(wfh_method="swipes_half"))
+    assert r.wfh_days == 4 and r.wfh_deduction_days == 1.0
+    assert not any("of the month — over the limit" in n for d in r.days for n in d.notes)
+
+
+def test_excel_wfh_term_matches_what_was_charged():
+    from types import SimpleNamespace as NS
+    from app.reports.excel import _wfh_term
+    pol = NS(wfh_limit_days=2, wfh_excess_deduction_days=0.5)
+    assert _wfh_term({"wfh_days": 4}, 6, pol) == ""                                  # calculated before v1.6.5
+    assert _wfh_term({"wfh_excess_days": 2, "wfh_deduction_days": 0}, 6, pol) == ""  # exempt under v1.6.5 rules
+    assert _wfh_term({"wfh_excess_days": 2, "wfh_deduction_days": 1, "wfh_deduction_exempt": True}, 6, pol) == ""
+    assert _wfh_term({"wfh_excess_days": 2, "wfh_deduction_days": 1}, 6, pol) == "+CEILING(MAX(0,J6-2),1)*0.5"
+    assert _wfh_term({"wfh_excess_days": 2, "wfh_deduction_days": 2}, 7, pol) == "+CEILING(MAX(0,J7-2),1)*1"   # old rate kept
+    assert _wfh_term({"wfh_excess_days": 0, "wfh_deduction_days": 0}, 8, pol) == "+CEILING(MAX(0,J8-2),1)*0.5"
+
+
 def test_targeted_holiday_without_calendar_and_matching():
     from types import SimpleNamespace as NS
     from app.services import holidays as TH

@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.6.7 — 2026-11-18 — Punch exceptions: missing / incorrect punches, regularisations, WFH … day by day
+Owner: "they also want to see incorrect / missing punches from employees, also more such data like regularisations,
+wfh etc".
+- **Punch exceptions** (sidebar, every role): one row per employee-day with all its issues — *Missing punch*
+  (one punch / in without out), *Present, no punch*, *In/out changed (no matching punch)* (times edited in greytHR),
+  *Rejected sign-in*, *Phone sign-in tagged 'Office'*, *Regularisation request* (permission punch, with its reason),
+  *WFH*, *WFH over the limit* (the 3rd, 4th … WFH day), *WFH on a day off*, *Late > 1 h* (minutes), *Early exit*,
+  *Short day*, *Absent / LOP*, *Worked on a day off* — with in/out, hours, every punch, reason / remark, greytHR
+  status and notes. Filter chips with counts, search / filter / sort / group / columns / CSV; KPIs for punch issues,
+  regularisations and WFH. *By employee* tab: counts per person and type (+ WFH deduction), with totals.
+- Clicking a row opens that employee's month **on that day** (punches, places, correction form): new `?day=` link.
+- Payroll Excel: new sheets *Punch Exceptions* (day by day) and *Exceptions by Employee*.
+- Built from the stored day detail, so it always agrees with the payroll figures and corrections; partners on
+  automatic attendance are not checked for punches. October 2026: 157 days with missing / incorrect punches
+  (44 people), 162 regularisations (22 requests + 140 changed times), 53 WFH days (7 over the limit, 19 on days off).
+
+**Full review of v1.6.2–1.6.6 (independent code review + all tests + browser crawl of every page on real data) — fixes:**
+- *WFH on a day of full leave / absence is not a WFH day* (it was charged on top of the leave). Counted as
+  `leaveday_wfh_days`, noted on the day, listed as *WFH on a leave / absent day* in Punch exceptions. October: HS045
+  27-Oct (comp-off all day in greytHR, yet 9.8 h of WFH sign-ins) — HR should check that day.
+- *Payroll Excel for older months:* the WFH term is added only to rows calculated under the WFH-deduction rules, at the
+  rate actually charged — months finalised before v1.6.5 / v1.6.6 now match the app and their own ledger columns.
+- *Flags:* "Hours shortfall → leave deduction" now follows the hours part only (was raised for WFH-only deductions and,
+  wrongly, for hours-exempt people, hiding "short but exempt"). Overview KPI reads "people with a leave deduction".
+- *Manual deduction corrections* are reported as such in the remark ("set manually; calculated 1"), the flags and the
+  day notes (they kept showing the calculated amount).
+- *swipes ÷ 2 method:* no "WFH day n" notes (there is no nth day in that method).
+- *Heatmap:* the per-day footer is filled when the page opens (was blank until a legend click).
+- *Targeted holidays:* only the holiday's month and later draft months are recalculated (was every draft month); a
+  holiday in a finalised month says it doesn't change that month; people serving notice can be chosen and are
+  counted; in the holiday-list import a name shared by several employees is reported instead of picking one.
+- *Wording:* "Exempt from hours deduction" badge; the employee-master template explains that the exemption is for the
+  hours shortfall only; the ledger's WFH line shows the rate the month was charged at.
+- Calculation rules version 5: draft months recalculate once after the update.
+
 ## 1.6.6 — 2026-11-18 — Article, SS and Trainee are also deducted for WFH over the limit
 Owner: "yes they shall also lose half day".
 - The ½-day-per-extra-WFH-day deduction now applies to everyone except the groups in the new setting **Groups not

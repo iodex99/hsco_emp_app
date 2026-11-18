@@ -650,6 +650,43 @@ def test_rule_change_recalculates_draft_months_once(loaded):
     assert maintenance.recalc_on_rules_change() == 0                # only once per rules version
 
 
+def test_punch_exceptions_page_and_excel(loaded):
+    """v1.6.7: missing / incorrect punches, regularisations, WFH etc. day by day and by employee, matching the days."""
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import Period
+    from app.services.exceptions import month_exceptions
+    c = loaded
+    with session_scope() as db:
+        X = month_exceptions(db, db.scalar(select(Period).where(Period.year == 2026, Period.month == 10)))
+    by = {(x["emp_no"], x["date"]): x["issues"] for x in X["rows"]}
+    people = {p["emp_no"]: p for p in X["people"]}
+    # every flag on a stored day shows up, and nothing else
+    for emp in ("T001", "T002", "T004", "T005", "T006"):
+        for d in _result_days(emp):
+            iss = by.get((emp, d["date"]), [])
+            assert ("missing" in iss) == bool(d["missing"]), (emp, d["date"])
+            assert ("wfh" in iss) == bool(d["wfh"]), (emp, d["date"])
+            assert ("very_late" in iss) == bool(d["very_late"]), (emp, d["date"])
+    assert people["T006"]["missing"] >= 1 and (people["T006"]["permission"] + people["T006"]["edited"]) >= 1
+    assert people["T004"]["wfh"] == 4 and people["T004"]["wfh_over"] == 2 and people["T004"]["wfh_deduction"] == 1.0
+    assert sum(1 for (e, _d), i in by.items() if e == "T004" and "wfh_over" in i) == 2   # the 3rd and 4th WFH day
+    assert people["T005"]["absent"] >= 2
+    assert "T003" not in people or not people["T003"]["missing"]          # partner on automatic attendance: not checked
+    html = c.get("/exceptions?period=2026-10").text
+    assert "Punch exceptions" in html and 'id="ex"' in html and 'id="exp"' in html and 'data-chip="missing"' in html
+    assert 'href="/exceptions?period=2026-10"' in html                     # sidebar
+    assert "/periods/2026-10/employee/T006?day=2026-10-" in html           # row opens that day
+    assert "openDay(qd)" in c.get("/periods/2026-10/employee/T006?day=2026-10-14").text
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    ws = wb["Punch Exceptions"]
+    assert [x.value for x in ws[5]][:6] == ["Date", "Day", "Employee No", "Name", "Group", "Issues"]
+    assert ws.max_row - 5 == len(X["rows"])
+    assert "Exceptions by Employee" in wb.sheetnames and wb["Exceptions by Employee"].max_row - 5 == len(X["people"])
+    # viewers can see it too
+    assert c.get("/exceptions").status_code == 200
+
+
 def _result_days(emp):
     from sqlalchemy import select
     from app.db import session_scope

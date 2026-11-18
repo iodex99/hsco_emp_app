@@ -127,3 +127,10 @@ extra copy, e.g. before month-end). Ask IT to also copy the app's data folder to
 Every list (late, regularisations, missing punches, absence, WFH, hours) includes everyone it applies to. Choose
 **Top 5 / 10 / 20 / All** (remembered for all lists) or type a name or employee number in the list's search box; the
 number on the left is the person's real rank.
+
+## Punch exceptions
+Sidebar → **Punch exceptions**: every day someone has a missing or incorrect punch, a regularisation, WFH (over the
+limit, on a day off), was more than an hour late, left early, had a short day, was absent or worked a day off — one
+row per person and day with all issues, punches and reasons. Click a chip (e.g. *Missing punch*) to see only those;
+click a row to open that person's day and correct it. *By employee* gives the counts per person. The same lists are
+in the payroll Excel (*Punch Exceptions*, *Exceptions by Employee*).

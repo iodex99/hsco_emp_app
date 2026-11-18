@@ -325,14 +325,20 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                 if r["for_locations"] or r["for_groups"] or r["for_employees"]:
                     # targeted holiday: employees given by number or exact name
                     if emp_lookup is None:
-                        emp_lookup = {}
+                        emp_lookup, by_name = {}, {}
                         for no, nm in db.execute(select(Employee.emp_no, Employee.name)):
                             emp_lookup[no.lower()] = no
-                            emp_lookup.setdefault((nm or "").strip().lower(), no)
+                            by_name.setdefault((nm or "").strip().lower(), []).append(no)
+                        for nm, nos in by_name.items():
+                            if nm and nm not in emp_lookup:
+                                emp_lookup[nm] = nos[0] if len(nos) == 1 else ("?", nos)
                     emps = []
                     for x in TH.split(r["for_employees"]):
                         no = emp_lookup.get(x.lower())
-                        if no:
+                        if isinstance(no, tuple):
+                            warnings.append(f"{r['date']:%d-%b-%Y} {r['name'] or 'holiday'}: '{x}' matches several "
+                                            f"employees ({', '.join(no[1])}) — use the employee number")
+                        elif no:
                             emps.append(no)
                         else:
                             warnings.append(f"{r['date']:%d-%b-%Y} {r['name'] or 'holiday'}: employee '{x}' not found")

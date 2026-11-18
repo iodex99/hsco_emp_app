@@ -292,6 +292,18 @@ def flags_page(period: Optional[str] = None, code: str = "", show: str = "open",
                   labels=MX.FLAG_LABELS)
 
 
+@router.get("/exceptions", response_class=HTMLResponse)
+def exceptions_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
+    """Missing / incorrect punches, regularisations, WFH and other day exceptions (services/exceptions.py)."""
+    from app.services.exceptions import month_exceptions
+    p = pick_period(c, period)
+    if p is None:
+        return render(c, "empty.html")
+    if p.computed_at is None:
+        return pending_month(c, p)
+    return render(c, "exceptions.html", period=p, X=month_exceptions(c.db, p))
+
+
 @router.post("/flags/review")
 async def review_flag(request: Request, c: Ctx = Depends(hr)):
     """Mark flags reviewed / re-open them: one (emp_no + code), many (items=[{emp_no, code}, …]) or every open flag

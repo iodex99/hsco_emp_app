@@ -46,6 +46,10 @@ def _recompute_drafts(c: Ctx):
         c.db.commit()          # one month per transaction: never hold the write lock for the whole cascade
 
 
+def _active_on(e, d: date) -> bool:
+    return (not e.doj or e.doj <= d) and (not e.dol or e.dol >= d)
+
+
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(c: Ctx = Depends(hr)):
     cals = c.db.scalars(select(HolidayCalendar).order_by(HolidayCalendar.name)).all()
@@ -59,7 +63,7 @@ def settings_page(c: Ctx = Depends(hr)):
     names = {e.emp_no: e.name for e in emps}
     targeted = []
     for h in c.db.scalars(select(TargetedHoliday).order_by(TargetedHoliday.day.desc())):
-        who = [e for e in emps if TH.applies(h, e.emp_no, e.location or "", e.group or "") and not e.dol]
+        who = [e for e in emps if TH.applies(h, e.emp_no, e.location or "", e.group or "") and _active_on(e, h.day)]
         targeted.append({"h": h, "who": TH.describe(h, names), "count": len(who),
                          "people": ", ".join(e.name for e in who[:40]) + (" …" if len(who) > 40 else ""),
                          "unknown": [x for x in TH.split(h.emp_nos) if x not in names]})
@@ -68,7 +72,8 @@ def settings_page(c: Ctx = Depends(hr)):
                   buckets=BUCKETS, cals=cals, shift_names=shift_names, targeted=targeted,
                   th_locations=sorted({e.location for e in emps if e.location}),
                   th_groups=sorted({e.group for e in emps if e.group}),
-                  th_people=[(e.emp_no, e.name, e.location or "", e.group or "") for e in emps if not e.dol])
+                  th_people=[(e.emp_no, e.name, e.location or "", e.group or "") for e in emps
+                             if not e.dol or e.dol >= date.today()])
 
 
 @router.post("/settings/policy")
@@ -220,6 +225,21 @@ def delete_holiday(hid: int, c: Ctx = Depends(hr)):
     return redirect("/settings#holidays", "Holiday removed.")
 
 
+def _recompute_month_of(c: Ctx, d: date) -> str:
+    """Recalculate the month containing d and the draft months after it (balances carry forward), one month per
+    transaction. Returns a note for the flash message when that month is finalised (its figures don't change)."""
+    from app.services.compute import get_period
+    from app.services.imports import recompute_from
+    p = get_period(c.db, d.year, d.month)
+    if p is None or p.computed_at is None:
+        return ""
+    if p.status != "DRAFT":
+        return f" {p.label} is finalised, so its figures don't change — re-open it to apply the holiday."
+    c.db.commit()
+    recompute_from(c.db, {p.id}, commit_each=True)
+    return ""
+
+
 @router.post("/settings/targeted-holidays")
 def add_targeted_holiday(day: str = Form(...), name: str = Form(""), locations: list[str] = Form([]),
                          groups: list[str] = Form([]), emp_nos: list[str] = Form([]), c: Ctx = Depends(hr)):
@@ -241,8 +261,8 @@ def add_targeted_holiday(day: str = Form(...), name: str = Form(""), locations: 
     audit(c.db, c.user, "holiday.targeted.add", "holiday", d.isoformat(),
           {"name": h.name, "locations": locs, "groups": grps, "employees": emps}, c.ip)
     c.db.flush()
-    _recompute_drafts(c)
-    return redirect("/settings#holidays", f"Targeted holiday {d:%d-%b-%Y} added ({TH.describe(h)}).")
+    note = _recompute_month_of(c, d)
+    return redirect("/settings#holidays", f"Targeted holiday {d:%d-%b-%Y} added ({TH.describe(h)}).{note}")
 
 
 @router.post("/settings/targeted-holidays/{hid}/delete")
@@ -251,9 +271,10 @@ def delete_targeted_holiday(hid: int, c: Ctx = Depends(hr)):
     if h:
         audit(c.db, c.user, "holiday.targeted.delete", "holiday", h.day.isoformat(),
               {"name": h.name, "for": TH.describe(h)}, c.ip)
+        day = h.day
         c.db.delete(h)
         c.db.flush()
-        _recompute_drafts(c)
+        return redirect("/settings#holidays", "Targeted holiday removed." + _recompute_month_of(c, day))
     return redirect("/settings#holidays", "Targeted holiday removed.")
 
 

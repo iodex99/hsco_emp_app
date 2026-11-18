@@ -209,3 +209,10 @@ Holiday-list import: fields `for_locations`, `for_groups`, `for_employees`. `eng
 `maintenance.recalc_on_rules_change` (setting `rules_version`). `web.ASSET_V` = SHA-1 of app.css/app.js/table.js/
 icons.svg (10 hex), Jinja global `asset_v`, appended as `?v=` to those URLs; `window.HSCO_ICONS` carries the sprite
 URL for icons built in JS.
+
+## Punch exceptions (v1.6.7)
+`services/exceptions.py`: `day_issues(day, wfh_types, auto)` → issue keys; `month_exceptions(db, period)` → rows,
+per-employee counts, KPIs (from `MonthResult.days`, no extra queries). Route `GET /exceptions` (viewer) in
+`routes/pages.py`, template `exceptions.html` (table toolkit + chips). Employee page opens a day from `?day=YYYY-MM-DD`.
+Excel: sheets *Punch Exceptions*, *Exceptions by Employee* in `build_workbook`. Real October: 1,227 rows, service
+0.05 s, page 0.33 s server / 1.7 s total, 1.1 MB.

@@ -79,7 +79,8 @@ Opening manual. Availed > balance ⇒ flag `COMPOFF_OVERDRAWN`; overdraft debite
 HR's manual reclassification (e.g. HS134).
 
 ## 6. WFH
-Swipes whose Location Type ∈ {`Work from Home`, `WFH`}, **on the employee's own WORKDAY only** (v1.6.4, owner): the
+Swipes whose Location Type ∈ {`Work from Home`, `WFH`}, **on the employee's own WORKDAY only, when present at least
+half the day** (v1.6.7: a WFH sign-in on a day of full leave / absence is not WFH — `leaveday_wfh_days`, day note) (v1.6.4, owner): the
 day type after their weekly-off pattern, holiday calendar, targeted holidays and day corrections. A WFH sign-in on
 their weekly off / holiday is *off-day work* (extra day, hours, comp-off ≥ 5 h as usual), not WFH; the day gets the
 note "Work from home on a weekly off/holiday — not counted as WFH" and the month stores `offday_wfh_days`.

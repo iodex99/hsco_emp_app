@@ -16,7 +16,7 @@ from app.services.settings import get_policy
 
 FLAG_LABELS = {
     "NO_ATTENDANCE": "No attendance all month",
-    "SHORTFALL_DEDUCTION": "Hours shortfall → leave deduction",
+    "SHORTFALL_DEDUCTION": "Hours shortfall → leave deduction",   # hours part only (v1.6.7)
     "SHORTFALL_EXEMPT": "Shortfall but exempt",
     "UNAUTHORISED_ABSENCE": "Unauthorised absence",
     "WFH_OVER_LIMIT": "WFH above monthly limit",
@@ -329,10 +329,11 @@ def reconciliation(db: Session, period: Period) -> dict:
                     continue
                 if abs(float(mv) - float(av)) > 0.02:
                     d = {"field": label, "manual": round(float(mv), 2), "app": round(float(av), 2), "rule": ""}
-                    off = r.data.get("offday_wfh_days") or 0
+                    off = (r.data.get("offday_wfh_days") or 0) + (r.data.get("leaveday_wfh_days") or 0)
                     if k == "wfh_days" and off and abs(float(mv) - float(av) - off) <= 0.51:
-                        # HR counts WFH on weekly offs / holidays; the app does not (BUSINESS_RULES §6)
-                        d["rule"] = f"{off} WFH day(s) on a weekly off / holiday — not WFH under the app's rule"
+                        # HR counts WFH on weekly offs / holidays / leave days; the app does not (BUSINESS_RULES §6)
+                        d["rule"] = (f"{off} WFH day(s) on a weekly off, holiday or leave day — not WFH under the "
+                                     f"app's rule")
                     diffs.append(d)
             mremark = (mrow.get("remark") or "").lower()
             mded = 0.0

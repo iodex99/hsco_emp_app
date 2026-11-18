@@ -6,7 +6,7 @@
 <div class="crumbs"><a href="/periods/{{ period.key }}">Payroll leave sheet</a> {{ ui.icon('chevron-right','sm') }} <span>{{ r.name }}</span></div>
 <div class="ph" style="margin-top:4px">
   <div class="person" style="gap:14px"><span class="av" style="width:48px;height:48px;font-size:16px;background:var(--brand-50);color:var(--brand-700)">{{ ui.initials(r.name) }}</span>
-    <div><h1>{{ r.name }}</h1><div class="sub">{{ r.emp_no }} · {{ r.group or 'Group not set' }} · {{ r.location }}{% if emp and emp.doj %} · joined {{ emp.doj|dmy }}{% endif %}{% if d.exempt %} · <span class="badge b-grey">Exempt from deduction</span>{% endif %}</div></div></div>
+    <div><h1>{{ r.name }}</h1><div class="sub">{{ r.emp_no }} · {{ r.group or 'Group not set' }} · {{ r.location }}{% if emp and emp.doj %} · joined {{ emp.doj|dmy }}{% endif %}{% if d.exempt %} · <span class="badge b-grey" title="No hours-shortfall deduction. WFH over the limit is still deducted unless the group is in 'Groups not deducted for WFH'.">Exempt from hours deduction</span>{% endif %}</div></div></div>
   <div class="actions">
     <a class="btn ghost icon {{ 'disabled' if not prev_emp }}" {% if prev_emp %}href="/periods/{{ period.key }}/employee/{{ prev_emp }}"{% endif %} title="Previous employee (←)" id="prev-emp">{{ ui.icon('chevron-left') }}</a>
     <a class="btn ghost icon" {% if next_emp %}href="/periods/{{ period.key }}/employee/{{ next_emp }}"{% endif %} title="Next employee (→)" id="next-emp">{{ ui.icon('chevron-right') }}</a>
@@ -160,7 +160,7 @@
       <tr><td>+ Credited</td><td class="num">{{ d.leave_credit|n }}</td></tr>
       <tr><td>− Paid leave taken</td><td class="num">{{ d.leave_debit_pl|n }}</td></tr>
       <tr><td>− Hours-shortfall deduction</td><td class="num">{{ d.leave_debit_shortfall|n }}</td></tr>
-      {% if d.leave_debit_wfh %}<tr><td>− WFH over the limit ({{ d.wfh_excess_days|n }} day{{ 's' if d.wfh_excess_days != 1 }} × {{ policy.wfh_excess_deduction_days|n(1) }})</td><td class="num">{{ d.leave_debit_wfh|n }}</td></tr>{% endif %}
+      {% if d.leave_debit_wfh %}<tr><td>− WFH over the limit ({{ d.wfh_excess_days|n }} day{{ 's' if d.wfh_excess_days != 1 }} × {{ ((d.leave_debit_wfh / d.wfh_excess_days) if d.wfh_excess_days else policy.wfh_excess_deduction_days)|n(1) }})</td><td class="num">{{ d.leave_debit_wfh|n }}</td></tr>{% endif %}
       <tr><td>− Unauthorised absence</td><td class="num">{{ d.leave_debit_absent|n }}</td></tr>
       <tr><td>− Comp-off taken beyond balance</td><td class="num">{{ d.leave_debit_compoff|n }}</td></tr>
       <tr class="tot"><td>Closing balance</td><td class="num">{{ d.leave_closing|n if d.leave_closing is not none else '—' }}</td></tr>
@@ -268,6 +268,7 @@ function openDay(date){
   HSCO.openDrawer('day');
 }
 document.querySelectorAll('[data-day]').forEach(b=>b.addEventListener('click',()=>openDay(b.dataset.day)));
+{ const qd = new URLSearchParams(location.search).get('day'); if (qd && byDate[qd]) openDay(qd); }   // link from Punch exceptions
 document.querySelectorAll('#quick [data-q]').forEach(b=>b.addEventListener('click',()=>{const [a,c,h]=b.dataset.q.split(',');
   const f=document.getElementById('day-form'); f.s1.value=a; f.s2.value=c; f.work_hm.value=h||''; f.reason.focus();}));
 const af=document.getElementById('adj-field'); if(af){const upd=()=>{document.getElementById('adj-cur').textContent=af.selectedOptions[0].dataset.cur||'—'};af.onchange=upd;upd();}

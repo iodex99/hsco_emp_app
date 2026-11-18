@@ -118,3 +118,20 @@ Flag: `SHARED_DEVICE` (high) "Phone used to sign in for several people" — see 
 *v1.5.2:* the Bradford factor was removed on request. 12-month absence is reported as **unplanned absence days** and
 **spells** (a spell = consecutive working days with unplanned absence; offs/holidays between don't break it; a spell
 crossing a month boundary counts once).
+
+## Punch exceptions (v1.6.7 — `app/services/exceptions.py`; Punch exceptions page, Excel *Punch Exceptions* / *Exceptions by Employee*)
+One row per employee-day with ≥ 1 issue; all from the stored day detail.
+| Issue | Rule |
+|---|---|
+| Missing punch | present working day with one punch only, or an in-time without an out-time (`missing`) |
+| Present, no punch | marked present in greytHR with no punch at all that day (people who punch at all) |
+| In/out changed (no matching punch) | regularised day without a Permission punch: greytHR in/out time matches no punch |
+| Regularisation request | a `Permission` punch that day (reason shown) |
+| Rejected sign-in | a sign-in with approval Rejected / Declined / Cancelled / Denied (ignored for attendance) |
+| Phone sign-in tagged 'Office' | mobile sign-in with Location Type Office |
+| WFH / WFH over the limit / WFH on a day off | WFH working day; the WFH days after the first *limit* (date order); WFH on own weekly off / holiday |
+| WFH on a leave / absent day | WFH sign-in on a working day of full leave / absence (not counted — check the day) |
+| Late > 1 h / Early exit / Short day | as in Behaviour metrics (lateness under 1 h is on Insights / Overview) |
+| Absent / LOP / Worked on a day off | unauthorised absence or LOP half; work on a weekly off / holiday (not WFH) |
+Partners on automatic attendance are not checked for punch issues. "Punch issues" KPI = days with missing punch, no
+punch, changed times or a rejected sign-in; "Regularisations" = requests + changed times.

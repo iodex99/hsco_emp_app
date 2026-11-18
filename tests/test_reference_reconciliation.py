@@ -42,7 +42,7 @@ def test_population(run):
 def _hr(r, k):
     """The app's figure as HR's sheet would show it. HR counted WFH sign-ins on weekly offs / holidays as WFH; the app
     no longer does (owner, 2026-11-18 — BUSINESS_RULES §6), so those days are added back for the comparison."""
-    return getattr(r, k) + (r.offday_wfh_days if k == "wfh_days" else 0)
+    return getattr(r, k) + (r.offday_wfh_days + r.leaveday_wfh_days if k == "wfh_days" else 0)
 
 
 def test_every_column_matches_manual_mis(run):
@@ -66,10 +66,14 @@ def test_wfh_on_own_off_days_not_counted(run):
     off = {e: r.offday_wfh_days for e, r in res.items() if r.offday_wfh_days}
     assert sum(off.values()) == 18 and len(off) == 17 and off["HS045"] == 2
     for e in off:
-        days = [d for d in res[e].days if any("not counted as WFH" in n for n in d.notes)]
+        days = [d for d in res[e].days if any("not counted as WFH (off-day work)" in n for n in d.notes)]
         assert len(days) == off[e] and all(d.day_type != "WORKDAY" and not d.is_wfh and d.is_extra_work for d in days)
     for e in ("HS020", "HS045", "HS093"):
         assert res[e].wfh_days <= 2 < res[e].wfh_days + res[e].offday_wfh_days
+    # v1.6.7: HS045's 27-Oct is comp-off for the whole day in greytHR, yet has WFH sign-ins — not a WFH day
+    assert {e: r.leaveday_wfh_days for e, r in res.items() if r.leaveday_wfh_days} == {"HS045": 1}
+    d27 = next(d for d in res["HS045"].days if d.day.day == 27)
+    assert not d27.is_wfh and d27.b1 == d27.b2 == "compoff" and any("day of leave / absence" in n for n in d27.notes)
 
 
 def test_deductions_match_manual_remarks(run):

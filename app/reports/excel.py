@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import io
-from datetime import datetime
+from datetime import date, datetime
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
@@ -142,6 +142,22 @@ def _table(ws, title_row: int, headers: list, rows: list[list], widths=None, org
         ws.auto_filter.ref = f"A{title_row}:{get_column_letter(len(headers))}{title_row + len(rows)}"
 
 
+def _wfh_term(d: dict, i: int, pol) -> str:
+    """Excel term for the WFH-over-limit deduction of one payroll row, matching what the app charged that month:
+    none for results calculated before the rule (v1.6.5), for people not deducted for WFH, or when the month's
+    stored figures show no WFH deduction despite days over the limit (e.g. exempt under v1.6.5 rules); otherwise the
+    rate actually charged (stored deduction ÷ extra days), falling back to the current setting."""
+    if "wfh_deduction_days" not in d or d.get("wfh_deduction_exempt"):
+        return ""
+    excess, ded = d.get("wfh_excess_days") or 0, d.get("wfh_deduction_days") or 0
+    if excess and not ded:
+        return ""
+    rate = round(ded / excess, 4) if excess else pol.wfh_excess_deduction_days
+    if not rate:
+        return ""
+    return f"+CEILING(MAX(0,J{i}-{pol.wfh_limit_days:g}),1)*{rate:g}"
+
+
 def build_workbook(db: Session, period: Period) -> bytes:
     org = get_general(db)
     pol = get_policy(db)
@@ -183,9 +199,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
             21: "Yes" if d.get("exempt") else "No",
             # hours part (0 when exempt: column U) + WFH part (row without it when the person is not deducted
             # for WFH: Partner-type group or a month exception)
-            22: f'=IF(U{i}="Yes",0,IF(-R{i}>{grace},CEILING(ROUND(-R{i},4)/{blk},1)*{per_blk},0))'
-                + ("" if d.get("wfh_deduction_exempt") else
-                   f'+CEILING(MAX(0,J{i}-{pol.wfh_limit_days:g}),1)*{pol.wfh_excess_deduction_days:g}'),
+            22: f'=IF(U{i}="Yes",0,IF(-R{i}>{grace},CEILING(ROUND(-R{i},4)/{blk},1)*{per_blk},0))' + _wfh_term(d, i, pol),
             23: d.get("pl_days"), 24: d.get("cof_days"), 25: d.get("unauth_absent_days"), 26: d.get("lop_days"),
             27: d.get("leave_opening"), 28: d.get("leave_credit"), 29: d.get("leave_debit_total"),
             30: d.get("leave_closing"), 31: d.get("salary_deduction_days"), 32: d.get("payroll_lop_days"),
@@ -361,6 +375,30 @@ def build_workbook(db: Session, period: Period) -> bytes:
     _table(ws, 5, ["Employee No", "Name", "Group", "Regularised days", "Permission swipes", "Missing-punch days",
                    "Present with no punch", "Auto attendance", "Total swipes"], rows, [10, 24, 9, 12, 12, 12, 12, 10, 10],
            org, f"Regularisation & punch integrity — {period.label}")
+
+    # punch exceptions, day by day (same list as the Punch exceptions page)
+    from app.services.exceptions import month_exceptions
+    X = month_exceptions(db, period)
+    ws = wb.create_sheet("Punch Exceptions")
+    _table(ws, 5, ["Date", "Day", "Employee No", "Name", "Group", "Issues", "In", "Out", "Hours", "Punches",
+                   "Permission reason", "Remark", "greytHR status", "Corrected in app", "Notes"],
+           [[date.fromisoformat(x["date"]), x["wd"], x["emp_no"], x["name"], x["group"],
+             ", ".join(X["labels"][k] + (f" {x['late_min']} min" if k == "very_late" and x["late_min"] else "")
+                       for k in x["issues"]),
+             x["in"], x["out"], round(x["work_min"] / 60, 2) if x["work_min"] else None, x["punches"], x["reason"],
+             x["remark"], x["status"], "Yes" if x["overridden"] else "", x["notes"]] for x in X["rows"]],
+           [11, 6, 10, 24, 9, 40, 7, 7, 7, 40, 24, 24, 10, 9, 50], org,
+           f"Punch exceptions — {period.label} (missing / incorrect punches, regularisations, WFH, late / early / short, "
+           f"absence, off-day work)")
+    for row in ws.iter_rows(min_row=6, max_col=1):
+        row[0].number_format = "dd-mmm-yyyy"
+    ws = wb.create_sheet("Exceptions by Employee")
+    keys = ["missing", "nopunch", "edited", "permission", "rejected", "wfh", "wfh_over", "wfh_offday", "wfh_leave", "very_late",
+            "early", "short", "absent", "offday_work"]
+    _table(ws, 5, ["Employee No", "Name", "Group"] + [X["labels"][k] for k in keys] + ["WFH deduction (days)"],
+           [[pp["emp_no"], pp["name"], pp["group"]] + [pp[k] or None for k in keys] + [pp["wfh_deduction"] or None]
+            for pp in X["people"]],
+           [10, 24, 9] + [11] * (len(keys) + 1), org, f"Exceptions by employee — {period.label}")
 
     ws = wb.create_sheet("Leave & Comp-off Ledger")
     rows = []

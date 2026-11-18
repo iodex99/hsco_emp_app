@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`137 passed` (v1.6.6 and v1.6.5; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`140 passed` (v1.6.7; v1.6.6 and v1.6.5: 137; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
@@ -140,3 +140,15 @@ Engine: employee-exempt, Article, SS and Trainee over the limit are deducted (re
 month exception are not; empty Partner list deducts Partners too. Web: T004 (Article, 4 WFH) → 1 day, Partner row has
 no WFH term in the Excel formula; e2e sort/filter/CSV expectations updated (deductions T001, T002, T004 = 2.5 d).
 137 passed.
+
+## v1.6.7 — Punch exceptions
+New test: every stored day's missing / WFH / late>1h mark appears as an issue and nothing else; T006 missing punch +
+regularisation, T004 4 WFH → 2 over the limit (3rd and 4th day) and 1 day deduction, T005 absences, partner on
+automatic attendance not checked; page, chips, sidebar link, `?day=` deep link; Excel sheets match the rows.
+Browser on real October data: chips and counts, Missing punch filter (77 rows), a Regularisation row opens the
+employee's day drawer, By employee tab; no console errors.
+Session review (v1.6.2–1.6.7): independent code review (9 findings, all fixed) + new tests — WFH on full-leave days,
+hours flag vs WFH-only / hours-exempt deductions, manual deduction wording, swipes ÷ 2 notes, Excel WFH term for
+old-rule months (`_wfh_term`), HS045 leave-day WFH on real data. Full suite **140 passed** (incl. 10 browser tests).
+Browser crawl of every page on real data: admin 227 pages, 0 errors, 0 JS errors (slowest: Punch exceptions 0.5 s
+server, 1.1 MB); viewer 226 pages, only the 4 admin pages refused (403) as intended. Heatmap footer filled on load.
