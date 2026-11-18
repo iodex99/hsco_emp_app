@@ -28,6 +28,13 @@ WFH, absence, regularisation) once more than one month exists · per-employee hi
 ## Top lists
 Most often > 1 h late · above WFH limit · most regularisations · missing punches · unauthorised absence ·
 most excess hours · hours shortfall (with deduction) · comp-offs earned · leave adjacent to weekends/holidays.
+Each list holds every employee who qualifies (value ≥ 1 day, or above the WFH limit; ties by name); the page shows the
+top 5/10/20/all and searches by name or employee no. (v1.6.3).
+
+## Heatmap Total (v1.6.3)
+Insights → Attendance heatmap: *Total* = number of days in the legend states the user highlighted (several add up; a
+half-leave day counts as one day); with nothing highlighted, all days with a state. Footer: sums for the rows shown
+after search/filter, and per day the number of highlighted cells.
 
 ## Group table
 Headcount, present days, PL, comp-off, absent, LOP, WFH, late days, regularised, deduction days, employees deducted,

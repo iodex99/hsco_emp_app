@@ -192,3 +192,10 @@ backs up when the last regular backup is ≥ 24 h old. Supervisor (`run_server.p
 never moved or replaced; `backup_db` verifies the pre-update copy and aborts the update before any file is touched.
 SQLite: WAL + `synchronous=FULL` + `busy_timeout=30000` + foreign keys. Exports read the database at download time
 (no cached files).
+
+## UI lists & heatmap (v1.6.3)
+`_ui.toplist(rows, unit, pkey, n=10, neg=False)` renders the whole ranked list with the top n visible (no-JS
+fallback); `app.js` adds Top N (localStorage `hsco.toplist.n`, synced across lists) and search. `metrics.top_lists`
+returns every qualifying row. Heatmap Total: inline script in `insights.html` recounts cells per row (sets `data-v`),
+then calls `HSCO.tables.hm.apply()` so sorting and the footer (`data-sum`) use the new totals; `tt:apply` refreshes the
+per-day footer.

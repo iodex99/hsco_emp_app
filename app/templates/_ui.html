@@ -53,7 +53,16 @@
 
 {% macro csrf_field() -%}<input type="hidden" name="csrf" value="{{ csrf }}">{%- endmacro %}
 
-{% macro toplist(rows, unit, pkey, n=8) -%}
-<ul class="list">{% for r in rows[:n] %}<li><span class="rank">{{ loop.index }}</span>{{ person(r.name, r.group, '/periods/' ~ pkey ~ '/employee/' ~ r.emp_no) }}<span class="r">{{ r.value|n }} {{ unit }}</span></li>
-{% else %}<li class="muted">{{ icon('circle-check','sm') }} Nobody this month.</li>{% endfor %}</ul>
+{# Ranked list of every qualifying employee. Shows the top n (5 / 10 / 20 / all, remembered per browser) and can be
+   searched by name or employee number; the rank shown is always the real rank. neg=True renders "−x unit" plus a
+   deduction badge (hours shortfall). #}
+{% macro toplist(rows, unit, pkey, n=10, neg=False, empty="Nobody this month.") -%}
+<div class="tl" data-toplist data-n="{{ n }}">
+{% if rows|length > 5 %}<div class="tl-bar"><label class="tl-q">{{ icon('search','sm') }}<input type="search" placeholder="Search name or ID" aria-label="Search this list" autocomplete="off"></label>
+<select aria-label="How many to show"><option value="5">Top 5</option><option value="10"{{ ' selected' if n == 10 }}>Top 10</option><option value="20">Top 20</option><option value="0">All ({{ rows|length }})</option></select></div>{% endif %}
+<ul class="list">{% for r in rows %}<li data-q="{{ (r.name ~ ' ' ~ r.emp_no)|lower }}"{{ ' hidden' if loop.index > n }}><span class="rank">{{ loop.index }}</span>{{ person(r.name, r.group, '/periods/' ~ pkey ~ '/employee/' ~ r.emp_no) }}<span class="r">{% if neg %}<span class="neg">−{{ r.value|n }} {{ unit }}</span>{% if r.deduction %} <span class="badge b-bad">{{ r.deduction|n }} d</span>{% endif %}{% else %}{{ r.value|n }} {{ unit }}{% endif %}</span></li>
+{% else %}<li class="muted">{{ icon('circle-check','sm') }} {{ empty }}</li>{% endfor %}
+{% if rows %}<li class="muted tl-none" hidden>No one by that name on this list.</li>{% endif %}</ul>
+{% if rows|length > 5 %}<div class="tl-foot"><span data-tl-count>{{ [n, rows|length]|min }}</span> of {{ rows|length }} {{ 'person' if rows|length == 1 else 'people' }}</div>{% endif %}
+</div>
 {%- endmacro %}

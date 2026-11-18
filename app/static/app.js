@@ -221,6 +221,32 @@
     else if (lr.status === "rolled_back" || lr.status === "failed") H.toast(`Update to build ${lr.to_build} did not install and was rolled back: ${lr.error || ""}`);
   })();
 
+  // ---------- ranked lists: top N + search ----------
+  (function () {
+    let saved = null; try { saved = localStorage.getItem("hsco.toplist.n"); } catch (e) {}
+    document.querySelectorAll("[data-toplist]").forEach((box) => {
+      const sel = box.querySelector(".tl-bar select"), q = box.querySelector(".tl-bar input");
+      const items = [...box.querySelectorAll("li[data-q]")], none = box.querySelector("li.tl-none");
+      const cnt = box.querySelector("[data-tl-count]");
+      if (!sel || !q) return;
+      if (saved !== null && sel.querySelector(`option[value="${saved}"]`)) sel.value = saved;
+      function apply() {
+        const n = +sel.value, s = q.value.trim().toLowerCase();
+        let shown = 0;
+        items.forEach((li, i) => { const ok = s ? li.dataset.q.includes(s) : (!n || i < n); li.hidden = !ok; if (ok) shown++; });
+        if (none) none.hidden = shown > 0;
+        if (cnt) cnt.textContent = shown;
+      }
+      sel.addEventListener("change", () => { try { localStorage.setItem("hsco.toplist.n", sel.value); } catch (e) {}
+        document.querySelectorAll("[data-toplist] .tl-bar select").forEach((o) => { if (o !== sel && o.querySelector(`option[value="${sel.value}"]`)) { o.value = sel.value; o.dispatchEvent(new Event("tl:sync")); } });
+        apply(); });
+      sel.addEventListener("tl:sync", apply);
+      q.addEventListener("input", apply);
+      q.addEventListener("keydown", (e) => { if (e.key === "Escape") { q.value = ""; apply(); } });
+      apply();
+    });
+  })();
+
   // ---------- charts ----------
   H.colors = { brand: "#2e5bdb", brand2: "#7b9cff", ok: "#17b26a", warn: "#f79009", bad: "#f04438", violet: "#7a5af8", teal: "#15b79e", grey: "#98a2b3" };
   H.palette = ["#2e5bdb", "#15b79e", "#7b9cff", "#f79009", "#7a5af8", "#f04438", "#98a2b3", "#ee46bc", "#0ba5ec", "#669f2a"];

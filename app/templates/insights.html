@@ -91,6 +91,7 @@
     <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th>
       <th data-key="p" data-type="num" class="num" title="Present days (incl. late and WFH)">Pres.</th><th data-key="t" data-type="num" class="num">Late</th>
       <th data-key="a" data-type="num" class="num">Abs.</th><th data-key="l" data-type="num" class="num">Leave</th>
+      <th data-key="tot" data-type="num" data-label="Total" class="num hm-tot" id="hm-tot-h" title="Days in the states highlighted in the legend (all marked days when nothing is highlighted)">Total<small id="hm-tot-sub">all days</small></th>
       {% for d in I.matrix.dates %}<th data-type="none" class="hm-d {{ 'we' if I.matrix.weekdays[loop.index0] in ('Sat','Sun') }}" title="{{ I.matrix.weekdays[loop.index0] }} {{ d }}">{{ d[8:]|int }}<small>{{ I.matrix.weekdays[loop.index0][0] }}</small></th>{% endfor %}
     </tr></thead><tbody>
     {% set cmap = {'P':'p','T':'t','W':'w','½':'h','L':'l','C':'c','A':'a','X':'x','O':'o','H':'y','E':'e','.':'n'} %}
@@ -100,9 +101,13 @@
       <td class="num" data-v="{{ np }}">{{ np }}</td><td class="num" data-v="{{ r.s.count('T') }}">{{ r.s.count('T') or '' }}</td>
       <td class="num" data-v="{{ r.s.count('A') + r.s.count('X') }}">{{ (r.s.count('A') + r.s.count('X')) or '' }}</td>
       <td class="num" data-v="{{ r.s.count('L') + r.s.count('C') }}">{{ (r.s.count('L') + r.s.count('C')) or '' }}</td>
+      {% set nall = r.s|length - r.s.count('.') %}<td class="num hm-tot" data-v="{{ nall }}">{{ nall }}</td>
       {% for ch in r.s %}<td class="hm-c s-{{ cmap.get(ch, 'n') }}"></td>{% endfor %}
     </tr>{% endfor %}
-  </tbody></table></div></div></div>
+  </tbody>
+  <tfoot><tr class="tfoot"><td>Total · <span data-count="#hm">{{ I.matrix.rows|length }}</span> people</td><td></td>
+    <td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num hm-tot" data-sum></td>
+    {% for d in I.matrix.dates %}<td class="hm-fd"></td>{% endfor %}</tr></tfoot></table></div></div></div>
 </section>
 
 <section class="pane" data-pane="arrive">
@@ -189,12 +194,28 @@ if(I.trend.length>1){HSCO.chart('cTrendI',{type:'line',data:{labels:I.trend.map(
 (function(){
   const t=document.getElementById('hm'), lg=document.getElementById('hm-legend'); if(!t||!lg) return;
   const on=new Set();
+  const st=td=>([...td.classList].find(c=>c.startsWith('s-'))||'s-n').slice(2);
+  const labels=Object.fromEntries([...lg.querySelectorAll('button.lg')].map(b=>[b.dataset.lg,b.textContent.trim()]));
+  const fds=[...t.querySelectorAll('tfoot td.hm-fd')];
+  // per-day footer: how many of the people shown are in the counted states that day
+  function days(){
+    const n=new Array(fds.length).fill(0);
+    t.querySelectorAll('tbody tr').forEach(tr=>{ if(tr.style.display==='none'||!tr.dataset.href) return;
+      tr.querySelectorAll('td.hm-c').forEach((td,i)=>{const s=st(td); if(on.size?on.has(s):s!=='n') n[i]++;});});
+    fds.forEach((td,i)=>{td.textContent=n[i]||'';});
+  }
   function apply(){
     t.classList.toggle('hm-filter',on.size>0);
-    t.querySelectorAll('td.hm-c').forEach(td=>{const s=[...td.classList].find(c=>c.startsWith('s-'));td.classList.toggle('hm-on',on.has((s||'').slice(2)));});
+    t.querySelectorAll('tbody tr').forEach(tr=>{
+      let c=0; tr.querySelectorAll('td.hm-c').forEach(td=>{const s=st(td),hit=on.has(s);td.classList.toggle('hm-on',hit); if(on.size?hit:s!=='n') c++;});
+      const tc=tr.querySelector('td.hm-tot'); if(tc){tc.dataset.v=c;tc.textContent=c;}
+    });
+    document.getElementById('hm-tot-sub').textContent=on.size?[...on].map(k=>labels[k]).join(' + '):'all days';
     lg.querySelectorAll('button.lg').forEach(b=>b.setAttribute('aria-pressed',on.has(b.dataset.lg)));
     document.getElementById('hm-info').classList.toggle('hidden',!on.size);
+    const T=window.HSCO&&HSCO.tables&&HSCO.tables.hm; if(T) T.apply(false); else days();   // re-sort / re-total visible rows
   }
+  t.addEventListener('tt:apply',days);
   lg.querySelectorAll('button.lg').forEach(b=>b.addEventListener('click',()=>{on.has(b.dataset.lg)?on.delete(b.dataset.lg):on.add(b.dataset.lg);apply();}));
   document.getElementById('hm-clear').addEventListener('click',()=>{on.clear();apply();});
 })();

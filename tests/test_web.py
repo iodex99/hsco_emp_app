@@ -531,6 +531,25 @@ def test_insights_kpis_and_scorecard(loaded):
     assert 'data-tab="score"' in html and "Compared with others" in html
 
 
+def test_ranked_lists_cover_everyone_and_heatmap_total(loaded):
+    """v1.6.3: Overview lists hold every qualifying employee (page shows top N + search); heatmap has a Total column."""
+    from types import SimpleNamespace as NS
+    from app.services.metrics import top_lists
+    D = [{"emp_no": f"E{i:02d}", "name": f"Person {i:02d}", "group": "BSS", "very_late_days": i % 7, "regularised_days": 0,
+          "missing_punch_days": 0, "wfh_days": 0, "unauth_absent_days": 0, "balance_hours": i - 30.0,
+          "late_sitting_days": 0, "compoff_earned": 0, "sandwich_count": 0} for i in range(40)]
+    top = top_lists(D, NS(metrics_exclude_groups=[], wfh_limit_days=2))
+    assert len(top["late"]) == sum(1 for d in D if d["very_late_days"] >= 1) > 10           # no cut-off at 8/10
+    assert [r["value"] for r in top["late"]] == sorted((r["value"] for r in top["late"]), reverse=True)
+    assert len(top["shortfall"]) == 30 and top["shortfall"][0]["value"] == 30                # all who are short
+    assert len(top["excess_hours"]) == 9
+    html = loaded.get("/?period=2026-10").text
+    assert html.count("data-toplist") == 8                                     # every ranked list on the Overview
+    page = loaded.get("/insights?period=2026-10").text
+    assert 'data-key="tot"' in page and 'id="hm-tot-sub"' in page and "<tfoot>" in page and 'class="hm-fd"' in page
+    assert page.count('class="num hm-tot" data-v=') == page.count('class="hm-name"') > 0
+
+
 # ---------------------------------------------------------------- v1.4.1 review & performance regressions
 
 def test_attention_counts_zero_percent_as_zero():

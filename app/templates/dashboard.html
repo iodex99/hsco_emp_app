@@ -119,9 +119,7 @@
     <div class="mini"><div class="v">{{ k.compoff_earned|n }}</div><div class="l">Comp-offs earned</div></div>
   </div>
   <div class="grid g3">
-    <div class="card"><div class="hd"><h2>Hours shortfall</h2></div><div class="bd" style="padding-top:4px"><ul class="list">
-      {% for r in m.top.shortfall[:8] %}<li>{{ ui.person(r.name, r.group, '/periods/' ~ key ~ '/employee/' ~ r.emp_no) }}<span class="r"><span class="neg">−{{ r.value|n }} h</span>{% if r.deduction %} <span class="badge b-bad">{{ r.deduction|n }} d</span>{% endif %}</span></li>
-      {% else %}<li class="muted">Nobody is short.</li>{% endfor %}</ul></div></div>
+    <div class="card"><div class="hd"><h2>Hours shortfall</h2></div><div class="bd" style="padding-top:4px">{{ ui.toplist(m.top.shortfall, 'h', key, neg=True, empty="Nobody is short.") }}</div></div>
     <div class="card"><div class="hd"><h2>Most excess hours</h2></div><div class="bd" style="padding-top:4px">{{ ui.toplist(m.top.excess_hours, 'h', key) }}</div></div>
     <div class="card"><div class="hd"><h2>Comp-offs earned</h2></div><div class="bd" style="padding-top:4px">{{ ui.toplist(m.top.compoff_earned, '', key) }}</div></div>
   </div>

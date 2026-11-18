@@ -14,7 +14,7 @@ Add more methods under **My security** (several phones, keys).
 - **Overview**: the month at a glance, with a **month-end checklist** that tells you the next step.
 - **Payroll leave sheet**: everyone's figures; chips filter to deductions, loss of pay, WFH over limit, flags and more.
 - **Review queue**: every exception, grouped by type; mark each reviewed with a short note.
-- **Insights**: who needs a conversation and why — scorecard with an attention score (0–100) and its reasons, 12-month unplanned absence, on-time arrivals, hours vs required, an employee × day heatmap, arrival times, groups compared.
+- **Insights**: who needs a conversation and why — scorecard with an attention score (0–100) and its reasons, 12-month unplanned absence, on-time arrivals, hours vs required, an employee × day heatmap (click legend items to highlight; the *Total* column and footer count the highlighted days for the people shown), arrival times, groups compared.
   An employee's **Scorecard** tab compares them with their group and the firm.
 - **Employees**: settings per person (group, working pattern, hours per day, exemption).
 - **Locations**: every mobile sign-in with its place name (worked out from the GPS coordinates automatically),
@@ -105,3 +105,8 @@ which exceptions were reviewed and the note. For a month you have finalised, the
 ## Backups
 The app backs itself up every day (Settings → Security & system → *Backups & data safety*; *Back up now* for an
 extra copy, e.g. before month-end). Ask IT to also copy the app's data folder to another drive regularly.
+
+## Ranked lists on the Overview
+Every list (late, regularisations, missing punches, absence, WFH, hours) includes everyone it applies to. Choose
+**Top 5 / 10 / 20 / All** (remembered for all lists) or type a name or employee number in the list's search box; the
+number on the left is the person's real rank.

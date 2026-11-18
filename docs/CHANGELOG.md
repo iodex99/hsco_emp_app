@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.3 — 2026-11-18 — ranked lists for everyone; heatmap Total
+Owner: "the data should be for all employees … show top 5, 10 etc and also a search … employee name wise"; "in the
+attendance heatmap … one more column 'total' … based on the user selected filters".
+- **Overview ranked lists** (late, regularisations, missing punches, absence, WFH over limit, hours shortfall, excess
+  hours, comp-offs) now hold **every** employee who qualifies (before: first 8). Each list has **Top 5 / 10 / 20 / All**
+  (the choice applies to all lists and is remembered in the browser) and a **search by name or employee no.**; the rank
+  shown is always the real rank; footer "10 of 57 people".
+- **Insights → Attendance heatmap:** new **Total** column = days in the states highlighted in the legend (e.g. Late +
+  WFH; all marked days when nothing is highlighted), sortable; a footer row totals the people currently shown (search /
+  filter / group) for Pres., Late, Abs., Leave and Total, and counts each day's highlighted cells.
+- Fix: hovering a heatmap row no longer blanks its coloured cells.
+
 ## 1.6.2 — 2026-11-18 — place names only from the built-in map
 Owner: "remove Locations from Rules & calendars, since we are using locations from the package".
 - *Settings → Rules & calendars → Locations* tab removed (named places / geofences, suggested places, *Name it*). Every

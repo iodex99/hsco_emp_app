@@ -200,9 +200,10 @@ def period_metrics(db: Session, period: Period) -> dict:
 def top_lists(D: list[dict], policy) -> dict:
     beh = [d for d in D if d.get("group") not in set(policy.metrics_exclude_groups)]
 
-    def pick(rows, key, n=10, minv=0.0001):
+    def pick(rows, key, minv=0.0001):
+        """Everyone with a value of at least minv, highest first (the page shows the top N and can search)."""
         return [{"emp_no": d["emp_no"], "name": d["name"], "group": d.get("group", ""), "value": round(d.get(key) or 0, 2)}
-                for d in sorted(rows, key=lambda d: -(d.get(key) or 0)) if (d.get(key) or 0) >= minv][:n]
+                for d in sorted(rows, key=lambda d: (-(d.get(key) or 0), d["name"])) if (d.get(key) or 0) >= minv]
     return {
         "late": pick(beh, "very_late_days", minv=1),
         "wfh": pick(D, "wfh_days", minv=policy.wfh_limit_days + 0.001),
@@ -212,7 +213,7 @@ def top_lists(D: list[dict], policy) -> dict:
         "excess_hours": pick(D, "balance_hours", minv=0.01),
         "shortfall": [{"emp_no": d["emp_no"], "name": d["name"], "group": d.get("group", ""),
                        "value": round(-d["balance_hours"], 2), "deduction": d.get("deduction_days", 0)}
-                      for d in sorted(D, key=lambda d: d.get("balance_hours", 0)) if d.get("balance_hours", 0) < 0][:15],
+                      for d in sorted(D, key=lambda d: d.get("balance_hours", 0)) if d.get("balance_hours", 0) < 0],
         "late_sitting": pick(beh, "late_sitting_days", minv=1),
         "compoff_earned": pick(D, "compoff_earned", minv=1),
         "sandwich": pick(D, "sandwich_count", minv=1),
