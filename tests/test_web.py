@@ -517,8 +517,9 @@ def test_insights_kpis_and_scorecard(loaded):
         assert k["headcount"] == len(rows) and 0 <= k["absenteeism_pct"] <= 100 and 0 <= k["punctuality_pct"] <= 100
         for r in rows.values():
             assert 0 <= r["attention"] <= 100
-            assert r["bradford"] == round(r["bradford_spells"] ** 2 * r["bradford_days"])
-        assert sum(b["count"] for b in I["bradford_bands"]) == len(rows)
+            assert r["absence_12m_days"] >= r["unplanned_days"] and r["absence_12m_spells"] >= r["unplanned_spells"]
+            assert "bradford" not in r                                  # removed on request (v1.5.2)
+        assert "bradford_bands" not in I and not any("bradford" in k for k in I["kpis"])
         assert len(I["matrix"]["rows"]) == len(rows) and all(len(m["s"]) == len(I["matrix"]["dates"]) for m in I["matrix"]["rows"])
         sc = INS.employee_scorecard(I, "T001")
         assert sc["row"]["emp_no"] == "T001" and 1 <= sc["rank"] <= sc["of"] and len(sc["metrics"]) == 10
@@ -529,9 +530,8 @@ def test_insights_kpis_and_scorecard(loaded):
             {"date": "2026-10-06", "type": "WORKDAY", "b1": "present", "b2": "present"},
             {"date": "2026-10-07", "type": "WORKDAY", "b1": "present", "b2": "absent"}]
     assert INS._spells(days) == (2, 2.5)
-    assert INS.bradford_band(0)[0] == "None" and INS.bradford_band(125)[0] == "Monitor" and INS.bradford_band(500)[0] == "Serious"
     html = loaded.get("/insights").text
-    assert "Employee scorecard" in html and "Bradford" in html and 'id="hm"' in html
+    assert "Employee scorecard" in html and "Bradford" not in html and "Absence 12 m" in html and 'id="hm"' in html
     html = loaded.get("/periods/2026-10/employee/T001").text
     assert 'data-tab="score"' in html and "Compared with others" in html
 
@@ -544,7 +544,7 @@ def test_attention_counts_zero_percent_as_zero():
     from app.db import session_scope
     with session_scope() as db:
         pol = get_policy(db)
-    base = {"behaviour": True, "bradford": 0, "regularised_days": 0, "wfh_days": 0, "missing_punch_days": 0}
+    base = {"behaviour": True, "absence_12m_days": 0, "regularised_days": 0, "wfh_days": 0, "missing_punch_days": 0}
     worst = INS._attention({**base, "punctuality_pct": 0.0, "utilisation_pct": 0.0}, pol)
     best = INS._attention({**base, "punctuality_pct": 100.0, "utilisation_pct": 100.0}, pol)
     assert worst["attention"] == 40 and best["attention"] == 0
@@ -566,7 +566,8 @@ def test_stored_month_stats_match_day_detail(loaded):
             d = dict(r.data); d.pop("_ins"); r.data = d
         db.flush()
         legacy = INS._insights(db, p)
-        key = lambda I: [(x["emp_no"], x["bradford"], x["unplanned_days"], x["punctuality_pct"]) for x in I["rows"]]
+        key = lambda I: [(x["emp_no"], x["absence_12m_days"], x["absence_12m_spells"], x["unplanned_days"],
+                          x["punctuality_pct"]) for x in I["rows"]]
         assert key(stored) == key(legacy) and stored["trend"] == legacy["trend"]
         db.rollback()
     # a spell running from one month's last working day into the next month's first counts once
@@ -908,3 +909,25 @@ def test_viewer_cannot_change_logo(client):
     r = client.post("/settings/branding", data={"csrf": csrf_of(client, "/")},
                     files={"file": ("logo.svg", TEST_LOGO, "image/svg+xml")}, follow_redirects=False)
     assert r.status_code == 403
+
+
+
+def test_attention_absence_part_uses_12_month_days():
+    from app.services import insights as INS
+    from app.services.settings import get_policy
+    from app.db import session_scope
+    with session_scope() as db:
+        pol = get_policy(db)
+    base = {"behaviour": True, "punctuality_pct": 100.0, "utilisation_pct": 100.0, "regularised_days": 0, "wfh_days": 0,
+            "missing_punch_days": 0}
+    assert INS._attention({**base, "absence_12m_days": 5}, pol)["attention"] == 12          # 5 of 10 days → half of 25
+    assert INS._attention({**base, "absence_12m_days": 30}, pol)["attention"] == 25         # capped at the full part
+    assert "absence" in INS.WEIGHTS and "bradford" not in INS.WEIGHTS
+
+
+def test_no_bradford_anywhere(loaded):
+    for path in ("/insights", "/periods/2026-10/employee/T005", "/exports/2026-10.html"):
+        assert "bradford" not in loaded.get(path).text.lower(), path
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(loaded.get("/exports/2026-10.xlsx").content))
+    assert not any("bradford" in str(c.value).lower() for ws in wb for row in ws.iter_rows() for c in row if c.value)

@@ -70,7 +70,7 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
     {{ ui.kpi('Leave deductions', k.deduction_employees, 'calendar-days', 'bad' if k.deduction_employees else '', none, ui.delta(k.deduction_employees, pk.deduction_employees if pk else none) or 'people short of required hours', 'people · ' ~ (k.deduction_days|n) ~ ' days') }}
     {{ ui.kpi('Payroll LOP days', k.payroll_lop_days|n, 'briefcase', 'bad' if k.payroll_lop_days else '', none, ui.delta(k.payroll_lop_days, pk.payroll_lop_days if pk else none) or 'loss of pay incl. leave exhausted') }}
     {{ ui.kpi('People movement', '+' ~ k.new_joinees ~ ' / −' ~ k.exits, 'users', '', none, 'joined / left this month · attrition ' ~ pct(ik.attrition_pct) ~ ' (12 m)') }}
-    {{ ui.kpi('Need a conversation', ik.attention_high, 'message-circle-warning', 'bad' if ik.attention_high else 'good', none, 'attention score ≥ 50 · ' ~ (ik.bradford_warning) ~ ' Bradford warnings') }}
+    {{ ui.kpi('Need a conversation', ik.attention_high, 'message-circle-warning', 'bad' if ik.attention_high else 'good', none, 'attention score ≥ 50 · ' ~ (ik.absence_12m_people) ~ ' with unplanned absence (12 m)') }}
   </div>
 
   <div class="grid g-2-1 mb">
@@ -138,12 +138,12 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
 
 <!-- ======================================================== SCORECARD -->
 <section class="pane" data-pane="score">
-  <div class="card flush"><div class="hd"><h2>Employee scorecard</h2><span class="sub">attention score: Bradford 25 · punctuality 20 · hours 20 · regularisation 15 · WFH 10 · missing punches 10</span></div>
+  <div class="card flush"><div class="hd"><h2>Employee scorecard</h2><span class="sub">attention score: unplanned absence (12 m) 25 · punctuality 20 · hours 20 · regularisation 15 · WFH 10 · missing punches 10</span></div>
   <div data-table-for="#sc"></div>
   <div class="bd"><div class="tw" style="max-height:72vh"><table id="sc" data-table data-csv="scorecard-{{ period.key }}" class="compact" data-default-hidden="loc,tenure,avg_out,long,latesit,missing,leave_fy,co_bal">
   <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="loc" data-type="enum">Location</th><th data-key="tenure" data-type="num" class="num">Tenure (m)</th>
     <th data-key="att" data-type="num" class="num">Attention</th><th data-key="attpct" data-type="num" class="num">Attendance</th><th data-key="abs" data-type="num" class="num">Unplanned abs.</th>
-    <th data-key="brad" data-type="num" class="num">Bradford</th><th data-key="band" data-type="enum">Band</th><th data-key="punct" data-type="num" class="num">On time</th>
+    <th data-key="abs12" data-type="num" class="num">Absence days (12 m)</th><th data-key="spells12" data-type="num" class="num">Spells (12 m)</th><th data-key="punct" data-type="num" class="num">On time</th>
     <th data-key="avg_in" data-type="num" class="num">Avg in</th><th data-key="avg_out" data-type="num" class="num">Avg out</th><th data-key="avg_h" data-type="num" class="num">Avg day (h)</th>
     <th data-key="util" data-type="num" class="num">Hours vs req.</th><th data-key="long" data-type="num" class="num">Long days</th><th data-key="latesit" data-type="num" class="num">Late sitting</th>
     <th data-key="wfh" data-type="num" class="num">WFH</th><th data-key="reg" data-type="num" class="num">Regularised</th><th data-key="missing" data-type="num" class="num">Missing punch</th>
@@ -153,7 +153,7 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
     <td class="num" data-v="{{ r.tenure_m if r.tenure_m is not none else '' }}">{{ r.tenure_m if r.tenure_m is not none else '' }}</td>
     <td class="num" data-v="{{ r.attention }}"><span class="score {{ 'bad' if r.attention >= 50 else 'warn' if r.attention >= 25 else 'ok' }}"><i style="width:{{ r.attention }}%"></i><b>{{ r.attention }}</b></span></td>
     <td class="num" data-v="{{ r.attendance_pct }}">{{ pct(r.attendance_pct) }}</td><td class="num" data-v="{{ r.absence_pct }}">{{ pct(r.absence_pct) }}</td>
-    <td class="num" data-v="{{ r.bradford }}">{{ r.bradford }}</td><td><span class="badge b-{{ r.bradford_tone }}">{{ r.bradford_band }}</span></td>
+    <td class="num" data-v="{{ r.absence_12m_days }}">{{ r.absence_12m_days|n }}</td><td class="num">{{ r.absence_12m_spells }}</td>
     <td class="num" data-v="{{ r.punctuality_pct }}">{{ pct(r.punctuality_pct) }}</td>
     <td class="num" data-v="{{ r.avg_in_min or '' }}">{{ r.avg_in }}</td><td class="num" data-v="{{ r.avg_out_min or '' }}">{{ r.avg_out }}</td>
     <td class="num" data-v="{{ r.avg_hours or '' }}">{{ r.avg_hours|n(2) }}</td><td class="num" data-v="{{ r.utilisation_pct }}">{{ pct(r.utilisation_pct) }}</td>
@@ -202,20 +202,23 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
 <section class="pane" data-pane="abs">
   <div class="minis mb">
     <div class="mini {{ 'bad' if (ik.absenteeism_pct or 0) >= 5 }}"><div class="v">{{ pct(ik.absenteeism_pct, True) }}</div><div class="l">Unplanned absence rate</div></div>
-    <div class="mini"><div class="v">{{ ik.bradford_avg|n(1) }}</div><div class="l">Average Bradford factor</div></div>
+    <div class="mini"><div class="v">{{ ik.absence_12m_days|n }}</div><div class="l">Unplanned absence days, 12 months ({{ ik.absence_12m_people }} people)</div></div>
     <div class="mini"><div class="v">{{ pct(ik.leave_used_fy_pct, True) }}</div><div class="l">Annual leave used, {{ ik.fy_label }}</div></div>
     <div class="mini"><div class="v">{{ ik.leave_liability_days|n }}</div><div class="l">Leave balance owed (days)</div></div>
     <div class="mini"><div class="v">{{ ik.long_days }}</div><div class="l">Long days (2 h+ over)</div></div>
     <div class="mini"><div class="v">{{ pct(ik.regularisation_pct, True) }}</div><div class="l">Present days regularised</div></div>
   </div>
-  <div class="grid g-2-1 mb">
-    <div class="card"><div class="hd"><h2>Highest Bradford factors</h2><span class="sub">S² × D, last 12 months</span></div><div class="bd" style="padding-top:4px"><ul class="list">
-      {% for r in (I.rows|selectattr('bradford')|sort(attribute='bradford', reverse=True))[:10] %}
-      <li><span class="rank">{{ loop.index }}</span>{{ who(r.name, r.group ~ ' · ' ~ r.bradford_spells ~ (' spell, ' if r.bradford_spells == 1 else ' spells, ') ~ (r.bradford_days|n) ~ (' day' if r.bradford_days == 1 else ' days'), r.emp_no) }}
-        <span class="r"><span class="badge b-{{ r.bradford_tone }}">{{ r.bradford }} · {{ r.bradford_band }}</span></span></li>
-      {% else %}<li class="muted">No unplanned absence in the last 12 months.</li>{% endfor %}</ul></div></div>
-    <div class="card"><div class="hd"><h2>Bradford bands</h2></div><div class="bd"><div class="chartbox" style="height:220px"><canvas id="cBrad"></canvas></div>
-      <p class="note mt-s">1–50 low · 51–200 monitor · 201–449 warning · 450+ serious. Five one-day absences score 125; one five-day absence scores 5.</p></div></div>
+  <div class="grid g2 mb">
+    <div class="card"><div class="hd"><h2>Most unplanned absence — this month</h2><span class="sub">absent + loss of pay</span></div><div class="bd" style="padding-top:4px"><ul class="list">
+      {% for r in (I.rows|selectattr('unplanned_days')|sort(attribute='unplanned_days', reverse=True))[:10] %}
+      <li><span class="rank">{{ loop.index }}</span>{{ who(r.name, r.group ~ ' · ' ~ r.unplanned_spells ~ (' spell' if r.unplanned_spells == 1 else ' spells'), r.emp_no) }}
+        <span class="r">{{ r.unplanned_days|n }} {{ 'day' if r.unplanned_days == 1 else 'days' }}</span></li>
+      {% else %}<li class="muted">{{ ui.icon('circle-check','sm') }} No unplanned absence this month.</li>{% endfor %}</ul></div></div>
+    <div class="card"><div class="hd"><h2>Most unplanned absence — last 12 months</h2><span class="sub">days and separate spells</span></div><div class="bd" style="padding-top:4px"><ul class="list">
+      {% for r in (I.rows|selectattr('absence_12m_days')|sort(attribute='absence_12m_days', reverse=True))[:10] %}
+      <li><span class="rank">{{ loop.index }}</span>{{ who(r.name, r.group ~ ' · ' ~ r.absence_12m_spells ~ (' spell' if r.absence_12m_spells == 1 else ' spells') ~ ' in ' ~ r.absence_12m_months ~ (' month' if r.absence_12m_months == 1 else ' months'), r.emp_no) }}
+        <span class="r">{{ r.absence_12m_days|n }} {{ 'day' if r.absence_12m_days == 1 else 'days' }}</span></li>
+      {% else %}<li class="muted">{{ ui.icon('circle-check','sm') }} No unplanned absence in the last 12 months.</li>{% endfor %}</ul></div></div>
   </div>
   <div class="grid g2">
     <div class="card"><div class="hd"><h2>When people arrive</h2><span class="sub">first punches by weekday and half hour</span></div><div class="bd">
@@ -232,14 +235,14 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
   <thead><tr><th data-key="g" data-type="text">Group</th><th data-key="hc" data-type="num" class="num">People</th><th data-key="att" data-type="num" class="num">Attendance</th>
     <th data-key="abs" data-type="num" class="num">Unplanned absence</th><th data-key="pun" data-type="num" class="num">On time</th><th data-key="util" data-type="num" class="num">Hours vs req.</th>
     <th data-key="avgh" data-type="num" class="num">Avg day (h)</th><th data-key="wfh" data-type="num" class="num">WFH share</th><th data-key="reg" data-type="num" class="num">Regularised</th>
-    <th data-key="brad" data-type="num" class="num">Avg Bradford</th><th data-key="attn" data-type="num" class="num">Avg attention</th><th data-key="ded" data-type="num" class="num">Deduction days</th>
+    <th data-key="abs12" data-type="num" class="num">Absence days (12 m)</th><th data-key="attn" data-type="num" class="num">Avg attention</th><th data-key="ded" data-type="num" class="num">Deduction days</th>
     <th data-key="pl" data-type="num" class="num">Paid leave</th><th data-key="cof" data-type="num" class="num">Comp-off</th><th data-key="lop" data-type="num" class="num">LOP</th><th data-key="late" data-type="num" class="num">Late days</th></tr></thead><tbody>
   {% set mg = {} %}{% for g in m.groups %}{% set _ = mg.update({g.group: g}) %}{% endfor %}
   {% for g in I.groups %}{% set x = mg.get(g.group, {}) %}<tr><td class="strong">{{ g.group }}</td><td class="num">{{ g.headcount }}</td>
     <td class="num" data-v="{{ g.attendance_pct }}">{{ pct(g.attendance_pct) }}</td><td class="num" data-v="{{ g.absenteeism_pct }}">{{ pct(g.absenteeism_pct) }}</td>
     <td class="num" data-v="{{ g.punctuality_pct }}">{{ pct(g.punctuality_pct) }}</td><td class="num" data-v="{{ g.utilisation_pct }}">{{ pct(g.utilisation_pct) }}</td>
     <td class="num" data-v="{{ g.avg_hours }}">{{ g.avg_hours|n(2) }}</td><td class="num" data-v="{{ g.wfh_pct }}">{{ pct(g.wfh_pct) }}</td><td class="num" data-v="{{ g.regularisation_pct }}">{{ pct(g.regularisation_pct) }}</td>
-    <td class="num">{{ g.bradford_avg|n(1) }}</td><td class="num">{{ g.attention_avg|n(1) }}</td><td class="num">{{ g.deduction_days|n }}</td>
+    <td class="num">{{ g.absence_12m_days|n }}</td><td class="num">{{ g.attention_avg|n(1) }}</td><td class="num">{{ g.deduction_days|n }}</td>
     <td class="num">{{ x.pl_days|n }}</td><td class="num">{{ x.cof_days|n }}</td><td class="num">{{ x.lop_days|n }}</td><td class="num">{{ x.late_days|n }}</td></tr>{% endfor %}
   </tbody></table></div></div></div>
   <div class="card"><div class="hd"><h2>Groups side by side</h2></div><div class="bd"><div class="chartbox" style="height:300px"><canvas id="cGroups"></canvas></div></div></div>
@@ -341,7 +344,6 @@ mk('cDaily',{type:'bar',data:{labels:M.daily.map(x=>+x.date.slice(8)),datasets:[
  {label:'WFH',data:M.daily.map(x=>x.wfh||0),type:'line',borderColor:C.violet,backgroundColor:C.violet,pointRadius:2,tension:.3}]},options:{scales:{x:{stacked:true},y:{stacked:true}}}});
 mk('cLoc',{type:'doughnut',data:{labels:M.location_mix.map(x=>x.label),datasets:[{data:M.location_mix.map(x=>x.count),backgroundColor:PAL,borderWidth:2,borderColor:'#fff'}]},options:{cutout:'62%',plugins:{legend:{position:'right'}}}});
 mk('cIn',{type:'bar',data:{labels:M.in_time_hist.map(x=>x.bucket),datasets:[{label:'People',data:M.in_time_hist.map(x=>x.count),backgroundColor:M.in_time_hist.map(x=>x.bucket>'10:00'?C.warn:C.brand)}]},options:{plugins:{legend:{display:false}}}});
-mk('cBrad',{type:'bar',data:{labels:I.bands.slice(1).map(x=>x.band),datasets:[{label:'People',data:I.bands.slice(1).map(x=>x.count),backgroundColor:[C.ok,C.brand2,C.warn,C.bad]}]},options:{plugins:{legend:{display:false}}}});
 mk('cHours',{type:'bar',data:{labels:I.hours_hist.map(x=>x.bucket),datasets:[{label:'Days',data:I.hours_hist.map(x=>x.count),backgroundColor:I.hours_hist.map((x,i)=>i<4?C.warn:i>6?C.violet:C.brand)}]},options:{plugins:{legend:{display:false}}}});
 mk('cGroups',{type:'bar',data:{labels:I.groups.map(x=>x.group),datasets:[{label:'Attendance %',data:I.groups.map(x=>x.attendance_pct),backgroundColor:C.brand},
  {label:'On time %',data:I.groups.map(x=>x.punctuality_pct),backgroundColor:C.teal},{label:'Hours vs required %',data:I.groups.map(x=>x.utilisation_pct),backgroundColor:C.violet},
@@ -374,10 +376,10 @@ document.addEventListener('click',ev=>{const el=ev.target.closest('[data-emp]');
 const LEG=[['absent','Absent','<i class="sw" style="background:var(--bad-bg);border-color:var(--bad-bd)"></i>'],['leave','Leave','<i class="sw" style="background:var(--info-bg);border-color:var(--info-bd)"></i>'],
  ['compoff','Comp-off','<i class="sw" style="background:var(--teal-bg)"></i>'],['holiday','Holiday','<i class="sw" style="background:var(--violet-bg)"></i>'],['late','Late','<i class="dot d-late"></i>'],
  ['wfh','WFH','<i class="dot d-wfh"></i>'],['missing','Missing punch','<i class="dot d-miss"></i>'],['regularised','Regularised','<i class="dot d-reg"></i>'],['extra','Worked off-day','<i class="dot d-extra"></i>'],['corrected','Corrected','<i class="dot d-ovr"></i>']];
-const PARTS={bradford:'Unplanned absence (Bradford)',punctuality:'Late arrivals',utilisation:'Hours below required',regularisation:'Regularisations',wfh:'WFH over the limit',missing:'Missing punches'};
+const PARTS={absence:'Unplanned absence (12 months)',punctuality:'Late arrivals',utilisation:'Hours below required',regularisation:'Regularisations',wfh:'WFH over the limit',missing:'Missing punches'};
 const DTYPE={WORKDAY:'Working day',WEEKLY_OFF:'Weekly off',HOLIDAY:'Holiday'};
 const SEV={critical:'Critical',high:'High',medium:'Medium',info:'Info'};
-const W={bradford:25,punctuality:20,utilisation:20,regularisation:15,wfh:10,missing:10};
+const W={absence:25,punctuality:20,utilisation:20,regularisation:15,wfh:10,missing:10};
 function kpi(label,v,tone,foot){return `<div class="kpi ${tone||''}"><div class="l">${esc(label)}</div><div class="v">${v}</div>${foot?`<div class="f">${foot}</div>`:''}</div>`;}
 function openEmp(id){const e=EI[id];if(!e)return;cur=id;const m=e.m,a=e.att;
  const first=new Date((e.days[0]||{d:'2000-01-01'}).d+'T00:00');const pad=(new Date(first.getFullYear(),first.getMonth(),1).getDay()+6)%7;
@@ -402,7 +404,7 @@ function openEmp(id){const e=EI[id];if(!e)return;cur=id;const m=e.m,a=e.att;
   <div class="kpis">${kpi('Days present',n(m.days_present),'',`of ${n(m.total_week_days)} week days · ${n(m.holidays)} holiday(s)`)}
    ${kpi('Hours vs required',(m.balance_hours>0?'+':'')+n(m.balance_hours,1)+' h',m.balance_hours<0?'bad':'good',`${n(m.actual_hours,1)} worked · ${n(m.required_hours,1)} required`)}
    ${kpi('Leave deduction',n(m.deduction_days)+' d',m.deduction_days?'bad':'',m.exempt?'exempt group':'')}
-   ${kpi('Attention score',a.score+'<small class="muted"> / 100</small>',a.score>=50?'bad':a.score>=25?'warn':'',`#${a.rank} of ${a.of} · Bradford ${a.brad} (${esc(a.band)})`)}</div>
+   ${kpi('Attention score',a.score+'<small class="muted"> / 100</small>',a.score>=50?'bad':a.score>=25?'warn':'',`#${a.rank} of ${a.of} · ${n(a.abs12)} unplanned absence day(s) in 12 months`)}</div>
   <div class="minis mb">${[[n(m.pl_days),'Paid leave'],[n(m.cof_days),'Comp-off'],[n(m.unauth_absent_days),'Absent',m.unauth_absent_days?'bad':''],[n(m.lop_days),'Loss of pay',m.lop_days?'bad':''],
     [n(m.wfh_days),'WFH days',m.wfh_days>D.policy.wfh_limit?'warn':''],[m.late_days,'Late days'],[a.punct==null?'—':n(a.punct,1)+'%','On time'],[hm(m.avg_in_min)||'—','Avg first punch'],
     [m.regularised_days,'Regularised'],[m.missing_punch_days,'Missing punches',m.missing_punch_days?'warn':''],[m.leave_closing==null?'—':n(m.leave_closing),'Leave balance'],[n(m.compoff_earned),'Comp-offs earned']]

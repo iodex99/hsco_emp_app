@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.2 — 2026-11-18 — Bradford factor removed
+- Removed on the owner's request: the Bradford factor (S² × D), its bands chart, warning counts and every column/label
+  in Insights, the employee Scorecard, Excel and the board pack.
+- Absence is now shown as plain numbers: unplanned absence (absent + loss of pay) this month, and days + separate
+  spells over the last 12 months. Insights → *Absence* lists the most unplanned absence this month and over 12 months.
+- Attention score: its absence part (25 points) is now unplanned-absence days in the last 12 months (10 days or more =
+  the full 25); the other parts are unchanged. Groups compared show absence days (12 m) instead of average Bradford.
+
 ## 1.5.1 — 2026-11-18 — firm logo
 - **Settings → Security & system → Logo:** an admin uploads the firm's logo (SVG best; PNG/JPEG/WebP; ≤ 1 MB). It is
   stored with the data in `DATA_DIR/branding` — never in the code or the public repository — and shown in the

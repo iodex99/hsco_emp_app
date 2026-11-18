@@ -1,6 +1,6 @@
 """Small, dependency-free summaries of an employee-month's day-by-day results.
 
-Stored with every calculated month (MonthResult.data["_ins"]) so Insights history, Bradford factors and trends read a
+Stored with every calculated month (MonthResult.data["_ins"]) so Insights history, 12-month absence and trends read a
 few numbers instead of decoding the full day detail (~20 KB per employee-month). See docs/METRICS.md "Insights".
 """
 from __future__ import annotations

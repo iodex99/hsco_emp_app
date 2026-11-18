@@ -20,13 +20,15 @@ from app.services.compute import fy_of
 from app.services.settings import get_policy
 
 UNPLANNED = AS.UNPLANNED
-BRADFORD_BANDS = [(0, "None", "ok"), (1, "Low", "ok"), (51, "Monitor", "info"), (201, "Warning", "warn"),
-                  (450, "Serious", "bad")]
 HOURS_BUCKETS = [(0, 4, "< 4 h"), (4, 6, "4–6 h"), (6, 7, "6–7 h"), (7, 8, "7–8 h"), (8, 8.5, "8–8.5 h"),
                  (8.5, 9, "8.5–9 h"), (9, 10, "9–10 h"), (10, 11, "10–11 h"), (11, 99, "11 h +")]
 WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 # attention score weights (sum 100) — see METRICS.md
-WEIGHTS = {"bradford": 25, "punctuality": 20, "utilisation": 20, "regularisation": 15, "wfh": 10, "missing": 10}
+WEIGHTS = {"absence": 25, "punctuality": 20, "utilisation": 20, "regularisation": 15, "wfh": 10, "missing": 10}
+ABSENCE_FULL_DAYS = 10        # unplanned absence days in 12 months that give the full absence part of the score
+PART_LABELS = {"absence": "Unplanned absence (12 months)", "punctuality": "Late arrivals",
+               "utilisation": "Hours below required", "regularisation": "Regularisations", "wfh": "WFH over the limit",
+               "missing": "Missing punches"}
 
 
 def _pct(a: float, b: float) -> Optional[float]:
@@ -36,14 +38,6 @@ def _pct(a: float, b: float) -> Optional[float]:
 def _avg(xs) -> Optional[float]:
     xs = [x for x in xs if x is not None]
     return round(sum(xs) / len(xs), 2) if xs else None
-
-
-def bradford_band(score: float) -> tuple[str, str]:
-    label, tone = "None", "ok"
-    for lo, lab, t in BRADFORD_BANDS:
-        if score >= lo:
-            label, tone = lab, t
-    return label, tone
 
 
 def _spells(days: list[dict]) -> tuple[int, float]:
@@ -127,8 +121,6 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         unpl_spells_m, unpl_days_m = st_m["sp"], st_m["un"]
         past = hist_stats.get(r.emp_no, [])
         s12, d12 = AS.join_spells(past + [((y, m), st_m)])
-        bradford = round(s12 * s12 * d12)
-        band, tone = bradford_band(bradford)
         tenure_m = None
         if e and e.doj:
             tenure_m = (month_end.year - e.doj.year) * 12 + (month_end.month - e.doj.month)
@@ -146,8 +138,7 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
             "unplanned_days": unpl_days_m, "unplanned_spells": unpl_spells_m,
             "absence_pct": _pct(unpl_days_m, workdays),
             "leave_days": d.get("pl_days") or 0, "compoff_days": d.get("cof_days") or 0,
-            "bradford": bradford, "bradford_band": band, "bradford_tone": tone, "bradford_spells": s12,
-            "bradford_days": d12, "bradford_months": len(past) + 1,
+            "absence_12m_days": d12, "absence_12m_spells": s12, "absence_12m_months": len(past) + 1,
             "punctuality_pct": _pct(len(on_time), len(with_in)),
             "late_days": d.get("late_days") or 0, "very_late_days": d.get("very_late_days") or 0,
             "avg_late_min": d.get("avg_late_min") or 0,
@@ -214,9 +205,8 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         "absenteeism_pct": _pct(tot("unplanned_days"), workdays_all),
         "attendance_pct": _pct(tot("present_days"), workdays_all),
         "unplanned_spells": int(tot("unplanned_spells")),
-        "bradford_avg": _avg([x["bradford"] for x in rows]),
-        "bradford_warning": sum(1 for x in rows if x["bradford"] >= 201),
-        "bradford_serious": sum(1 for x in rows if x["bradford"] >= 450),
+        "absence_12m_days": round(sum(x["absence_12m_days"] for x in rows), 1),
+        "absence_12m_people": sum(1 for x in rows if x["absence_12m_days"]),
         "punctuality_pct": _pct(punct_num, punct_den),
         "utilisation_pct": _pct(tot("actual_hours"), tot("required_hours")),
         "overtime_hours": round(sum(max(0, x["balance_hours"]) for x in rows), 1),
@@ -255,7 +245,7 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
             "wfh_pct": _pct(sum(x["wfh_days"] for x in rs), sum(x["present_days"] for x in rs)),
             "regularisation_pct": _pct(sum(x["regularised_days"] for x in rs if x["behaviour"]),
                                        sum(x["present_days"] for x in rs if x["behaviour"])),
-            "bradford_avg": _avg([x["bradford"] for x in rs]),
+            "absence_12m_days": round(sum(x["absence_12m_days"] for x in rs), 1),
             "attention_avg": _avg([x["attention"] for x in rs]),
             "deduction_days": round(sum(x["deduction_days"] for x in rs), 1),
         })
@@ -270,8 +260,6 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         "period": {"key": period.key, "label": period.label},
         "kpis": kpis, "rows": rows, "groups": groups, "arrival": arrival,
         "hours_hist": [{"bucket": lab, "count": hours_hist.get(lab, 0)} for _, _, lab in HOURS_BUCKETS],
-        "bradford_bands": [{"band": lab, "tone": t, "from": lo,
-                            "count": sum(1 for x in rows if x["bradford_band"] == lab)} for lo, lab, t in BRADFORD_BANDS],
         "weights": WEIGHTS,
         "trend": insight_trend(db, period, hist, hist_ids),
     }
@@ -283,7 +271,7 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
 def _attention(row: dict, policy) -> dict:
     """0–100 composite: higher = needs a conversation. Each part is 0..1 then weighted (see WEIGHTS)."""
     parts = {
-        "bradford": min(1.0, row["bradford"] / 450),
+        "absence": min(1.0, (row["absence_12m_days"] or 0) / ABSENCE_FULL_DAYS),
         "punctuality": (1 - (100 if row["punctuality_pct"] is None else row["punctuality_pct"]) / 100) if row["behaviour"] else 0,
         "utilisation": max(0.0, min(1.0, (100 - (100 if row["utilisation_pct"] is None else row["utilisation_pct"])) / 20)),
         "regularisation": min(1.0, (row["regularised_days"] or 0) / max(1, policy.persistent_regularisation_days * 2))
@@ -401,7 +389,7 @@ def insight_trend(db: Session, period: Period, hist: Optional[list] = None, pids
 
 _SC_KEYS = [("attendance_pct", "Attendance", "%", True), ("punctuality_pct", "On-time arrivals", "%", True),
             ("utilisation_pct", "Hours vs required", "%", True), ("avg_hours", "Average day (h)", "", True),
-            ("absence_pct", "Unplanned absence", "%", False), ("bradford", "Bradford factor (12 m)", "", False),
+            ("absence_pct", "Unplanned absence", "%", False), ("absence_12m_days", "Unplanned absence days (12 m)", "", False),
             ("wfh_pct", "WFH share of days", "%", False), ("regularisation_pct", "Regularised days", "%", False),
             ("long_days", "Long days (≥ 2 h over)", "", None), ("attention", "Attention score", "", False)]
 

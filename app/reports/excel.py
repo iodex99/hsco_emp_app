@@ -286,25 +286,25 @@ def build_workbook(db: Session, period: Period) -> bytes:
     ik = ins["kpis"]
     ws = wb.create_sheet("Scorecard")
     rows = [[r["emp_no"], r["name"], r["group"], r["location"], r["tenure_m"], r["attention"],
-             ", ".join(r["attention_why"]), r["attendance_pct"], r["absence_pct"], r["bradford"], r["bradford_band"],
+             ", ".join(r["attention_why"]), r["attendance_pct"], r["absence_pct"], r["absence_12m_days"], r["absence_12m_spells"],
              r["punctuality_pct"], r["avg_in"], r["avg_hours"], r["utilisation_pct"], r["balance_hours"], r["long_days"],
              r["late_sitting_days"], r["wfh_days"], r["regularised_days"], r["missing_punch_days"], r["leave_used_fy"],
              r["leave_closing"], r["compoff_closing"]] for r in sorted(ins["rows"], key=lambda x: -x["attention"])]
     _table(ws, 6, ["Emp No", "Name", "Group", "Location", "Tenure (months)", "Attention (0-100)", "Main reasons",
-                   "Attendance %", "Unplanned absence %", "Bradford (12 m)", "Bradford band", "On time %", "Avg first punch",
+                   "Attendance %", "Unplanned absence %", "Unplanned absence days (12 m)", "Absence spells (12 m)", "On time %", "Avg first punch",
                    "Avg day (h)", "Hours vs required %", "Balance (h)", "Long days", "Late sitting", "WFH days",
                    "Regularised", "Missing punch", f"Leave used {ik['fy_label']}", "Leave balance", "Comp-off balance"],
            rows, [10, 24, 9, 10] + [11] * 20, org, f"Employee scorecard — {period.label}")
     ws.cell(row=4, column=1, value=(
         f"Firm: unplanned absence {ik['absenteeism_pct']}% · on time {ik['punctuality_pct']}% · hours vs required "
         f"{ik['utilisation_pct']}% · attrition (12 m) {ik['attrition_pct']}% · leave liability {ik['leave_liability_days']} d. "
-        "Attention = Bradford 25 + punctuality 20 + hours 20 + regularisation 15 + WFH 10 + missing punches 10."))
+        "Attention = unplanned absence (12 m) 25 + punctuality 20 + hours 20 + regularisation 15 + WFH 10 + missing punches 10."))
     ws.freeze_panes = "C7"
     ws2 = wb.create_sheet("Groups Compared")
     _table(ws2, 5, ["Group", "People", "Attendance %", "Unplanned absence %", "On time %", "Hours vs required %",
-                    "Avg day (h)", "WFH share %", "Regularised %", "Avg Bradford", "Avg attention", "Deduction days"],
+                    "Avg day (h)", "WFH share %", "Regularised %", "Unplanned absence days (12 m)", "Avg attention", "Deduction days"],
            [[g["group"], g["headcount"], g["attendance_pct"], g["absenteeism_pct"], g["punctuality_pct"],
-             g["utilisation_pct"], g["avg_hours"], g["wfh_pct"], g["regularisation_pct"], g["bradford_avg"],
+             g["utilisation_pct"], g["avg_hours"], g["wfh_pct"], g["regularisation_pct"], g["absence_12m_days"],
              g["attention_avg"], g["deduction_days"]] for g in ins["groups"]], [12] + [13] * 11, org,
            f"Groups compared — {period.label}")
 

@@ -45,7 +45,7 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 | 2FA mandatory by default | Requirement; admin can relax in Settings |
 | Place names from a bundled GeoNames India gazetteer (566k places, offline) rather than an online API | Automatic, free (CC-BY), and no coordinates leave the server |
 | Importer matches fields by meaning + checks values; unsure → user maps once, layout remembered | Never import a misread file silently; never ask twice for the same layout |
-| Attention score is a transparent weighted sum with listed reasons, Bradford for absence | Board needs "who to talk to and why", explainable in one sentence (METRICS "Insights") |
+| Attention score is a transparent weighted sum with listed reasons; absence as plain days (Bradford removed at the owner's request, 2026-11-18) | Board needs "who to talk to and why", explainable in one sentence (METRICS "Insights") |
 
 ## Open questions for HR / partners (assumptions in force until answered)
 1. **HS207**: should auto-marked hours on holidays count? (app says no → 0.5 day deduction for Oct.)

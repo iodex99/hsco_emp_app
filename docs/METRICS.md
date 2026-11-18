@@ -69,7 +69,6 @@ punches) exclude `metrics_exclude_groups` (default Partner).
 | Attendance % | days present ÷ working days |
 | Unplanned absence % (absenteeism) | (absent + loss-of-pay half-days ÷ 2) ÷ working days. Planned leave and comp-off are *not* unplanned |
 | Absence spell | consecutive working days with any unplanned absence; weekly-offs/holidays in between do not break a spell |
-| Bradford factor | S² × D over the **last 12 computed months** (S = spells, D = unplanned-absence days). Bands: 0 none · 1–50 low · 51–200 monitor · 201–449 warning · 450+ serious |
 | On time % (punctuality) | present working days whose first punch is within the late grace (shift start + `late_grace_min`) ÷ present working days with a first punch |
 | Hours vs required % (utilisation) | actual hours ÷ required hours |
 | Overtime / shortfall hours | sum of positive / negative month balances |
@@ -84,7 +83,7 @@ punches) exclude `metrics_exclude_groups` (default Partner).
 | Arrival heatmap | first punches counted by weekday × half hour (`< 08:00` and `13:00 +` folded) |
 | Working-day histogram | worked days by length bucket (< 4 h … 11 h +) |
 
-**Attention score (0–100, higher = more to talk about)** = 25 × min(1, Bradford ÷ 450) + 20 × (1 − on-time share)
+**Attention score (0–100, higher = more to talk about)** = 25 × min(1, unplanned-absence days in the last 12 months ÷ 10) + 20 × (1 − on-time share)
 + 20 × min(1, (100 − hours-vs-required %) ÷ 20) + 15 × min(1, regularised days ÷ (2 × persistent-regularisation days))
 + 10 × min(1, (WFH days − limit) ÷ (2 × limit)) + 10 × min(1, missing-punch days ÷ 5). Behaviour parts are 0 for excluded
 groups. "Main reasons" lists the parts worth ≥ 5 points. ≥ 50 counts as "needs a conversation".
@@ -94,7 +93,7 @@ measures; verdict "better / needs attention" when the gap to the firm exceeds 5 
 firm value (others), otherwise "typical".
 
 *v1.4.1:* the attention score uses 0 % as 0 % (previously a 0 % on-time or hours share was mistaken for "no data").
-History-based measures (Bradford, FY leave used, trend) are computed from the stored month summaries; a spell that runs
+History-based measures (12-month absence, FY leave used, trend) are computed from the stored month summaries; a spell that runs
 from one month's last working day into the next month's first working day counts once.
 
 ## Locations (v1.5 — `app/services/locations.py`; Locations page, Excel "Sign-ins & Places"/"Places", board pack)
@@ -108,3 +107,7 @@ from one month's last working day into the next month's first working day counts
 | By place | sign-ins, people, tags and top remarks per place name |
 Flags: `OFF_SITE_OFFICE` (medium) "Tagged 'Office' but not at an office", `SHARED_DEVICE` (high) "Phone used to sign
 in for several people" — see BUSINESS_RULES §9a.
+
+*v1.5.2:* the Bradford factor was removed on request. 12-month absence is reported as **unplanned absence days** and
+**spells** (a spell = consecutive working days with unplanned absence; offs/holidays between don't break it; a spell
+crossing a month boundary counts once).

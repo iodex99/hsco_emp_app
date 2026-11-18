@@ -16,7 +16,7 @@ mandatory multi-method two-factor authentication. All data stays on the firm's W
   regularisations, missing punches, present-without-punch, leave exhausted, new joinees, exits …
 - **Report**: board dashboard, payroll leave sheet (same columns as the old manual MIS + ledger), per-employee
   drill-down (calendar, punches with location names worked out offline from GPS coordinates), Insights (attention
-  score, Bradford factor, punctuality, utilisation, heatmaps, groups compared, attrition), Excel workbook with live
+  score, unplanned absence, punctuality, utilisation, heatmaps, groups compared, attrition), Excel workbook with live
   formulas, and a single-file offline HTML board pack with full sorting, filtering, grouping and drill-down.
 - **Import anything**: columns may be moved, renamed or come from another system — fields are recognised by meaning
   and checked against their values; a report the app can't place is mapped once and remembered.

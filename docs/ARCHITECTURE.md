@@ -21,7 +21,7 @@ app/engine/                PURE calculation engine (no DB/web): model.py (types,
 app/importers/             readers.py (xlsx/xls/csv → rows, filters ignored), parsers.py (universal recognition + parse)
 app/services/              settings, audit, imports (pipeline, remembered layouts, pending uploads, partial-file
                            rules, recompute_from), compute (DB→engine→results + ledgers), metrics, insights
-                           (scorecards, Bradford, heatmaps), attendance_stats (compact month summaries), geo,
+                           (scorecards, absence, heatmaps), attendance_stats (compact month summaries), geo,
                            maintenance (start-up background jobs)
 app/security/              core.py (passwords, sessions, CSRF, TOTP, recovery, email OTP), passkeys.py (WebAuthn)
 app/reports/               excel.py (workbook), html_report.py (standalone board pack)
@@ -133,8 +133,7 @@ specificity weight. `detect_sheet()`:
 `parse_hhmm`, `status_codes`. Detection is memoised per sheet (`_FIT_CACHE`, `_fscore`).
 
 ## Insights (v1.4)
-`services/insights.py` reads `MonthResult` rows (current month + the last 12 computed months for Bradford and FY
-leave) and returns KPIs, per-employee rows with the attention score, group comparison, arrival heatmap, hours histogram,
+`services/insights.py` reads `MonthResult` rows (current month + the last 12 computed months for 12-month absence and FY leave) and returns KPIs, per-employee rows with the attention score, group comparison, arrival heatmap, hours histogram,
 employee × day matrix and a trend. Results are cached in-process keyed by (period, latest `computed_at`, latest settings
 change, employee count/last edit). Used by `/insights`, the employee Scorecard tab, Excel and the board pack.
 

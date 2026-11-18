@@ -14,8 +14,7 @@ Add more methods under **My security** (several phones, keys).
 - **Overview**: the month at a glance, with a **month-end checklist** that tells you the next step.
 - **Payroll leave sheet**: everyone's figures; chips filter to deductions, loss of pay, WFH over limit, flags and more.
 - **Review queue**: every exception, grouped by type; mark each reviewed with a short note.
-- **Insights**: who needs a conversation and why — scorecard with an attention score (0–100) and its reasons,
-  Bradford factor, on-time arrivals, hours vs required, an employee × day heatmap, arrival times, groups compared.
+- **Insights**: who needs a conversation and why — scorecard with an attention score (0–100) and its reasons, 12-month unplanned absence, on-time arrivals, hours vs required, an employee × day heatmap, arrival times, groups compared.
   An employee's **Scorecard** tab compares them with their group and the firm.
 - **Employees**: settings per person (group, working pattern, hours per day, exemption).
 - **Locations**: every mobile sign-in with its place name (worked out from the GPS coordinates automatically),

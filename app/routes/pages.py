@@ -77,7 +77,7 @@ def insights_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     if p.computed_at is None:
         return pending_month(c, p)
     data = INS.insights(c.db, p)
-    chart = {"hours_hist": data["hours_hist"], "bands": data["bradford_bands"], "groups": data["groups"],
+    chart = {"hours_hist": data["hours_hist"], "groups": data["groups"],
              "trend": data["trend"]}
     return render(c, "insights.html", period=p, I=data, chart=chart, policy=get_policy(c.db))
 
