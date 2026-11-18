@@ -68,7 +68,8 @@ Add more methods under **My security** (several phones, keys).
 ## Permanent employee settings (Employees → name)
 Group, location, DOJ/DOL, weekly-off pattern (greytHR / standard 1st-Saturday / all Saturdays off / Sunday only /
 custom weekdays + working Saturdays), required hours per day (e.g. 8 instead of 8.5), holiday calendar,
-exempt from deduction (+ reason). Changes recompute all draft months.
+exempt from the hours-shortfall deduction (+ reason; WFH over the limit is still deducted). Changes recompute all
+draft months.
 
 ## Parallel run (first months)
 Upload your manual MIS workbook too. **Reconciliation** lists every difference between your sheet and the app.

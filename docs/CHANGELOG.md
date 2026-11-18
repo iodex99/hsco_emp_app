@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.8 — 2026-11-18 — documentation
+BUSINESS_RULES and USER_GUIDE: "exempt from deduction" now says it covers the hours-shortfall deduction only (WFH over
+the limit is deducted unless the group is in *Groups not deducted for WFH*). No code change.
+
 ## 1.6.7 — 2026-11-18 — Punch exceptions: missing / incorrect punches, regularisations, WFH … day by day
 Owner: "they also want to see incorrect / missing punches from employees, also more such data like regularisations,
 wfh etc".

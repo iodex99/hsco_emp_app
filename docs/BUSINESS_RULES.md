@@ -59,8 +59,10 @@ with the default shown. Engine code: `app/engine/compute.py` (pure functions, un
 Month overrides (manual, with reason) may replace E, F, G, H, J, K, L, P, N, `deduction_days`, `exempt`, `remark`;
 dependent figures are recomputed in the order E,F,G,H → I → N → Q → R → deduction.
 
-**Exempt from deduction** (default): groups `Partner`, `SS`, `Article`, `Trainee`; employees flagged *exempt* in master
-(e.g. HS014, HS055 — "Partner" remark); per‑month exception override. Auto remark explains every result.
+**Exempt from the hours-shortfall deduction** (default): groups `Partner`, `SS`, `Article`, `Trainee`; employees flagged
+*exempt* in master (e.g. HS014, HS055 — "Partner" remark); per‑month exception override. Auto remark explains every
+result. This exemption does not cover WFH over the limit (§6 — only `wfh_deduction_exempt_groups`, default Partner,
+and a month exception).
 
 ## 4. Leave ledger (financial year Apr–Mar)
 - Credit mode `annual` (default): 15 days credited on 1‑Apr; joiners pro‑rata = 15 × (months remaining incl. joining
