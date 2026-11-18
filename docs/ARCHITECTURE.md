@@ -171,3 +171,11 @@ default. First used for `swipes.note/reason/approval/device/device_id`.
 by `compute_period` and the Locations report) · `services/locations.py` (report for a month from `SwipeRow`, no muster
 needed) · `geo.unnamed_clusters` (suggested places, grouped in SQL then merged) · `routes/pages.py`: `/locations`,
 `pending_month()` for months without results.
+
+## Branding (v1.5.1)
+`services/branding.py` — `save()` validates by magic bytes (PNG/JPEG/WebP) or sanitises SVG (`sanitize_svg`: element
+allow-list, no `on*` attributes, `href` only to `#ids`, no external `url()`, no DOCTYPE/ENTITY), stores
+`DATA_DIR/branding/logo.<ext>`; `favicon_svg()` crops an SVG logo's viewBox to its left mark (2.04 × height);
+`data_uri()` for the board pack. Routes: `GET /branding/logo`, `GET /branding/favicon.svg` (public, sandbox CSP,
+nosniff, cached with `?v=<mtime>`), `POST /settings/branding` and `/settings/branding/delete` (admin, audit-logged).
+Templates read `brand_info()` (Jinja global).

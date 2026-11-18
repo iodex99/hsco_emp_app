@@ -5,12 +5,13 @@ from datetime import date
 
 import anyio
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from app.engine.model import BUCKETS
 from app.models import Geofence, Holiday, HolidayCalendar, Period, SwipeRow
+from app.services import branding
 from app.services.audit import audit
 from app.services.compute import compute_period
 from app.services.geo import rename_swipes, unnamed_clusters
@@ -253,3 +254,48 @@ def save_updates(update_check: str = Form(""), update_interval_min: str = Form("
     save_general(c.db, data)
     audit(c.db, c.user, "settings.updates", details=data, ip=c.ip)
     return redirect("/settings#updates", "Update settings saved.")
+
+
+
+# ----------------------------------------------------------------------------- branding (firm logo)
+_IMG_HEADERS = {"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"}
+
+
+@router.get("/branding/logo")
+def branding_logo():
+    """Public (the sign-in page shows it before anyone is signed in); the file holds no data."""
+    lg = branding.logo()
+    if not lg:
+        return Response(status_code=404)
+    return Response(lg[0], media_type=lg[1], headers=_IMG_HEADERS)
+
+
+@router.get("/branding/favicon.svg")
+def branding_favicon():
+    fav = branding.favicon_svg()
+    if not fav:
+        return Response(status_code=404)
+    return Response(fav, media_type="image/svg+xml", headers=_IMG_HEADERS)
+
+
+@router.post("/settings/branding")
+async def upload_logo(file: UploadFile = File(...), c: Ctx = Depends(admin)):
+    data = await file.read(branding.MAX_BYTES + 1)
+    name = file.filename or ""
+
+    def run():
+        try:
+            kind = branding.save(data, name)
+        except ValueError as ex:
+            return redirect("/settings#general", f"Logo not saved: {ex}.")
+        audit(c.db, c.user, "branding.logo", "settings", name, {"type": kind, "bytes": len(data)}, c.ip)
+        return redirect("/settings#general", "Logo saved — it now appears in the app, the sign-in page and the board pack.")
+    return await anyio.to_thread.run_sync(run)
+
+
+@router.post("/settings/branding/delete")
+def delete_logo(c: Ctx = Depends(admin)):
+    if branding.remove():
+        audit(c.db, c.user, "branding.logo_removed", "settings", "", ip=c.ip)
+    return redirect("/settings#general", "Logo removed.")

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.1 — 2026-11-18 — firm logo
+- **Settings → Security & system → Logo:** an admin uploads the firm's logo (SVG best; PNG/JPEG/WebP; ≤ 1 MB). It is
+  stored with the data in `DATA_DIR/branding` — never in the code or the public repository — and shown in the
+  sidebar, on the sign-in pages (desktop and phone), as the browser-tab icon (the logo's left mark, e.g. the red
+  "HSCo" block) and in the board pack header (on a white backing; embedded so the file still works offline).
+- SVGs are sanitised: shapes, gradients, clip paths and text only; scripts, event handlers, external links,
+  embedded documents/images and entity declarations are refused. The logo is served with a sandboxing CSP.
+- The firm's logo is pre-installed on this PC's installation and the local development data.
+- Not in Excel: embedding images in .xlsx needs an extra library (Pillow) that isn't part of the install.
+
 ## 1.5.0 — 2026-11-18 — sign-ins with coordinates: place names, location checks, Locations page
 Built and tested on greytHR's newer *Employee Swipe Details* export (November 2026, with GPS).
 - **Importer:** the new 17-column swipe export is recognised (it was being mistaken for a muster: its approval

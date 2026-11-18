@@ -118,6 +118,20 @@
 </section>
 
 <section class="pane" data-pane="general">
+{% set B = brand_info() %}
+<div class="card" id="branding"><div class="hd"><h2>Logo</h2><span class="sub">sidebar, sign-in page, browser tab and board pack</span></div><div class="bd">
+  <div class="row" style="align-items:center;gap:18px;flex-wrap:wrap">
+    {% if B.logo %}<div class="logo-preview"><img src="/branding/logo?v={{ B.v }}" alt="Current logo"></div>
+    {% else %}<p class="muted" style="margin:0">No logo yet — the firm's initials are shown instead.</p>{% endif %}
+    {% if can_admin %}
+    <form method="post" action="/settings/branding" enctype="multipart/form-data" class="row" style="gap:8px;align-items:center">{{ ui.csrf_field() }}
+      <input type="file" name="file" accept=".svg,.png,.jpg,.jpeg,.webp,image/svg+xml,image/png,image/jpeg,image/webp" required aria-label="Logo file">
+      <button class="btn sm">{{ ui.icon('upload','sm') }} {{ 'Replace logo' if B.logo else 'Upload logo' }}</button></form>
+    {% if B.logo %}<form method="post" action="/settings/branding/delete" class="inline" data-confirm="Remove the logo?">{{ ui.csrf_field() }}<button class="btn sm ghost">{{ ui.icon('trash-2','sm') }} Remove</button></form>{% endif %}
+    {% endif %}
+  </div>
+  <p class="small muted mt-s">SVG (best — sharp at any size), PNG, JPEG or WebP, up to 1 MB. Kept on this server with the data; SVGs are checked and anything that could run code or load other files is refused.</p>
+</div></div>
 <form class="card" method="post" action="/settings/general">{{ ui.csrf_field() }}<div class="bd"><fieldset {{ 'disabled' if not can_admin }}>
   <div class="form-sec"><div><h3>Organisation</h3><p>Shown on reports.</p></div><div>
     <div class="field"><label>Name</label><input name="org_name" value="{{ general.org_name }}"></div>

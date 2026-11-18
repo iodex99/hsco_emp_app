@@ -5,6 +5,7 @@
 {% macro who(name, sub, id) %}<button type="button" class="who" data-emp="{{ id }}"><span class="av">{{ ui.initials(name) }}</span><span><b>{{ name }}</b><small>{{ sub }}</small></span></button>{% endmacro %}
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Board pack · {{ period.label }} · {{ org.org_name }}</title>
+{% if favicon_uri %}<link rel="icon" type="image/svg+xml" href="{{ favicon_uri }}">{% endif %}
 <style>{{ css|safe }}
 body{background:var(--bg)}
 .bp-top{background:linear-gradient(160deg,#1d3c96,#122659);color:#fff}
@@ -13,6 +14,7 @@ body{background:var(--bg)}
 .bp-top p{margin:4px 0 0;color:#c7d2fe;font-size:12.5px}
 .bp-top .row1{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
 .bp-top .logo{width:42px;height:42px;border-radius:11px;background:rgba(255,255,255,.14);display:grid;place-items:center;font-weight:700}
+.bp-top .logo-chip{padding:8px 12px;border-radius:10px}.bp-top .logo-chip img{max-height:34px}
 .bp-top .acts{margin-left:auto;display:flex;gap:8px}
 .bp-top .acts .btn{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.25)}
 .bp-top .tabs{border-bottom:0;margin:18px 0 0;gap:2px;overflow-x:auto;overflow-y:hidden}
@@ -44,7 +46,7 @@ tr[data-emp]{cursor:pointer}tr[data-emp]:hover td{background:var(--brand-50)}
 <body>
 {{ icons|safe }}
 <header class="bp-top"><div class="in">
-  <div class="row1"><div class="logo">{{ ui.org_initials(org.org_name) }}</div>
+  <div class="row1">{% if logo_uri %}<div class="logo-chip"><img src="{{ logo_uri }}" alt="{{ org.org_name }}"></div>{% else %}<div class="logo">{{ ui.org_initials(org.org_name) }}</div>{% endif %}
     <div><h1>Attendance &amp; leave board pack — {{ period.label }}</h1>
       <p>{{ org.org_name }} · {{ k.headcount }} employees · {{ 'Finalised for payroll' if period.status == 'FINALISED' else 'Draft (not yet finalised)' }} · generated {{ generated }} · <b>confidential — contains employee data</b></p></div>
     <div class="acts"><button class="btn sm" type="button" onclick="window.print()">{{ ui.icon('printer','sm') }} Print / PDF</button></div></div>

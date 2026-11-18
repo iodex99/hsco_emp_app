@@ -43,6 +43,8 @@ immediately). A banner appears for admins → **Update now** → progress dialog
    otherwise the previous code is restored and started again, and the dialog says so.
 
 Users may be signed out for a few seconds while it restarts. Data (`DATA_DIR`) is never part of an update.
+The firm logo lives in `DATA_DIR\branding` (uploaded in Settings) and is therefore kept across updates and backups
+of the data folder.
 After the first start of a new version a background job may run for a short while (building the place-name index
 in `DATA_DIR\geo`, refreshing stored place names once, adding summaries to older months). The app stays usable
 meanwhile; it only writes in short steps.

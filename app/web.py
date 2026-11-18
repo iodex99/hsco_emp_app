@@ -191,6 +191,17 @@ def render(c: Ctx, name: str, **kw) -> HTMLResponse:
     return resp
 
 
+def _brand() -> dict:
+    from app.services.branding import info
+    try:
+        return info()
+    except OSError:
+        return {"logo": False, "v": 0, "kind": ""}
+
+
+templates.env.globals["brand_info"] = _brand      # {% set B = brand_info() %} in any template (incl. sign-in pages)
+
+
 def redirect(url: str, flash: str = "") -> RedirectResponse:
     r = RedirectResponse(url, status_code=303)
     if flash:

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import APP_DIR
 from app.models import Employee, Period
+from app.services import branding
 from app.services import insights as INS
 from app.services import metrics as MX
 from app.services.settings import get_general, get_policy
@@ -75,6 +76,11 @@ def _loc_label(s: dict) -> str:
     return f"{base} — “{s['note']}”" if s.get("note") and base else base
 
 
+def _favicon_uri() -> str:
+    fav = branding.favicon_svg()
+    return "data:image/svg+xml;base64," + base64.b64encode(fav).decode() if fav else ""
+
+
 def _icons() -> str:
     svg = (APP_DIR / "static" / "icons.svg").read_text(encoding="utf-8")
     return svg.replace('style="display:none"', 'style="display:none" aria-hidden="true"', 1)
@@ -108,6 +114,7 @@ def build_board_pack(db: Session, period: Period) -> str:
     return tpl.render(
         org=org, period=period, generated=datetime.now().strftime("%d-%b-%Y %H:%M"), m=m, I=ins, rows=results,
         D=[r.data for r in results], policy=pol, icon_base="", labels=MX.FLAG_LABELS, L=loc,
+        logo_uri=branding.data_uri(), favicon_uri=_favicon_uri(),
         data_json=_safe_json({"emps": E, "labels": MX.FLAG_LABELS, "m": {k: m[k] for k in (
             "daily", "location_mix", "in_time_hist", "trend", "late_by_weekday")} | {"tenure": m["people"]["tenure_buckets"]},
             "ins": {"hours_hist": ins["hours_hist"], "bands": ins["bradford_bands"], "groups": ins["groups"],

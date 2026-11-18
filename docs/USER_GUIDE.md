@@ -93,3 +93,7 @@ replace the map's locality name everywhere (Locations, day view, Excel, board pa
 If you import the swipe export during the month, that month shows "Not calculated yet": what's been imported, the
 sign-ins so far and a link to Locations. Everything else (leave, hours, Insights, downloads) appears once the
 month's Attendance Muster Report is imported.
+
+## Logo
+Settings → Security & system → **Logo**: upload the firm's logo (SVG is sharpest). It appears in the sidebar, on the
+sign-in page, in the browser tab and on the board pack. *Remove* goes back to the firm's initials.

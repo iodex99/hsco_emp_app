@@ -339,3 +339,10 @@ def test_location_checks():
     assert "A" in f and [x["code"] for x in f["A"]] == ["SHARED_DEVICE"] and "Dev" in f["A"][0]["message"]
     assert "C" not in f and "E" not in f                         # rejected and biometric punches never flagged
     assert LC.flags_by_employee(sw[1:2], [client]) == {}          # no office named → nothing to check against
+
+
+@pytest.mark.skipif(not (REF / "logo.svg").exists(), reason="firm logo (git-ignored) not present")
+def test_real_logo_passes_sanitiser():
+    from app.services import branding
+    out = branding.sanitize_svg((REF / "logo.svg").read_bytes())
+    assert out.startswith("<svg") and "<script" not in out

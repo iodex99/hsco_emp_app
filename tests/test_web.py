@@ -840,3 +840,71 @@ def test_schema_upgrade_adds_columns(tmp_path):
     assert con.execute("select emp_no, place, note, device_id from swipes").fetchall() == [("E1", "Office", "", "")]
     con.close()
     assert add_missing_columns(eng) == []                                            # idempotent
+
+
+# ---------------------------------------------------------------- v1.5.1: firm logo
+
+TEST_LOGO = (b'<svg xmlns="http://www.w3.org/2000/svg" width="300" height="50" viewBox="0 0 300 50" fill="none">'
+             b'<defs><clipPath id="c"><rect width="300" height="50"/></clipPath></defs><g clip-path="url(#c)">'
+             b'<rect width="102" height="50" fill="#DF1C23"/><path d="M10 10h20v30H10z" fill="white"/>'
+             b'<text x="110" y="30" fill="#2B2A29">Test Firm LLP</text></g></svg>')
+
+
+def test_logo_sanitiser():
+    import pytest
+    from app.services import branding
+    assert "Test Firm LLP" in branding.sanitize_svg(TEST_LOGO)
+    bad = {b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>': "script",
+           b'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>': "event handlers",
+           b'<svg xmlns="http://www.w3.org/2000/svg"><use href="http://evil/x.svg#a"/></svg>': "links",
+           b'<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>': "foreignobject",
+           b'<!DOCTYPE svg [<!ENTITY a "x">]><svg xmlns="http://www.w3.org/2000/svg"/>': "DOCTYPE",
+           b'<svg xmlns="http://www.w3.org/2000/svg"><style>@import url(http://x)</style></svg>': "styles",
+           b'<svg xmlns="http://www.w3.org/2000/svg"><rect style="fill:url(http://x/a)"/></svg>': "references",
+           b'<svg xmlns="http://www.w3.org/2000/svg"><image href="data:image/png;base64,AAA"/></svg>': "image"}
+    for data, why in bad.items():
+        with pytest.raises(ValueError) as ex:
+            branding.sanitize_svg(data)
+        assert why.lower() in str(ex.value).lower(), (why, ex.value)
+    with pytest.raises(ValueError):
+        branding.save(b"just text", "notes.txt")
+    with pytest.raises(ValueError):
+        branding.save(b"\x89PNG" + b"0" * branding.MAX_BYTES, "big.png")
+
+
+def test_logo_upload_and_display(loaded):
+    import re as _re
+    c = loaded
+    assert c.get("/branding/logo").status_code == 404 and 'class="brand-img"' not in c.get("/").text
+    r = c.post("/settings/branding", data={"csrf": csrf_of(c, "/settings")},
+               files={"file": ("logo.svg", TEST_LOGO, "image/svg+xml")}, follow_redirects=True)
+    assert "Logo saved" in r.text
+    lg = c.get("/branding/logo")
+    assert lg.status_code == 200 and lg.headers["content-type"].startswith("image/svg+xml")
+    assert "sandbox" in lg.headers["content-security-policy"] and b"Test Firm LLP" in lg.content
+    fav = c.get("/branding/favicon.svg")
+    assert fav.status_code == 200 and b'viewBox="0 0 102 50"' in fav.content          # the left mark only
+    page = c.get("/").text
+    assert 'brand brand-img' in page and '/branding/logo?v=' in page and '/branding/favicon.svg?v=' in page
+    pack = c.get("/exports/2026-10.html").text
+    assert "data:image/svg+xml;base64," in pack and 'class="logo-chip"' in pack
+    # the sign-in page shows it to people who aren't signed in yet
+    from starlette.testclient import TestClient
+    from app.main import create_app
+    anon = TestClient(create_app())
+    assert "/branding/logo?v=" in anon.get("/login").text and anon.get("/branding/logo").status_code == 200
+    # a malicious SVG is refused and the current logo kept
+    r = c.post("/settings/branding", data={"csrf": csrf_of(c, "/settings")},
+               files={"file": ("x.svg", b'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>', "image/svg+xml")},
+               follow_redirects=True)
+    assert "Logo not saved" in r.text and b"Test Firm LLP" in c.get("/branding/logo").content
+    r = c.post("/settings/branding/delete", data={"csrf": csrf_of(c, "/settings")}, follow_redirects=True)
+    assert "Logo removed" in r.text and c.get("/branding/logo").status_code == 404
+
+
+def test_viewer_cannot_change_logo(client):
+    make_user("viewer1", "viewer")
+    login_full(client, "viewer1")
+    r = client.post("/settings/branding", data={"csrf": csrf_of(client, "/")},
+                    files={"file": ("logo.svg", TEST_LOGO, "image/svg+xml")}, follow_redirects=False)
+    assert r.status_code == 403

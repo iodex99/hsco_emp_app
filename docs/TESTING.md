@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`119 passed` (v1.5.0; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`123 passed` (v1.5.1; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
@@ -84,3 +84,10 @@ sheets and board-pack tab; real-data HTTP flow (October + November together, sug
 office", office check).
 Manual browser run on the real files: import of all six exports 2.6 s; Locations, suggestions, Name it → save,
 office check (48 of 91 "Office" sign-ins elsewhere), crawl of 232 pages as admin and viewer — no errors.
+
+## v1.5.1 — logo
+Tests: SVG sanitiser refuses script / event handler / external link / foreignObject / DOCTYPE-ENTITY / @import /
+external url() / embedded image; upload → served with sandbox CSP, cropped favicon, sidebar + favicon links, board
+pack embeds it, sign-in page shows it to anonymous visitors, malicious upload refused (old logo kept), remove; viewer
+gets 403; the real logo passes the sanitiser (skips without it). Visual check: sign-in desktop/phone, sidebar,
+Settings card, board-pack header (white backing on navy), tab icon at 64/32/16 px.
