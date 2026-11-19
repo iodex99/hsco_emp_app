@@ -36,6 +36,7 @@
     <div class="row">
       <div class="field"><label>How a WFH day is counted</label><select name="wfh_method"><option value="distinct_days" {{ 'selected' if pol.wfh_method=='distinct_days' }}>Any WFH punch on a date = 1 day</option><option value="swipes_half" {{ 'selected' if pol.wfh_method=='swipes_half' }}>WFH punches ÷ 2 (old manual method)</option></select></div>
       <div class="field"><label>Location types that mean WFH</label><input name="wfh_location_types" value="{{ pol.wfh_location_types|join(', ') }}"></div></div>
+    <div class="row"><div class="field"><label>Saturdays the office is open</label><input name="office_open_saturdays" value="{{ (pol.office_open_saturdays or [])|join(', ') }}" placeholder="every Saturday"><div class="help">Which Saturdays of the month the branches open (1 = the 1st). Someone working on another Saturday has to work from home: that WFH is listed but not counted towards the limit. Blank = every Saturday is open.</div></div></div>
     <div class="row"><div class="field"><label>Groups not deducted for WFH</label><input name="wfh_deduction_exempt_groups" value="{{ (pol.wfh_deduction_exempt_groups or [])|join(', ') }}"><div class="help">Comma separated. Default: Partner. Article, SS and Trainee are deducted (owner, 18-Nov-2026).</div></div></div>
   </div></div>
   <div class="form-sec"><div><h3>Punctuality (board metrics only)</h3><p>"Late coming" is not deducted under the policy — these only drive flags and reports.</p></div><div>

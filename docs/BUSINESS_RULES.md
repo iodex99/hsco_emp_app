@@ -93,6 +93,10 @@ their weekly off / holiday is *off-day work* (extra day, hours, comp-off ≥ 5 h
 note "Work from home on a weekly off/holiday — not counted as WFH" and the month stores `offday_wfh_days`.
 Method `distinct_days` (default): each working date with ≥1 WFH swipe counts 1 (partial‑WFH days reported
 separately). Method `swipes_half` reproduces HR's legacy count ÷ 2 (working-day swipes only).
+**Closed Saturdays (v1.7.4, owner):** the branches open only on the Saturdays in `office_open_saturdays` (default
+1st). WFH on a working Saturday that is not one of them is forced: still a WFH day (`wfh_office_closed`, note), but
+not counted in `wfh_days` (nor in `swipes_half`), so not towards the limit or the deduction; the month stores
+`office_closed_wfh_days`. `()` = every Saturday open.
 Flag `WFH_OVER_LIMIT` when > **2**. HR's manual sheet counted off-day WFH too (DATA_ANALYSIS §2).
 **Deduction (v1.6.5, owner):** `wfh_excess_days = ceil(max(0, wfh_days − wfh_limit_days))`;
 `wfh_deduction_days = wfh_excess_days × wfh_excess_deduction_days` (default **0.5**; 0 = flag only), 0 only when the

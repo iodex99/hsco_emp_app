@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.7.4 — 2026-11-19 — WFH on a Saturday the office is closed: listed, not counted
+Owner: "all the branches are open only on the 1st Saturday of every month, so if someone has all Saturdays working,
+they are by default gonna have to work from home, so such instances shall be counted as exceptions".
+- New setting *Saturdays the office is open* (Rules → Work from home; default **1** = the 1st Saturday; blank = every
+  Saturday). WFH on a working Saturday the office is closed is still shown as WFH, with the note "Work from home on a
+  Saturday the office is closed — not counted towards the WFH limit", and is **not counted** towards the 2-day limit
+  or the ½-day deduction (`office_closed_wfh_days` per month).
+- Punch exceptions: new type *WFH — office closed (Saturday)* (+ column in *By employee* and the Excel sheet);
+  Reconciliation explains these days as an app rule.
+- October 2026: HS016 worked from home on 10, 17, 24 and 31 Oct (closed Saturdays) — 6 WFH days → 2, the 2-day WFH
+  deduction no longer applies. Over the limit now: HS179 (1 day), HS195 (½ day).
+- Calculation rules version 7: draft months recalculate once after the update.
+
 ## 1.7.3 — 2026-11-19 — the intermittent CI failure found and fixed (test only)
 `tests/e2e/test_update_flow.py` failed now and then (builds 17 and 21; reproduced here on a second run): after a
 successful update the page reloads itself and shows "Updated to v…" once (remembered in the browser); when that

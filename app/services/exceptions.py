@@ -23,6 +23,7 @@ TYPES = [
     ("permission", "Regularisation request", "b-violet", "reg"),
     ("wfh", "WFH", "b-violet", "wfh"),
     ("wfh_over", "WFH over the limit", "b-bad", "wfh"),
+    ("wfh_closed", "WFH — office closed (Saturday)", "b-grey", "wfh"),
     ("wfh_offday", "WFH on a day off", "b-grey", "wfh"),
     ("wfh_leave", "WFH on a leave / absent day", "b-warn", "wfh"),
     ("very_late", "Late > 1 h", "b-bad", "time"),      # lateness under an hour: Insights / Overview, not here
@@ -63,7 +64,9 @@ def day_issues(dd: dict, wfh_types: set, auto_attendance: bool = False) -> list[
         keys.append("rejected")
     if dd.get("mobile_office"):
         keys.append("mobile_office")
-    if dd.get("wfh"):
+    if dd.get("wfh") and dd.get("wfh_closed"):
+        keys.append("wfh_closed")                 # forced: not counted towards the limit
+    elif dd.get("wfh"):
         keys.append("wfh")
     elif any((s.get("loc") or "").strip().lower() in wfh_types for s in sw):
         keys.append("wfh_leave" if work else "wfh_offday")

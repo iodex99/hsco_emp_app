@@ -122,7 +122,14 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
 # 4 = v1.6.6: hours-exempt employees/groups are deducted for WFH too (only wfh_deduction_exempt_groups are not).
 # 5 = v1.6.7: a WFH sign-in on a day of full leave / absence is not a WFH day; flags follow the hours / WFH parts.
 # 6 = v1.7.0: employee categories (pattern / calendar / hours per category), optional holidays.
-RULES_VERSION = 6
+# 7 = v1.7.4: WFH on a working Saturday the office is closed (only the 1st Saturday open) is not counted as WFH.
+RULES_VERSION = 7
+
+
+def office_closed_saturday(d: date, policy: Policy) -> bool:
+    """A Saturday on which the branches are closed (policy.office_open_saturdays = nth Saturdays open; () = all)."""
+    open_ = tuple(policy.office_open_saturdays or ())
+    return bool(open_) and d.weekday() == 5 and ((d.day - 1) // 7 + 1) not in open_
 
 
 def compute_employee_month(
@@ -251,7 +258,14 @@ def compute_employee_month(
         if wfh_sw and day_type == WORKDAY and B_PRESENT in (b1, b2):
             dd.is_wfh = True
             dd.is_partial_wfh = len(wfh_sw) < len(sw)
-            res.wfh_swipes += len(wfh_sw)
+            if office_closed_saturday(d, policy):
+                # the branches are open only on some Saturdays: working from home is the only option — shown as
+                # WFH, not counted towards the monthly limit or its deduction
+                dd.wfh_office_closed = True
+                res.office_closed_wfh_days += 1
+                notes.append("Work from home on a Saturday the office is closed — not counted towards the WFH limit")
+            else:
+                res.wfh_swipes += len(wfh_sw)
         elif wfh_sw and day_type == WORKDAY:
             res.leaveday_wfh_days += 1
             notes.append("Work-from-home sign-in on a day of leave / absence — not counted as WFH")
@@ -295,7 +309,7 @@ def compute_employee_month(
     if policy.wfh_method == "swipes_half":
         res.wfh_days = res.wfh_swipes / 2
     else:
-        res.wfh_days = sum(1 for dd in res.days if dd.is_wfh)
+        res.wfh_days = sum(1 for dd in res.days if dd.is_wfh and not dd.wfh_office_closed)
     res.partial_wfh_days = sum(1 for dd in res.days if dd.is_wfh and dd.is_partial_wfh)
 
     # month overrides (inputs)
@@ -332,7 +346,7 @@ def compute_employee_month(
     res.wfh_deduction_days = 0.0 if res.wfh_deduction_exempt else res.wfh_excess_days * policy.wfh_excess_deduction_days
     ded_override = month_overrides.get("deduction_days") is not None
     if res.wfh_excess_days and policy.wfh_method != "swipes_half":   # (swipes ÷ 2 has no "nth WFH day")
-        wfh_dates = [dd for dd in res.days if dd.is_wfh]
+        wfh_dates = [dd for dd in res.days if dd.is_wfh and not dd.wfh_office_closed]
         for n, dd in enumerate(wfh_dates[int(policy.wfh_limit_days):], start=int(policy.wfh_limit_days) + 1):
             dd.notes.append(f"WFH day {n} of the month — over the limit of {policy.wfh_limit_days:g}"
                             + (f": {policy.wfh_excess_deduction_days:g} day deducted from leave"

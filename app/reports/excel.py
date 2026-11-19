@@ -404,7 +404,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
     for row in ws.iter_rows(min_row=6, max_col=1):
         row[0].number_format = "dd-mmm-yyyy"
     ws = wb.create_sheet("Exceptions by Employee")
-    keys = ["missing", "nopunch", "edited", "permission", "rejected", "wfh", "wfh_over", "wfh_offday", "wfh_leave", "very_late",
+    keys = ["missing", "nopunch", "edited", "permission", "rejected", "wfh", "wfh_over", "wfh_closed", "wfh_offday", "wfh_leave", "very_late",
             "early", "short", "absent", "offday_work"]
     _table(ws, 5, ["Employee No", "Name", "Group"] + [X["labels"][k] for k in keys] + ["WFH deduction (days)"],
            [[pp["emp_no"], pp["name"], pp["group"]] + [pp[k] or None for k in keys] + [pp["wfh_deduction"] or None]

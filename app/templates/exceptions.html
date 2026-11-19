@@ -56,6 +56,7 @@
     <th data-key="rejected" data-type="num" class="num">Rejected</th>
     <th data-key="wfh" data-type="num" class="num">WFH days</th><th data-key="wfh_over" data-type="num" class="num">Over limit</th>
     <th data-key="wfh_ded" data-type="num" class="num" title="Leave deducted for WFH over the limit">WFH deduction</th>
+    <th data-key="wfh_closed" data-type="num" class="num" title="WFH on a working Saturday the office is closed (not counted)">WFH office closed</th>
     <th data-key="wfh_offday" data-type="num" class="num" title="WFH on a weekly off / holiday (not counted)">WFH on day off</th>
     <th data-key="wfh_leave" data-type="num" class="num" title="WFH sign-in on a day of full leave / absence (not counted — check the day)">WFH on leave day</th>
     <th data-key="very_late" data-type="num" class="num">Late &gt; 1 h</th>
@@ -65,11 +66,11 @@
     <td data-v="{{ p.name }}" data-csv="{{ p.name }} ({{ p.emp_no }})">{{ ui.person(p.name, p.emp_no) }}{% if p.auto %} <span class="tag" title="Automatic attendance: punches not checked">auto</span>{% endif %}</td><td class="small">{{ p.group }}</td><td class="small">{{ p.category }}</td>
     {% for f in ('missing', 'nopunch', 'edited', 'permission', 'rejected', 'wfh', 'wfh_over') %}<td class="num {{ 'neg' if f in ('missing', 'nopunch', 'wfh_over') and p[f] }}" data-v="{{ p[f] }}">{{ p[f] or '' }}</td>{% endfor %}
     <td class="num {{ 'neg' if p.wfh_deduction }}" data-v="{{ p.wfh_deduction }}">{{ (p.wfh_deduction|n ~ ' d') if p.wfh_deduction else '' }}</td>
-    {% for f in ('wfh_offday', 'wfh_leave', 'very_late', 'early', 'short', 'absent', 'offday_work') %}<td class="num" data-v="{{ p[f] }}">{{ p[f] or '' }}</td>{% endfor %}</tr>
-  {% else %}<tr><td colspan="18">{% call ui.empty('Nothing to show', '', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
+    {% for f in ('wfh_closed', 'wfh_offday', 'wfh_leave', 'very_late', 'early', 'short', 'absent', 'offday_work') %}<td class="num" data-v="{{ p[f] }}">{{ p[f] or '' }}</td>{% endfor %}</tr>
+  {% else %}<tr><td colspan="19">{% call ui.empty('Nothing to show', '', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
   </tbody>
   {% if X.people %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#exp">{{ X.people|length }}</span> people</td><td></td><td></td>
-    {% for i in range(15) %}<td class="num" data-sum{{ ' data-unit=" d"' if i == 7 }}></td>{% endfor %}</tr></tfoot>{% endif %}
+    {% for i in range(16) %}<td class="num" data-sum{{ ' data-unit=" d"' if i == 7 }}></td>{% endfor %}</tr></tfoot>{% endif %}
   </table></div></div></div>
 </section>
 {% endblock %}

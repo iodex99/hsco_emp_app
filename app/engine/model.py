@@ -54,6 +54,10 @@ class Policy:
     status_map: dict = field(default_factory=lambda: dict(DEFAULT_STATUS_MAP))
     comp_off_min_hours: float = 5.0
     wfh_limit_days: float = 2.0
+    # Saturdays (nth of the month) the branches are open — owner, 19-Nov-2026: only the 1st. Someone whose working
+    # Saturday falls on a closed one has to work from home: that WFH is listed but not counted towards the limit.
+    # () = every Saturday open (no such exception).
+    office_open_saturdays: tuple = (1,)
     wfh_location_types: tuple = ("work from home", "wfh")
     wfh_method: str = "distinct_days"     # or 'swipes_half'
     wfh_excess_deduction_days: float = 0.5   # leave deducted per WFH day above the limit (0 = flag only) — v1.6.5
@@ -170,6 +174,7 @@ class DayDetail:
     is_regularised: bool = False
     is_wfh: bool = False
     is_partial_wfh: bool = False
+    wfh_office_closed: bool = False   # WFH forced: Saturday the office is closed
     is_extra_work: bool = False
     compoff_earned: bool = False
     is_sandwich: bool = False
@@ -224,6 +229,7 @@ class EmployeeMonth:
     offday_wfh_days: int = 0      # WFH sign-ins on the person's weekly off / holiday: off-day work, not WFH
     leaveday_wfh_days: int = 0    # WFH sign-ins on a working day of full leave / absence: not WFH (v1.6.7)
     wfh_excess_days: float = 0    # WFH days above the monthly limit
+    office_closed_wfh_days: int = 0   # WFH on a Saturday the office is closed (not counted towards the limit)
     shortfall_deduction_days: float = 0   # part of deduction_days for hours shortfall
     wfh_deduction_days: float = 0         # part of deduction_days for WFH above the limit
     wfh_deduction_exempt: bool = False    # not deducted for WFH (Partner-type group or month exception)

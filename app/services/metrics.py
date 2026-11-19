@@ -335,11 +335,11 @@ def reconciliation(db: Session, period: Period) -> dict:
                     continue
                 if abs(float(mv) - float(av)) > 0.02:
                     d = {"field": label, "manual": round(float(mv), 2), "app": round(float(av), 2), "rule": ""}
-                    off = (r.data.get("offday_wfh_days") or 0) + (r.data.get("leaveday_wfh_days") or 0)
+                    off = (r.data.get("offday_wfh_days") or 0) + (r.data.get("leaveday_wfh_days") or 0) +                         (r.data.get("office_closed_wfh_days") or 0)
                     if k == "wfh_days" and off and abs(float(mv) - float(av) - off) <= 0.51:
                         # HR counts WFH on weekly offs / holidays / leave days; the app does not (BUSINESS_RULES §6)
-                        d["rule"] = (f"{off} WFH day(s) on a weekly off, holiday or leave day — not WFH under the "
-                                     f"app's rule")
+                        d["rule"] = (f"{off} WFH day(s) on a weekly off, holiday, leave day or a Saturday the office "
+                                     f"is closed — not counted under the app's rules")
                     diffs.append(d)
             mremark = (mrow.get("remark") or "").lower()
             mded = 0.0

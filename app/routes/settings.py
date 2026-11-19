@@ -108,6 +108,8 @@ def _save_policy(c: Ctx, form):
                 data[key] = float(v)
             except ValueError:
                 return redirect("/settings#policy", f"'{key}' must be a number.")
+    data["office_open_saturdays"] = sorted({int(x) for x in form.get("office_open_saturdays", "").replace(" ", "").split(",")
+                                            if x.isdigit() and 1 <= int(x) <= 5})
     for key in ("exempt_groups", "metrics_exclude_groups", "wfh_location_types", "wfh_deduction_exempt_groups"):
         data[key] = [x.strip() for x in form.get(key, "").split(",") if x.strip()]
     data["wfh_location_types"] = [x.lower() for x in data["wfh_location_types"]]

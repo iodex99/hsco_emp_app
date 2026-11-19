@@ -92,6 +92,11 @@ WFH is counted only on a person's own working days. If someone signs in "Work fr
 holiday, the day is shown as off-day work (and can earn a comp-off) with a note — it does not count towards the WFH
 limit.
 
+## WFH on a closed Saturday
+The branches open only on the 1st Saturday (Rules & calendars → Work from home → *Saturdays the office is open*).
+Someone whose Saturday is a working day and who works from home on another Saturday has no choice: the day shows as
+WFH with a note and in Punch exceptions (*WFH — office closed*), but it does not count towards the 2-day limit.
+
 ## WFH over the limit
 Each WFH day above 2 in a month takes ½ day of leave (Rules & calendars → Work from home; 0 = only flag it). It
 appears in the employee's *Leave deduction*, the leave ledger, the review queue and the payroll Excel. It applies to

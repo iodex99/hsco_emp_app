@@ -131,6 +131,7 @@ One row per employee-day with ≥ 1 issue; all from the stored day detail.
 | Phone sign-in tagged 'Office' | mobile sign-in with Location Type Office |
 | WFH / WFH over the limit / WFH on a day off | WFH working day; the WFH days after the first *limit* (date order); WFH on own weekly off / holiday |
 | WFH on a leave / absent day | WFH sign-in on a working day of full leave / absence (not counted — check the day) |
+| WFH — office closed (Saturday) | WFH on a working Saturday the branches are closed (only the open Saturdays in the setting) — not counted (v1.7.4) |
 | Late > 1 h / Early exit / Short day | as in Behaviour metrics (lateness under 1 h is on Insights / Overview) |
 | Absent / LOP / Worked on a day off | unauthorised absence or LOP half; work on a weekly off / holiday (not WFH) |
 Partners on automatic attendance are not checked for punch issues. "Punch issues" KPI = days with missing punch, no

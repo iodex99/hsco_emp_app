@@ -241,6 +241,13 @@ def test_settings_changes_recompute(loaded):
     c.post("/settings/policy", data=form)
     _, f4 = _result("T004")
     assert "WFH_OVER_LIMIT" not in {f["code"] for f in f4}
+    # v1.7.4: which Saturdays the branches open (default the 1st) — shown and saved
+    c.post("/settings/policy", data={**form, "office_open_saturdays": "1, 3, 9"})
+    from app.db import session_scope as _ss
+    from app.services.settings import get_policy
+    with _ss() as db:
+        assert get_policy(db).office_open_saturdays == (1, 3)
+    assert 'name="office_open_saturdays" value="1, 3"' in c.get("/settings").text
     # holiday calendar: default calendar with 2-Oct and 20-Oct -> everyone gets 2 holidays
     c.post("/settings/calendars", data={"csrf": csrf, "name": "Mumbai 2026", "is_default": "1"})
     from sqlalchemy import select

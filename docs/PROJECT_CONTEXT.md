@@ -69,6 +69,8 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 - **Board pack removed** (owner): "the app does it in a much better way". Board members use the app (viewer role).
 - **Bradford factor removed** (owner); absence shown as plain unplanned days and spells.
 - Punch locations must also be available in Excel → punches & locations workbook + Places column in Daily Detail.
+- **Branches open only on the 1st Saturday** (owner, v1.7.4): WFH on another working Saturday is forced — listed as an
+  exception, not counted towards the WFH limit / deduction.
 - **Employee categories** (owner, v1.7): every employee has a category (+ additional); holiday list, weekly offs and
   hours per day per category; holiday lists change yearly (upload / paste replaces the year); targeted by category.
 - **Punch exceptions view** (owner, v1.6.7): missing / incorrect punches, regularisations, WFH and other day

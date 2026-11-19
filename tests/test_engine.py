@@ -397,3 +397,27 @@ def test_optional_holiday_taken_or_not():
     d7 = next(d for d in r.days if d.day.day == 7)
     assert d7.day_type == HOLIDAY and d7.holiday_name == "Gudi Padwa (optional)"
     assert not any("differs from greytHR" in n for n in d7.notes)
+
+
+def test_wfh_on_a_closed_saturday_is_listed_not_counted():
+    """v1.7.4 (owner): the branches open only on the 1st Saturday; someone whose Saturday is a working day works from
+    home on the others — shown as WFH with a note, not counted towards the limit or its deduction."""
+    def wfh(d):
+        return [Swipe("E1", datetime(2026, 10, d, 10, 0), "Mobile Sign In", "Work from Home", "Mobile Sign In"),
+                Swipe("E1", datetime(2026, 10, d, 18, 40), "Mobile Sign In", "Work from Home", "Mobile Sign In")]
+    rows = [r if not (r.day.weekday() == 5 and r.day.day > 7) else _md("E1", r.day, "P", 520, (10, 0))
+            for r in month()]                                           # works every Saturday (6-day week)
+    e = Employee("E1", group="BSS", weekly_off=P_SUN_ONLY)
+    sw = wfh(3) + wfh(10) + wfh(17) + wfh(24) + wfh(5) + wfh(6)
+    r = compute_employee_month(e, 2026, 10, rows, sw, POL)
+    closed = [d.day.day for d in r.days if d.wfh_office_closed]
+    assert closed == [10, 17, 24] and r.office_closed_wfh_days == 3
+    assert all(d.is_wfh for d in r.days if d.day.day in (10, 17, 24))                 # still shown as WFH
+    assert any("office is closed" in n for n in next(d for d in r.days if d.day.day == 10).notes)
+    assert r.wfh_days == 3 and r.wfh_deduction_days == 0.5                          # 1st Sat + Mon 5 + Tue 6 count
+    r = compute_employee_month(e, 2026, 10, rows, sw, Policy(wfh_method="swipes_half"))
+    assert r.wfh_days == 3                                                          # closed Saturdays' swipes left out
+    r = compute_employee_month(e, 2026, 10, rows, sw, Policy(office_open_saturdays=()))
+    assert r.office_closed_wfh_days == 0 and r.wfh_days == 6                        # every Saturday open: all count
+    r = compute_employee_month(e, 2026, 10, rows, sw, Policy(office_open_saturdays=(1, 3)))
+    assert [d.day.day for d in r.days if d.wfh_office_closed] == [10, 24]

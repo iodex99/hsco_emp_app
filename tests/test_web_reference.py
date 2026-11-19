@@ -81,12 +81,12 @@ def test_real_month_end_to_end(client):
     assert m and (int(m.group(1)), int(m.group(2))) == (72, 97), m and m.groups()
     # the other 19 of the earlier 91 differ only by app rules: WFH on own off days (17, v1.6.4) and the
     # ½-day deduction per WFH day over the limit (HS016, HS195; v1.6.5) — HR applied neither in October
-    assert "19 more differ only by an app rule" in html and "not WFH under the app" in html
+    assert "19 more differ only by an app rule" in html and "not counted under the app" in html
 
     # --- dashboard + flags + drill-down on real data
     html = c.get("/?period=2026-10").text
     assert "October 2026" in html and "Over WFH limit" in html
-    assert c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT").text.count("WFH days (limit 2)") == 3      # HS016, HS179, HS195 (v1.6.4: WFH on own off days not counted)
+    assert c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT").text.count("WFH days (limit 2)") == 2      # HS179, HS195 (v1.6.4 off days; v1.7.4 closed Saturdays: HS016)
     for e in ("HS001", "HS068", "HS207", "PC006"):
         assert c.get(f"/periods/2026-10/employee/{e}").status_code == 200
 
@@ -100,9 +100,9 @@ def test_real_month_end_to_end(client):
     ded = {r.emp_no: r.data["shortfall_deduction_days"] for r in R if r.data.get("shortfall_deduction_days")}
     assert ded == {"HS112": 1.0, "HS138": 0.5, "HS205": 0.5, "HS207": 0.5}
     # + ½ day per WFH day over the limit (v1.6.5) — total in the payroll sheet's deduction column
-    assert {r.emp_no: r.data["wfh_deduction_days"] for r in R if r.data.get("wfh_deduction_days")} ==         {"HS016": 2.0, "HS179": 1.0, "HS195": 0.5}
+    assert {r.emp_no: r.data["wfh_deduction_days"] for r in R if r.data.get("wfh_deduction_days")} ==         {"HS179": 1.0, "HS195": 0.5}
     rowof = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
-    assert "+CEILING(MAX(0,J" in ws.cell(row=rowof["HS016"], column=22).value
+    assert "+CEILING(MAX(0,J" in ws.cell(row=rowof["HS179"], column=22).value
     assert ws.max_row >= 5 + 97
     assert "Reconciliation" in wb.sheetnames
     from tests.reference_setup import build

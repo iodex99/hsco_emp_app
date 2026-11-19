@@ -196,3 +196,6 @@ their additional category. Mahatma Gandhi Jayanti (2-Oct) is in the Carlyle, MDS
 in the HSCO (Mum) list; greytHR's October muster has 2-Oct as a working day for almost everyone, while HR's October
 sheet treated it as a holiday. With the lists applied, 12 of 14 Carlyle people get 2-Oct as a holiday (greytHR: working)
 — listed under *Check these dates*.
+
+**Closed Saturdays (v1.7.4):** the branches open only on the 1st Saturday. In October, HS016 (6-day week in greytHR)
+worked from home on 10, 17, 24 and 31 Oct — the only such case; those 4 days are no longer counted as WFH.
