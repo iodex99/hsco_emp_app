@@ -117,17 +117,27 @@ def _ymd(i: int, g: tuple):
         return None
 
 
+_NOYEAR_RES = [
+    re.compile(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?[\s\-/.]+({_MONTHS})[a-z]*\b", re.I),
+    re.compile(rf"\b({_MONTHS})[a-z]*[\s\-/.]+(\d{{1,2}})(?:st|nd|rd|th)?\b", re.I),
+]
+
+
 def parse_pasted(text: str, default_year: int | None = None) -> tuple[list[dict], list[str]]:
     """Holidays from pasted text — one per line, the date anywhere in it ("1  Republic Day  26 January 2026",
-    "26-01-2026 Republic Day", "Republic Day, Jan 26, 2026"); serial numbers, weekday names and the words
-    optional / restricted are understood. Returns (rows {date, name, optional, weekday}, lines that had no date)."""
+    "26-01-2026 Republic Day", "Republic Day, Jan 26, 2026", "Jan 26 Monday Republic Day"); serial numbers, weekday
+    names (before or after the date, or in brackets) and the words optional / restricted are understood. A line
+    without a year takes default_year, else the year most other lines have, else this year. Returns (rows {date, name,
+    optional, weekday}, lines that had no date)."""
+    from collections import Counter
+    from datetime import date as _d
     from app.importers.parsers import weekday_of
     rows, skipped = [], []
     for raw in (text or "").splitlines():
-        line = " ".join(raw.replace("\t", " ").split())
+        line = " ".join(raw.replace("	", " ").split())
         if not line:
             continue
-        d, span = None, None
+        d, span, noyear = None, None, None
         for i, rx in enumerate(_DATE_RES):
             m = rx.search(line)
             if m:
@@ -136,23 +146,52 @@ def parse_pasted(text: str, default_year: int | None = None) -> tuple[list[dict]
                     span = m.span()
                     break
         if d is None:
+            for i, rx in enumerate(_NOYEAR_RES):
+                m = rx.search(line)
+                if m:
+                    g = m.groups()
+                    dd, mon = (g[0], g[1]) if i == 0 else (g[1], g[0])
+                    mm = _ymd(0, (dd, mon, "2000"))
+                    if mm:
+                        noyear, span = (mm.month, mm.day), m.span()
+                        break
+        if d is None and noyear is None:
             if any(ch.isalpha() for ch in line) and not re.match(r"(?i)^(s\.?\s*no|sr|holiday|date|day|occasion)\b", line):
                 skipped.append(line)
             continue
-        rest = (line[:span[0]] + " " + line[span[1]:]).strip()
+        wd = None
+        after = re.match(r"\s*[,(\-–]?\s*(" + _WD_RE.pattern + r")\s*\)?", line[span[1]:], re.I)
+        if after:                                    # "26-01-2026 Monday …": the weekday that goes with the date
+            wd = weekday_of(after.group(1))
+            line_rest_after = line[span[1] + after.end():]
+        else:
+            line_rest_after = line[span[1]:]
+        rest = (line[:span[0]] + " " + line_rest_after).strip()
         optional = bool(_OPT_RE.search(rest))
         rest = _OPT_RE.sub(" ", rest)
-        wd = None
-        for m in _WD_RE.finditer(rest):
-            before = rest[:m.start()].rstrip()
-            boxed = before.endswith("(")
-            # a weekday column / "(Monday)" — not part of a name such as "Good Friday"
-            if boxed or not before or not before[-1].isalpha():
-                wd = weekday_of(m.group(0))
-                rest = rest[:m.start()] + " " + rest[m.end():]
-                break
+        if wd is None:
+            for m in _WD_RE.finditer(rest):
+                before = rest[:m.start()].rstrip()
+                boxed = before.endswith("(")
+                # a weekday column / "(Monday)" — not part of a name such as "Good Friday"
+                if boxed or not before or not before[-1].isalpha():
+                    wd = weekday_of(m.group(0))
+                    rest = rest[:m.start()] + " " + rest[m.end():]
+                    break
         rest = re.sub(r"\(\s*\)", " ", rest)
         rest = re.sub(r"^\s*\d{1,3}[.)]?\s+", "", rest)              # serial number
         name = " ".join(rest.strip(" -–—|,;:.").split())
-        rows.append({"date": d, "name": name or "Holiday", "optional": optional, "weekday": wd})
-    return rows, skipped
+        rows.append({"date": d, "noyear": noyear, "name": name or "Holiday", "optional": optional, "weekday": wd})
+    years = Counter(r["date"].year for r in rows if r["date"])
+    year = default_year or (years.most_common(1)[0][0] if years else _d.today().year)
+    out = []
+    for r in rows:
+        if r["date"] is None:
+            try:
+                r["date"] = _d(year, *r["noyear"])
+            except ValueError:
+                skipped.append(r["name"])
+                continue
+        r.pop("noyear", None)
+        out.append(r)
+    return out, skipped

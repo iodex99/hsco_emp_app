@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.7.1 — 2026-11-19 — categories: fixes from an independent review
+- **A holiday list not loaded for a year is skipped** (next list in the chain, finally greytHR's own holiday marks).
+  Before, e.g. January 2027 before the 2027 lists were uploaded would have made 1-Jan and 26-Jan working days —
+  "absent" for everyone. The month stores which list each person used (`calendar_from`).
+- **A shared calendar is never rewritten by a category's list:** when the category points at the default calendar or
+  one used by another category / employee, the upload gives the category a list of its own (and says so).
+- **Replacing a year only touches the span the file covers** (a list split over two files no longer wipes the first
+  half) and a file of optional holidays only never removes fixed ones.
+- **File names:** only "HSCO (…)" or an existing category's name counts — "(1)" / "(final)" no longer create a category.
+- **Older files:** a master whose *Category* column holds groups (Partner, SS …) imports them as the group; *MUSTER*
+  in a master now means "follow the category" (older templates wrote it for everyone; a warning says how many);
+  a category report needs a real employee-number column (a holiday list with Location / Category columns could
+  otherwise be taken for one); the category report accepts joining dates etc.; a blank additional category in
+  greytHR's report clears it; employee numbers without digits are accepted again (only spaced / long text is a
+  footer).
+- **Employee page:** a category can be cleared (an empty field was ignored).
+- **Rename / delete a category** updates targeted holidays (renamed; dropped when only for that category); the delete
+  button shows only when nobody — also leavers — has the category.
+- **Holiday-list notes:** a list for one location used by people elsewhere is pointed out (the CDTIPL Boutique list
+  is for Delhi; 2 of its 3 people are in Mumbai); a new calendar nobody uses says so.
+- *Check these dates* counts people under the list they actually use (articles under HSCO (Mum)).
+- "Restricted Holiday" / "Optional Holiday" / "Public Holiday" values are understood; the payroll Category column is
+  formula-safe; pasted lists understand a weekday after the date and lines without a year.
+- Fixed an old importer bug: the check for status words containing "half" (e.g. "Half Day Present") never matched.
+
 ## 1.7.0 — 2026-11-19 — employee categories: holiday lists and working patterns per category
 Owner: "as every employee is assigned a group, in the same manner they have a category as well … in the app throughout
 (also manually editable) … the targeted holidays are targeted to those categories, the calendar and working pattern will

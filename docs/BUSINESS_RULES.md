@@ -184,8 +184,13 @@ cached values of VLOOKUP cells are used) sets category / additional category / l
 needed; a category first created by a holiday list takes the report's spelling. **Holiday lists:** each row goes to
 its Category's own calendar (created and linked on first use, never the default) → else Calendar → else the category
 in the file name (no Category/Calendar column) → else Location (older lists) → "Standard". All rows of one file are
-applied together; for each calendar and year with ≥ 5 holidays the file **replaces** that year (moved dates removed;
-fewer = added only). A Day column is checked; a date whose year differs from the list's main year is corrected when
+applied together; for each calendar and year with ≥ 5 holidays the file **replaces** that year *within the span of
+dates it covers* (moved dates removed; a file of optional holidays only removes only optional ones; fewer than 5 =
+added only). A category pointing at a shared calendar (the default, another category's or an employee's own) gets a
+list of its own instead of rewriting it. In a file without Category / Calendar columns, the category comes from an
+"HSCO (…)" file name or an existing category's name in it. A list whose Location differs from where the category's
+people work is pointed out. **A list with no holidays in the year being calculated is skipped** (next in the chain,
+finally greytHR's marks); the month stores the list used (`calendar_from`). A Day column is checked; a date whose year differs from the list's main year is corrected when
 the same day/month in that year falls on the stated weekday, otherwise reported. Pasted lists follow the same rules.
 **Targeted holidays** may name categories (matched against category and additional category).
 **Check these dates:** in the latest calculated draft month, a (category, date) where ≥ 50 % (and ≥ 2) of the

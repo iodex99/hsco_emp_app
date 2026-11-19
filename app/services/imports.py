@@ -273,13 +273,25 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
             recs = P.parse_employee_master(rows, ds)
             cals = {c.name.lower(): c for c in db.scalars(select(HolidayCalendar))}
             from app.services import categories as CAT
+            from app.services.settings import get_general
             cat_cache = CAT.by_key(db)
+            # an older master whose "Category" column holds groups (Partner, SS, Article …) and no Group column
+            groups = {g.lower() for g in get_general(db).get("groups", [])}
+            cvals = {(r.get("category") or "").strip().lower() for r in recs} - {""}
+            if "group" not in ds.map and cvals and cvals <= groups and kind == "employee_master":
+                for r in recs:
+                    r["group"], r["category"] = r.get("category", ""), ""
+                warnings.append("The Category column holds groups (" + ", ".join(sorted(cvals)) + ") — imported as "
+                                "the group. Employee categories come from greytHR's Employee Category Report.")
+            n_muster = 0
             for r in recs:
                 e = _ensure_employee(db, emp_cache, r["emp_no"], r.get("name", ""), "master")
                 for k in ("category", "additional_category"):
                     if r.get(k):
                         c = _category_from_report(db, cat_cache, emp_cache, r[k])
                         setattr(e, k, c.name if c else r[k])
+                    elif kind == "employee_category" and k in ds.map:
+                        setattr(e, k, "")          # greytHR's report is the full truth: a blank clears it
                 for k in ("name", "group", "location", "department", "designation", "email", "exempt_reason"):
                     if r.get(k):
                         setattr(e, k, r[k])
@@ -292,6 +304,8 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                     from app.engine.model import PATTERNS
                     wo = r["weekly_off"].strip().upper().replace(" ", "_")
                     wo = "CATEGORY" if wo in ("CATEGORY", "FOLLOW_CATEGORY", "AS_PER_CATEGORY") else wo
+                    if wo == "MUSTER":            # older templates wrote MUSTER for everyone: follow the category
+                        wo, n_muster = "CATEGORY", n_muster + 1
                     if wo in PATTERNS or wo == "CATEGORY":
                         e.weekly_off = wo
                     else:
@@ -308,6 +322,10 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                 if e.dol:
                     e.is_active = False
                 n += 1
+            if n_muster:
+                warnings.append(f"{n_muster} row(s) say MUSTER: they follow their category (whose weekly offs default "
+                                "to greytHR's). To pin someone to greytHR's weekly offs whatever the category says, "
+                                "choose it on their page.")
             touched.update(p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT")))
         elif kind == "leave_opening":
             recs = P.parse_leave_opening(rows, ds)
@@ -379,8 +397,8 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                     target = ("category", r["category"])
                 elif r["calendar"]:
                     target = ("calendar", r["calendar"])
-                elif "category" not in ds.map and "calendar" not in ds.map and CAT_NAME_FROM_FILE(filename):
-                    target = ("category", CAT_NAME_FROM_FILE(filename))
+                elif "category" not in ds.map and "calendar" not in ds.map and CAT_NAME_FROM_FILE(db, filename):
+                    target = ("category", CAT_NAME_FROM_FILE(db, filename))
                 elif r["location"]:
                     target = ("calendar", r["location"])
                 else:
@@ -410,9 +428,9 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
     return results
 
 
-def CAT_NAME_FROM_FILE(filename: str) -> str:  # noqa: N802 — small alias, reads like a constant lookup
-    from app.services.categories import name_from_filename
-    return name_from_filename(filename)
+def CAT_NAME_FROM_FILE(db: Session, filename: str) -> str:  # noqa: N802 — small alias
+    from app.services.categories import category_in_filename
+    return category_in_filename(db, filename)
 
 
 def _category_from_report(db: Session, cache: dict, emp_cache: dict, name: str):
@@ -471,6 +489,8 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
     lines: list[str] = []
     wanted: dict = defaultdict(dict)          # calendar id -> {date: row}
     cal_objs: dict = {}
+    own_ok: set = set()                       # calendars already settled as a category's own list in this file
+    cat_of_cal: dict = {}                     # calendar id -> category (for the location check)
     for r in plan:
         how, name = r["target"]
         if how == "category":
@@ -482,14 +502,25 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
                     lines.append(f"New category “{cat.name}” (from the holiday list) — no employees in it yet; import the "
                                  "employee category report or set it on the employee's page.")
             cal = db.get(HolidayCalendar, cat.holiday_calendar_id) if cat.holiday_calendar_id else None
+            if cal is not None and cal.id not in own_ok and _shared_calendar(db, cal, cat):
+                # the category points at a shared / default calendar: give it a list of its own instead of
+                # rewriting a calendar other people use
+                lines.append(f"{cat.name} now has its own holiday list (it was using “{cal.name}”, which is shared "
+                             "and stays as it was).")
+                cal = None
             if cal is None:
                 cal = cal_by_name.get(cat.name.lower())
+                if cal is not None and _shared_calendar(db, cal, cat):
+                    cal = None
                 if cal is None:
-                    cal = HolidayCalendar(name=cat.name, is_default=False)
+                    nm = cat.name if cat.name.lower() not in cal_by_name else f"{cat.name} list"
+                    cal = HolidayCalendar(name=nm, is_default=False)
                     db.add(cal)
                     db.flush()
                     cal_by_name[cal.name.lower()] = cal
                 cat.holiday_calendar_id = cal.id
+            own_ok.add(cal.id)
+            cat_of_cal[cal.id] = cat
         else:
             cal = cal_by_name.get(name.lower())
             if cal is None:
@@ -498,6 +529,9 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
                 db.add(cal)
                 db.flush()
                 cal_by_name[cal.name.lower()] = cal
+                if not first:
+                    lines.append(f"New calendar “{cal.name}” — nobody uses it yet: make it the default or pick it for "
+                                 "a category (Rules & calendars).")
         cal_objs[cal.id] = cal
         wanted[cal.id].setdefault(r["date"], r)
     for cid, rows in wanted.items():
@@ -510,7 +544,12 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
                                                                      Holiday.day >= date(year, 1, 1),
                                                                      Holiday.day <= date(year, 12, 31)))}
             full = len(new) >= FULL_LIST_MIN
-            removed = [h for d, h in old.items() if d not in new] if full else []
+            # replace only the span the file covers (a list split over two files never wipes the other half) and,
+            # for a file of optional holidays only, only optional ones
+            lo, hi = min(new), max(new)
+            only_opt = all(r.get("optional") for r in new.values())
+            removed = [h for d, h in old.items() if d not in new and lo <= d <= hi and (h.optional or not only_opt)] \
+                if full else []
             for h in removed:
                 db.delete(h)
             db.flush()
@@ -534,8 +573,29 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
                 bits = [b for b in bits if b]
                 lines.append(f"{cal.name} {year}: {what} — " + ("; ".join(bits) if bits else "no changes") + "."
                              + ("" if full else " (Short list: added to the year, nothing removed.)"))
+    # a list for one location used by people elsewhere (e.g. a Delhi list for a category with Mumbai staff)
+    for cid, cat in cat_of_cal.items():
+        locs = {(r.get("location") or "").strip() for r in wanted[cid].values()} - {""}
+        if len(locs) != 1:
+            continue
+        loc = next(iter(locs))
+        people = [e for e in emp_cache.values() if not e.dol and CAT.key(e.category) == CAT.key(cat.name)]
+        away = [e for e in people if e.location and e.location.strip().lower() != loc.lower()]
+        if away:
+            lines.append(f"{cat.name}: the list is for {loc}, but {len(away)} of its {len(people)} people work elsewhere "
+                         f"({', '.join(sorted({e.location for e in away}))}) — they get this list too; give them their own "
+                         "calendar on their page if their holidays differ.")
     db.flush()
     return lines
+
+
+def _shared_calendar(db: Session, cal, cat) -> bool:
+    """Is this calendar the default, another category's list, or some employee's own calendar?"""
+    if cal.is_default:
+        return True
+    if db.scalar(select(Category.id).where(Category.holiday_calendar_id == cal.id, Category.id != cat.id).limit(1)):
+        return True
+    return bool(db.scalar(select(Employee.emp_no).where(Employee.holiday_calendar_id == cal.id).limit(1)))
 
 
 FULL_FILE_SHARE = 0.8

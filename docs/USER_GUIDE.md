@@ -143,6 +143,7 @@ in the payroll Excel (*Punch Exceptions*, *Exceptions by Employee*).
 2. **Rules & calendars → Categories:** pick each category's holiday list, weekly offs and hours per day. Employees
    follow their category (and, for articles, their additional category) unless their own page says otherwise.
    *Check these dates* lists days where a category's list and greytHR disagree — review them before payroll.
-3. **Next year / revised list:** upload it again — the whole year is replaced. No Excel file? Open the calendar and
+3. **Next year / revised list:** upload it again — the dates it covers are replaced (until a year's list is loaded,
+   greytHR's own holiday marks are used for that year). No Excel file? Open the calendar and
    use **Paste a list** (copy the table from a PDF or email). Tick *Optional* for optional holidays.
 4. A one-off holiday for a category: *Targeted holidays* → Categories.

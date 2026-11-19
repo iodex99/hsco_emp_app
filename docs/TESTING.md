@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`147 passed` (v1.7.0; v1.6.7: 140; v1.6.6 and v1.6.5: 137; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`149 passed` (v1.7.1; v1.7.0: 147; v1.6.7: 140; v1.6.6 and v1.6.5: 137; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
@@ -167,3 +167,12 @@ the journey now clicks every tab of Overview / Insights / Settings / Punch excep
 shows when its tab is drawn — verified by re-introducing the bug). Visual check on a copy of the installed data:
 upload of the 7 files 1.2 s, Categories tab, calendars by year, employees list / form, Overview and Insights by
 category, day view of a Carlyle holiday. Full suite 147 passed.
+
+## v1.7.1 — category review fixes
+Web: a category list with only another year's holidays → greytHR's 20-Oct still a holiday (`calendar_from` "not
+loaded"); a category pointing at the default calendar gets its own list, the default untouched; Jan–Jun then Jul–Dec
+files keep 12 holidays, an optional-only file keeps the fixed ones; "(1)" file name no category; a master with groups in
+"Category" → group; a DOJ-style file with Category keeps the joining date; MUSTER in a master → follow category; blank
+additional category clears; Delhi list vs Mumbai people noted; rename updates and delete drops targeted holidays; an
+employee's category can be cleared; "=SUM(1,1)" category stays text in Excel. Unit: optional wording, letter-only
+employee numbers, file names, `effective(loaded)`, pasted weekday-after-date and year-less lines. Full suite 149 passed.

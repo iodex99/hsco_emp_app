@@ -785,7 +785,7 @@ def test_categories_end_to_end(loaded):
                                                   "holiday_calendar_id": str(cal_id), "weekly_off": "ALL_SAT_OFF",
                                                   "hours_per_day": "8"}, follow_redirects=True)
     assert "saved" in r.text
-    assert day("T001", "2026-10-03")["type"] == "WORKDAY"     # the master file set MUSTER for T001 explicitly: it wins
+    # (the fixture master's MUSTER became "follow the category" on import — v1.7.1)
     c.post("/employees/save", data={"csrf": csrf_of(c, "/employees/T001"), "emp_no": "T001", "name": "Asha Rao",
                                     "group": "BSS", "category": "HSCO (Mum)", "weekly_off": "CATEGORY",
                                     "is_active": "1", "doj": "2023-04-03"})
@@ -845,6 +845,121 @@ def test_categories_end_to_end(loaded):
         from app.models import AuditLog
         acts = {a.action for a in db.scalars(select(AuditLog))}
     assert {"category.update", "holiday.paste", "holidays.list"} <= acts
+
+
+def test_category_review_fixes(loaded):
+    """v1.7.1 review: a list not loaded for the year falls back to greytHR; a shared / default calendar is never
+    rewritten; a year split over two files or an optional-only file never wipes the rest; '(1)' in a file name is no
+    category; older masters (MUSTER, groups in a Category column); blanks clear the additional category; rename /
+    delete keep targeted holidays right; a list's location vs its people; formula-safe category in Excel."""
+    from datetime import date
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import Category, Employee, Holiday, HolidayCalendar, TargetedHoliday
+    c = loaded
+    day = lambda emp, d: next(x for x in _result_days(emp) if x["date"] == d)  # noqa: E731
+    csrf = csrf_of(c, "/settings")
+    # MUSTER in an older master → follows the category (the fixture master says MUSTER for T001–T005)
+    with session_scope() as db:
+        assert db.get(Employee, "T001").weekly_off == "CATEGORY"
+    # 1) a category list with holidays only for another year: greytHR's H (20-Oct) still counts
+    c.post("/settings/categories/save", data={"csrf": csrf, "name": "HSCO (Old)", "holiday_calendar_id": "new"})
+    with session_scope() as db:
+        cat = db.scalar(select(Category).where(Category.name == "HSCO (Old)"))
+        db.add(Holiday(calendar_id=cat.holiday_calendar_id, day=date(2025, 10, 2), name="Old year"))
+    c.post("/employees/save", data={"csrf": csrf_of(c, "/employees/T001"), "emp_no": "T001", "name": "Asha Rao",
+                                    "group": "BSS", "category": "HSCO (Old)", "weekly_off": "CATEGORY",
+                                    "is_active": "1", "doj": "2023-04-03"})
+    assert day("T001", "2026-10-20")["type"] == "HOLIDAY"
+    assert "not loaded" in _result("T001")[0]["calendar_from"]
+    # 2) a category pointing at the default calendar gets a list of its own; the default stays as it was
+    c.post("/settings/calendars", data={"csrf": csrf, "name": "Standard", "is_default": "1"})
+    with session_scope() as db:
+        std = db.scalar(select(HolidayCalendar).where(HolidayCalendar.name == "Standard"))
+        for d_ in (date(2026, 1, 26), date(2026, 8, 15), date(2026, 10, 2), date(2026, 10, 20), date(2026, 12, 25)):
+            db.add(Holiday(calendar_id=std.id, day=d_, name="Std"))
+        cat = db.scalar(select(Category).where(Category.name == "HSCO (Old)"))
+        cat.holiday_calendar_id = std.id
+    rows = [["Holiday Date", "Description", "Category"]] + [[date(2026, m_, 3), f"H{m_}", "HSCO (Old)"] for m_ in range(1, 7)]
+    r = _post_files(c, [("Holiday List Importer HSCO (Old).xlsx", _xlsx(rows))])
+    assert "HSCO (Old) now has its own holiday list" in r.text
+    with session_scope() as db:
+        assert len(db.scalar(select(HolidayCalendar).where(HolidayCalendar.name == "Standard")).holidays) == 5
+        cat = db.scalar(select(Category).where(Category.name == "HSCO (Old)"))
+        own = db.get(HolidayCalendar, cat.holiday_calendar_id)
+        assert own.name != "Standard" and len([h for h in own.holidays if h.day.year == 2026]) == 6
+    # 3) the second half of the year in another file adds to it; an optional-only file never removes fixed days
+    rows = [["Holiday Date", "Description", "Category"]] + [[date(2026, m_, 5), f"H{m_}", "HSCO (Old)"] for m_ in range(7, 13)]
+    _post_files(c, [("Holiday List Importer HSCO (Old) 2.xlsx", _xlsx(rows))])
+    rows = [["Holiday Date", "Description", "Is Optional", "Category"]] + \
+        [[date(2026, m_, 9), f"O{m_}", "Optional", "HSCO (Old)"] for m_ in range(1, 7)]
+    _post_files(c, [("Holiday List Importer HSCO (Old) optional.xlsx", _xlsx(rows))])
+    with session_scope() as db:
+        hs = db.get(HolidayCalendar, db.scalar(select(Category).where(Category.name == "HSCO (Old)")).holiday_calendar_id).holidays
+        hs = [h for h in hs if h.day.year == 2026]
+        assert len([h for h in hs if not h.optional]) == 12 and len([h for h in hs if h.optional]) == 6
+    # 4) "(1)" in a file name is not a category
+    r = _post_files(c, [("Holiday list 2027 (1).xlsx", _xlsx([["Date", "Holiday"], [date(2027, 1, 26), "Republic Day"]]))])
+    with session_scope() as db:
+        assert db.scalar(select(Category).where(Category.name == "1")) is None
+    # 5) an older master whose Category column holds groups → group; a DOJ-style file with Category keeps the joining date
+    r = _post_files(c, [("employee_master_old.xlsx", _xlsx([["Employee No", "Name", "Category", "Hours Per Day"],
+                                                             ["T005", "Esha Patel", "SS", 8]]))])
+    assert "imported as the group" in r.text
+    with session_scope() as db:
+        e5 = db.get(Employee, "T005")
+        assert e5.group == "SS" and e5.category == ""
+    _post_files(c, [("people.xlsx", _xlsx([["Employee No", "Employee Name", "Joined On", "Location", "Category"],
+                                            ["T005", "Esha Patel", date(2022, 10, 18), "Mumbai", "HSCO (Old)"],
+                                            ["T003", "Chitra Iyer", date(2001, 1, 2), "Mumbai", "HSCO (Old)"],
+                                            ["T002", "Bilal Khan", date(2024, 7, 1), "Mumbai", "HSCO (Old)"]]))])
+    with session_scope() as db:
+        assert db.get(Employee, "T005").doj == date(2022, 10, 18) and db.get(Employee, "T005").category == "HSCO (Old)"
+    # 8) the category report is the full truth: a blank additional category clears it
+    c.post("/employees/save", data={"csrf": csrf_of(c, "/employees/T002"), "emp_no": "T002", "name": "Bilal Khan",
+                                    "group": "ATA", "category": "HSCO (Old)", "additional_category": "Article",
+                                    "weekly_off": "CATEGORY", "is_active": "1", "doj": "2024-07-01"})
+    _post_files(c, [("EmployeeCategoryReport.xlsx", _xlsx([["Employee Number", "Employee Name", "Curr.Category",
+                                                            "Additional Category"], ["T002", "Bilal Khan", "HSCO (Old)", None]]))])
+    with session_scope() as db:
+        assert db.get(Employee, "T002").additional_category == ""
+    # 9) a Delhi list for a category whose people are in Mumbai is pointed out
+    rows = [["Holiday Date", "Description", "Location", "Category"]] + \
+        [[date(2026, m_, 11), f"D{m_}", "Delhi", "HSCO (Old)"] for m_ in range(1, 7)]
+    r = _post_files(c, [("Holiday List Importer HSCO (Old) Delhi.xlsx", _xlsx(rows))])
+    assert "the list is for Delhi, but" in r.text and "Mumbai" in r.text
+    # 7) rename keeps targeted holidays; deleting drops those only for it
+    c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-14", "name": "Old offsite",
+                                                "categories": ["HSCO (Old)"]})
+    with session_scope() as db:
+        cat = db.scalar(select(Category).where(Category.name == "HSCO (Old)"))
+        cid, cal = cat.id, cat.holiday_calendar_id
+    c.post("/settings/categories/save", data={"csrf": csrf, "cid": str(cid), "name": "HSCO (Older)",
+                                              "holiday_calendar_id": str(cal)})
+    with session_scope() as db:
+        assert db.scalar(select(TargetedHoliday).where(TargetedHoliday.name == "Old offsite")).categories == "HSCO (Older)"
+    assert day("T001", "2026-10-14")["type"] == "HOLIDAY"
+    # 12) category text is never an Excel formula
+    with session_scope() as db:
+        db.get(Employee, "T006").category = "=SUM(1,1)"
+    c.post("/settings/categories/save", data={"csrf": csrf, "name": "Spare"})            # (recalculates)
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    ws = wb["Payroll Leave Sheet"]
+    rows_ = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
+    cell = ws.cell(row=rows_["T006"], column=35)
+    assert cell.value == "=SUM(1,1)" and cell.data_type == "s"
+    # 15) delete: refused while anyone (also leavers) has it; drops targeted holidays only for it
+    for e in ("T001", "T002", "T003", "T005"):
+        c.post("/employees/save", data={"csrf": csrf_of(c, f"/employees/{e}"), "emp_no": e, "name": e, "category": "",
+                                        "cat_fields": "1", "weekly_off": "CATEGORY", "is_active": "1"})
+    with session_scope() as db:
+        left = [(e.emp_no, e.category, e.additional_category) for e in db.scalars(select(Employee))
+                if "Old" in (e.category or "") + (e.additional_category or "")]
+    assert not left, left
+    r = c.post(f"/settings/categories/{cid}/delete", data={"csrf": csrf}, follow_redirects=True)
+    assert "deleted" in r.text and "Old offsite" in r.text
+    with session_scope() as db:
+        assert db.scalar(select(TargetedHoliday).where(TargetedHoliday.name == "Old offsite")) is None
 
 
 def _result_days(emp):

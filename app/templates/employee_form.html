@@ -10,7 +10,7 @@
 </div>
 <div class="grid g-2-1" style="align-items:start">
 <form class="card" method="post" action="/employees/save">
-  {{ ui.csrf_field() }}<input type="hidden" name="new" value="{{ '1' if new }}">
+  {{ ui.csrf_field() }}<input type="hidden" name="new" value="{{ '1' if new }}"><input type="hidden" name="cat_fields" value="1">
   <div class="hd"><h2>Employee settings</h2><span class="sub">Changes recalculate all draft months</span></div>
   <div class="bd"><fieldset {{ 'disabled' if not can_hr }}>
   <div class="form-sec"><div><h3>Identity</h3><p>As in greytHR. The employee number links all imports.</p></div><div>

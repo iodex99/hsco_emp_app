@@ -426,3 +426,36 @@ def test_footer_rows_are_not_employees():
     ds = P.detect_sheet("Sheet0", rows)
     assert ds.kind == "employee_category"
     assert [r["emp_no"] for r in P.parse_employee_master(rows, ds)] == ["HS001", "HS002", "HS003"]
+
+
+def test_review_fixes_units():
+    """v1.7.1: optional-holiday wording, employee numbers without digits, file names, a list not loaded for the year,
+    weekday after the date and year-less lines in pasted lists."""
+    from datetime import date
+    from types import SimpleNamespace as NS
+    from app.services import categories as CAT
+    from app.services.holidays import parse_pasted
+    assert P.is_optional("Restricted Holiday") and P.is_optional("Optional Holiday") and P.is_optional("Yes")
+    assert not P.is_optional("Public Holiday") and not P.is_optional("No") and not P.is_optional("")
+    rows = [["Date", "Holiday", "Holiday Type"], [date(2026, 1, 26), "Republic Day", "Public Holiday"],
+            [date(2026, 3, 19), "Gudi Padwa", "Restricted Holiday"], [date(2026, 4, 3), "Good Friday", "Optional Holiday"]]
+    ds = P.detect_sheet("S", rows)
+    assert ds.kind == "holidays" and "optional" in ds.map
+    assert [r["optional"] for r in P.parse_holidays(rows, ds)] == [False, True, True]
+    rows = [["Employee No", "Name", "Group"], ["ABC", "x", "BSS"], ["HS001", "y", "BSS"], ["Total records: 2", None, None]]
+    ds = P.manual_sheet("S", rows, "employee_master", 0, {"emp_no": 0, "name": 1, "group": 2})
+    assert [r["emp_no"] for r in P.parse_employee_master(rows, ds)] == ["ABC", "HS001"]
+    assert CAT.name_from_filename("Holiday list 2027 (1).xlsx") == "" and CAT.name_from_filename("List (final).xlsx") == ""
+    cat = NS(name="HSCO (Mum)", weekly_off="", off_weekdays="5,6", working_saturdays="", hours_per_day=None,
+             holiday_calendar_id=7)
+    e = NS(category="HSCO (Mum)", additional_category="", weekly_off="CATEGORY", off_weekdays="5,6",
+           working_saturdays="", hours_per_day=None, holiday_calendar_id=None)
+    cats = {CAT.key(cat.name): cat}
+    assert CAT.effective(e, cats, 3, loaded={7, 3}).calendar_id == 7
+    x = CAT.effective(e, cats, 3, loaded={3})                     # Mum list has nothing this year → default
+    assert (x.calendar_id, x.calendar_from) == (3, "default")
+    x = CAT.effective(e, cats, None, loaded=set())                # nothing loaded → greytHR's marks
+    assert x.calendar_id is None and "not loaded" in x.calendar_from
+    rows, _ = parse_pasted("Republic Day 26-01-2026 Monday\nJan 26 Monday Republic Day\nHoli 4 March", default_year=2027)
+    assert [(r["date"], r["name"], r["weekday"]) for r in rows] == [
+        (date(2026, 1, 26), "Republic Day", 0), (date(2027, 1, 26), "Republic Day", 0), (date(2027, 3, 4), "Holi", None)]

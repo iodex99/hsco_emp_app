@@ -299,13 +299,17 @@ def save_category(cid: str = Form(""), name: str = Form(...), holiday_calendar_i
     cat.working_saturdays = ",".join(x for x in working_saturdays.replace(" ", "").split(",") if x and x in "12345")
     cat.hours_per_day = hpd
     cat.notes = notes.strip()
-    if old_name != name:              # rename: employees keep their category
+    if old_name != name:              # rename: employees and targeted holidays keep their category
         for e in c.db.scalars(select(Employee).where((Employee.category == old_name) |
                                                      (Employee.additional_category == old_name))):
             if e.category == old_name:
                 e.category = name
             if e.additional_category == old_name:
                 e.additional_category = name
+        for h in c.db.scalars(select(TargetedHoliday).where(TargetedHoliday.categories != "")):
+            vals = TH.split(h.categories)
+            if any(CAT.key(v) == CAT.key(old_name) for v in vals):
+                h.categories = TH.join([name if CAT.key(v) == CAT.key(old_name) else v for v in vals])
     after = {k: str(getattr(cat, k)) for k in before}
     audit(c.db, c.user, "category.create" if new else "category.update", "category", name,
           {k: [before[k], after[k]] for k in before if before[k] != after[k]}, c.ip)
@@ -323,9 +327,22 @@ def delete_category(cid: int, c: Ctx = Depends(hr)):
                                                     (Employee.additional_category == cat.name)).limit(1))
     if used:
         return redirect("/settings#categories", f"“{cat.name}” still has employees — move them to another category first.")
-    audit(c.db, c.user, "category.delete", "category", cat.name, {}, c.ip)
+    dropped = []
+    for h in c.db.scalars(select(TargetedHoliday).where(TargetedHoliday.categories != "")):
+        vals = TH.split(h.categories)
+        rest = [v for v in vals if CAT.key(v) != CAT.key(cat.name)]
+        if len(rest) != len(vals):
+            h.categories = TH.join(rest)
+            if not (rest or TH.split(h.locations) or TH.split(h.groups) or TH.split(h.emp_nos)):
+                dropped.append(f"{h.name} {h.day:%d-%b-%Y}")
+                c.db.delete(h)
+    audit(c.db, c.user, "category.delete", "category", cat.name, {"targeted_removed": dropped}, c.ip)
     c.db.delete(cat)
-    return redirect("/settings#categories", f"Category “{cat.name}” deleted (its holiday calendar is kept).")
+    c.db.flush()
+    if dropped:
+        _recompute_drafts(c)
+    return redirect("/settings#categories", f"Category “{cat.name}” deleted (its holiday calendar is kept)."
+                    + (f" Targeted holidays only for it were removed: {', '.join(dropped)}." if dropped else ""))
 
 
 @router.post("/settings/holidays/{hid}/delete")

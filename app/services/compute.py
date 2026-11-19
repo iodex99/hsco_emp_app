@@ -39,17 +39,21 @@ def engine_employee(e: Employee, holidays: Optional[dict], targeted: Optional[di
     )
 
 
-def calendars_for_month(db: Session, year: int, month: int) -> tuple[dict, Optional[int], dict]:
-    """({calendar id: {date: name}} of regular holidays, default calendar id, {calendar id: {date: name}} optional)."""
+def calendars_for_month(db: Session, year: int, month: int) -> tuple[dict, Optional[int], dict, set]:
+    """({calendar id: {date: name}} of regular holidays, default calendar id, {calendar id: {date: name}} optional,
+    ids of calendars that have any holiday in `year` — a list not loaded for that year yet is skipped, so greytHR's
+    own holiday marks apply instead of turning every holiday into a working day)."""
     cals = db.scalars(select(HolidayCalendar)).all()
-    out, opt, default_id = {}, {}, None
+    out, opt, default_id, loaded = {}, {}, None, set()
     for c in cals:
         hs = [h for h in c.holidays if h.day.year == year and h.day.month == month]
         out[c.id] = {h.day: h.name for h in hs if not h.optional}
         opt[c.id] = {h.day: h.name for h in hs if h.optional}
+        if any(h.day.year == year for h in c.holidays):
+            loaded.add(c.id)
         if c.is_default:
             default_id = c.id
-    return out, default_id, opt
+    return out, default_id, opt, loaded
 
 
 def get_period(db: Session, year: int, month: int, create: bool = False) -> Optional[Period]:
@@ -104,14 +108,14 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
     policy = get_policy(db)
     y, m = period.year, period.month
     emps_db = {e.emp_no: e for e in db.scalars(select(Employee)).all()}
-    cal_days, default_cal, cal_opt = calendars_for_month(db, y, m)
+    cal_days, default_cal, cal_opt, cal_loaded = calendars_for_month(db, y, m)
     from app.services import categories as CAT
     from app.services import holidays as TH
     targeted = TH.by_employee(TH.for_month(db, y, m), emps_db.values())
     cats = CAT.by_key(db)
-    employees = {}
+    employees, effs = {}, {}
     for k, e in emps_db.items():
-        eff = CAT.effective(e, cats, default_cal)
+        eff = effs[k] = CAT.effective(e, cats, default_cal, cal_loaded)
         cal_id = eff.calendar_id
         employees[k] = engine_employee(e, cal_days.get(cal_id) if cal_id else None, targeted.get(k), eff,
                                        cal_opt.get(cal_id) if cal_id else None)
@@ -153,6 +157,7 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
         data = {k: getattr(r, k) for k in SCALARS}
         data["category"] = (emps_db[emp_no].category or "") if emp_no in emps_db else ""
         data["additional_category"] = (emps_db[emp_no].additional_category or "") if emp_no in emps_db else ""
+        data["calendar_from"] = effs[emp_no].calendar_from if emp_no in effs else ""
         for k, v in list(data.items()):
             if isinstance(v, float):
                 data[k] = round(v, 4)

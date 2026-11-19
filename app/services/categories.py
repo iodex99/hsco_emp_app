@@ -70,8 +70,22 @@ def name_from_filename(filename: str) -> str:
     m = re.search(r"(?i)\b(hsco)\s*\(([^)]+)\)(\s*boutique)?", base)
     if m:
         return f"HSCO ({m.group(2).strip()}){' Boutique' if m.group(3) else ''}"
-    m = re.search(r"\(([^)]+)\)", base)
-    return m.group(1).strip() if m else ""
+    return ""
+
+
+def category_in_filename(db: Session, filename: str) -> str:
+    """The category a holiday-list file is for, from its name: the "HSCO (…)" form, else the longest existing category
+    name contained in it; "" otherwise (never "(1)" or "(final)")."""
+    n = name_from_filename(filename)
+    if n:
+        return n
+    fk = key(re.sub(r"\.[a-z0-9]+$", "", filename or "", flags=re.I))
+    best = ""
+    for c in db.scalars(select(Category)):
+        k = key(c.name)
+        if len(k) >= 3 and k in fk and len(k) > len(key(best)):
+            best = c.name
+    return best
 
 
 @dataclass
@@ -86,8 +100,9 @@ class Effective:
     calendar_from: str         # "employee" | category name | "default" | "greytHR"
 
 
-def effective(e: Employee, cats: dict, default_cal: Optional[int]) -> Effective:
-    """What applies to employee e. cats = by_key(db)."""
+def effective(e: Employee, cats: dict, default_cal: Optional[int], loaded: Optional[set] = None) -> Effective:
+    """What applies to employee e. cats = by_key(db). loaded = ids of calendars with holidays in the year being
+    calculated: a list not loaded for that year is passed over (next in the chain, finally greytHR's marks)."""
     chain = [c for c in (cats.get(key(e.category)), cats.get(key(e.additional_category))) if c is not None]
     if e.weekly_off and e.weekly_off != FOLLOW and e.weekly_off in PATTERNS:
         pat, offs, sats, pfrom = e.weekly_off, e.off_weekdays, e.working_saturdays, "employee"
@@ -102,14 +117,14 @@ def effective(e: Employee, cats: dict, default_cal: Optional[int]) -> Effective:
     else:
         src = next((c for c in chain if c.hours_per_day), None)
         hpd, hfrom = (src.hours_per_day, src.name) if src is not None else (None, "policy")
-    if e.holiday_calendar_id:
-        cal, cfrom = e.holiday_calendar_id, "employee"
+    cands = ([(e.holiday_calendar_id, "employee")] if e.holiday_calendar_id else []) + \
+        [(c.holiday_calendar_id, c.name) for c in chain if c.holiday_calendar_id] + \
+        ([(default_cal, "default")] if default_cal else [])
+    usable = [x for x in cands if loaded is None or x[0] in loaded]
+    if usable:
+        cal, cfrom = usable[0]
     else:
-        src = next((c for c in chain if c.holiday_calendar_id), None)
-        if src is not None:
-            cal, cfrom = src.holiday_calendar_id, src.name
-        else:
-            cal, cfrom = default_cal, ("default" if default_cal else "greytHR")
+        cal, cfrom = None, ("greytHR (list not loaded for this year)" if cands else "greytHR")
     return Effective(pat, offs or "5,6", sats or "", hpd, cal, pfrom, hfrom, cfrom)
 
 
@@ -119,8 +134,13 @@ def default_calendar_id(db: Session) -> Optional[int]:
 
 def overview(db: Session) -> list[dict]:
     """Categories with their people and settings, for Settings → Categories (and gaps worth fixing)."""
-    emps = [e for e in db.scalars(select(Employee)) if not e.dol]
+    everyone = list(db.scalars(select(Employee)))
+    emps = [e for e in everyone if not e.dol]
     cats = list(db.scalars(select(Category).order_by(Category.name)))
+    anyone = Counter()
+    for e in everyone:
+        for n in {key(e.category), key(e.additional_category)} - {""}:
+            anyone[n] += 1
     ck = {key(c.name): c for c in cats}
     primary, extra, uncovered = Counter(), Counter(), Counter()
     dcal = default_calendar_id(db)
@@ -135,6 +155,7 @@ def overview(db: Session) -> list[dict]:
     out = []
     for c in cats:
         out.append({"c": c, "people": primary[c.id], "extra_people": extra[c.id], "uncovered": uncovered[c.id],
+                    "deletable": not anyone[key(c.name)],
                     "calendar": cal_names.get(c.holiday_calendar_id, ""),
                     "pattern": PATTERNS.get(c.weekly_off, "") if c.weekly_off else ""})
     return out
@@ -146,12 +167,21 @@ def uncategorised(db: Session) -> list[Employee]:
 
 
 def calendar_conflicts(db: Session, results) -> list[dict]:
-    """Days where a category's holiday list and greytHR disagree for most of its people in a calculated month
-    (e.g. the list has no holiday on a day greytHR marks H) — worth checking before payroll."""
+    """Days where a holiday list and greytHR disagree for most of the people using that list in a calculated month
+    (e.g. the list has no holiday on a day greytHR marks H) — worth checking before payroll. People are counted under
+    the list they actually used (an article on the HSCO (Mum) list counts there)."""
     per = defaultdict(lambda: {"people": set(), "list_says": "", "name": ""})
     size = Counter()
     for r in results:
-        cat = r.category or ""
+        src = (r.data or {}).get("calendar_from")          # the list the person actually used (v1.7.1)
+        if src is None:                                      # calculated before v1.7.1
+            cat = r.category or ""
+        elif src == "default":
+            cat = "default calendar"
+        elif src == "employee" or src.startswith("greytHR"):
+            cat = ""                                         # own calendar / no list: nothing to compare per list
+        else:
+            cat = src
         if not cat:
             continue
         size[cat] += 1

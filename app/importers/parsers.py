@@ -167,9 +167,9 @@ def emp_id(v: Any) -> str:
 
 def _row_emp(r, ds) -> str:
     """The row's employee number, or "" for footer / note rows ("Total number of records : 101") that sit in the
-    employee-number column: a number is at most 20 characters, has no spaces and contains a digit."""
+    employee-number column: a number is at most 20 characters and has no spaces."""
     e = emp_id(_g(r, ds, "emp_no"))
-    return e if e and len(e) <= 20 and not re.search(r"\s", e) and re.search(r"\d", e) else ""
+    return e if e and len(e) <= 20 and not re.search(r"\s", e) else ""
 
 
 _STATUS_WORDS = {   # words only — short codes (P, A, PL, WO, PH, AB…) are kept as written; see status_codes()
@@ -212,7 +212,7 @@ def looks_like_status(v: Any) -> bool:
     if not s or len(s) > 24:
         return False
     low = s.lower()
-    if s.upper() in DEFAULT_STATUS_MAP or low.strip(" .") in _STATUS_WORDS or re.search(r"half", low):
+    if s.upper() in DEFAULT_STATUS_MAP or low.strip(" .") in _STATUS_WORDS or re.search(r"\bhalf\b", low):
         return True
     return bool(re.fullmatch(r"[a-z]{1,4}(\s*/\s*[a-z]{1,4})?(\s*\(\s*(hd|half( day)?)\s*\))?", low))
 
@@ -341,7 +341,10 @@ SCHEMAS = {
     "holidays": (["date", "holiday_name"], ["calendar", "category", "location", "optional", "weekday", "for_locations",
                                             "for_groups", "for_categories", "for_employees"], 0.7),
     # greytHR "Employee Category Report": Employee Number, Name, Curr.Location, Curr.Category, Additional Category
-    "employee_category": (["emp_no", "category"], ["name", "location", "additional_category", "group"], 0.95),
+    "employee_category": (["emp_no", "category"], ["name", "location", "additional_category", "group", "doj", "dol",
+                                                    "email", "department", "designation", "weekly_off",
+                                                    "working_saturdays", "hours_per_day", "exempt", "exempt_reason",
+                                                    "holiday_calendar"], 0.95),
 }
 KIND_LABELS = {
     "muster": "Attendance Muster Report (day-wise status)",
@@ -428,8 +431,12 @@ def weekday_of(v: Any) -> Optional[int]:
     return None
 
 
+_OPT_ANY = re.compile(r"\b(optional|restricted|public|gazetted|national|fixed|mandatory|holiday|compulsory)\b")
+
+
 def is_optional(v: Any) -> bool:
-    return str(v or "").strip().lower() in _OPT_TRUE
+    s = str(v or "").strip().lower()
+    return s in _OPT_TRUE or bool(re.search(r"\b(optional|restricted)\b", s))
 
 
 def _fits(vtype: str, vals: list) -> float:
@@ -464,7 +471,8 @@ def _fits(vtype: str, vals: list) -> float:
         if vtype == "weekday":
             return weekday_of(v) is not None
         if vtype == "optional":
-            return str(v or "").strip().lower() in _OPT_WORDS
+            s = str(v or "").strip().lower()
+            return s in _OPT_WORDS or bool(_OPT_ANY.search(s))
         return True
     return sum(1 for v in vals if ok(v)) / len(vals)
 
@@ -539,7 +547,9 @@ def _evaluate(kind: str, headers: list[str], rows, hr: int) -> Optional[tuple]:
         alts = r if isinstance(r, tuple) else (r,)
         if any(a in m for a in alts):
             continue
-        if strong >= 2 and len(alts) == 1 and F[alts[0]][1] in ("id", "date", "datetime", "coords"):
+        # (a category report needs a real employee-number header: guessing the column from values could take a
+        # holiday list with Location / Category columns for one)
+        if strong >= 2 and len(alts) == 1 and F[alts[0]][1] in ("id", "date", "datetime", "coords")                 and kind != "employee_category":
             i = _infer(rows, hr, len(headers), F[alts[0]][1], used)
             if i is not None:
                 m[alts[0]] = (i, 0.7)

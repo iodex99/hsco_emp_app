@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse
@@ -75,7 +74,7 @@ def _parse_date(s: str):
 
 @router.post("/employees/save")
 def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Form(""), location: str = Form(""),
-                        category: Optional[str] = Form(None), additional_category: Optional[str] = Form(None),
+                        category: str = Form(""), additional_category: str = Form(""), cat_fields: str = Form(""),
                         department: str = Form(""), designation: str = Form(""), email: str = Form(""),
                         weekly_off: str = Form("MUSTER"), off_weekdays: list[str] = Form([]),
                         working_saturdays: str = Form(""), hours_per_day: str = Form(""), exempt: str = Form(""),
@@ -102,7 +101,9 @@ def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Fo
     e.name, e.group, e.location = name.strip(), group.strip(), location.strip()
     cache = CAT.by_key(c.db)
     for fld, val in (("category", category), ("additional_category", additional_category)):
-        if val is None:                    # field not in the form: keep what the employee has
+        # the employee form says it carries both fields (cat_fields=1), so a blank clears; anything else posting
+        # without them keeps what the employee has
+        if not cat_fields and not val.strip():
             continue
         cat = CAT.ensure(c.db, val, cache) if val.strip() else None      # loosely matched; new names are added
         setattr(e, fld, cat.name if cat else "")

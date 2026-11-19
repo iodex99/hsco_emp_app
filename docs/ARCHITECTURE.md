@@ -230,3 +230,6 @@ Excel: sheets *Punch Exceptions*, *Exceptions by Employee* in `build_workbook`. 
 `/settings/categories/{id}/delete`, `/settings/calendars/{id}/paste` (`holidays.parse_pasted`). Templates: Settings
 *Categories* tab, calendar year groups / optional / paste; employees list + form; category tables on dashboard and
 insights (`metrics._breakdown`, `insights._compare`). RULES_VERSION 6.
+
+v1.7.1: `calendars_for_month` also returns the calendars loaded for the year; `effective(…, loaded)` skips the others.
+`imports._shared_calendar`; `categories.category_in_filename`; employee form posts `cat_fields=1` so a blank clears.

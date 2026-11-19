@@ -25,7 +25,7 @@ AMBER = PatternFill("solid", fgColor="FFE5B4")
 GREEN = PatternFill("solid", fgColor="D4EDDA")
 GREY = PatternFill("solid", fgColor="EEF1F5")
 THIN = Border(bottom=Side(style="thin", color="D0D7E2"))
-TEXT_COLS = {1, 2, 3, 4, 19, 34}   # payroll sheet columns holding imported text (never formulas)
+TEXT_COLS = {1, 2, 3, 4, 19, 34, 35}   # payroll sheet columns holding imported text (never formulas)
 SEV_FILL = {"critical": RED, "high": AMBER, "medium": PatternFill("solid", fgColor="FFF7D6"), "info": GREY}
 
 

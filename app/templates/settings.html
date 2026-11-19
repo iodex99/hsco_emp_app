@@ -73,8 +73,8 @@
 {% set gaps = cat_rows|selectattr('uncovered')|list %}
 {% if gaps %}<div class="alert">{{ ui.icon('calendar') }}<span><b>No holiday list yet:</b> {% for r in gaps %}{{ r.c.name }} ({{ r.uncovered }}){{ ', ' if not loop.last }}{% endfor %} —
   {{ 'these people use' if gaps|length > 1 or gaps[0].uncovered > 1 else 'this person uses' }} the default calendar, else greytHR's holiday marks. Upload or paste the category's list (Holiday calendars tab) and pick it here.</span></div>{% endif %}
-{% if conflicts %}<div class="card mb"><div class="hd"><h2>Check these dates</h2><span class="sub">{{ conflict_period.label }} · a category's holiday list and greytHR disagree for most of its people</span></div>
-  <div class="bd"><div class="tw"><table class="compact" id="cat-conf"><thead><tr><th>Date</th><th>Category</th><th>Holiday list says</th><th>greytHR says</th><th class="num">People</th></tr></thead><tbody>
+{% if conflicts %}<div class="card mb"><div class="hd"><h2>Check these dates</h2><span class="sub">{{ conflict_period.label }} · a holiday list and greytHR disagree for most of the people using it</span></div>
+  <div class="bd"><div class="tw"><table class="compact" id="cat-conf"><thead><tr><th>Date</th><th>Holiday list of</th><th>Holiday list says</th><th>greytHR says</th><th class="num">People</th></tr></thead><tbody>
   {% for x in conflicts %}<tr><td style="white-space:nowrap">{{ x.date }}</td><td class="strong">{{ x.category }}</td>
     <td>{{ ('Holiday — ' ~ x.name) if x.list_says == 'holiday' else 'Working day' }}</td><td>{{ 'Working day' if x.list_says == 'holiday' else 'Holiday (H)' }}</td>
     <td class="num">{{ x.people }} of {{ x.of }}</td></tr>{% endfor %}</tbody></table></div>
@@ -98,7 +98,7 @@
       <input name="working_saturdays" form="cf-{{ c.id }}" value="{{ c.working_saturdays }}" placeholder="working Saturdays e.g. 1,3" style="margin-top:6px;width:100%"></div></td>
   <td class="num"><input name="hours_per_day" form="cf-{{ c.id }}" value="{{ c.hours_per_day if c.hours_per_day else '' }}" placeholder="policy" inputmode="decimal" style="width:80px" aria-label="Hours per day"></td>
   <td class="num" style="white-space:nowrap"><button class="btn sm" form="cf-{{ c.id }}">Save</button>
-    {% if not r.people and not r.extra_people %}<button class="btn sm ghost" form="cd-{{ c.id }}" title="Delete">{{ ui.icon('trash-2','sm') }}</button>{% endif %}</td></tr>
+    {% if r.deletable %}<button class="btn sm ghost" form="cd-{{ c.id }}" title="Delete">{{ ui.icon('trash-2','sm') }}</button>{% endif %}</td></tr>
 {% else %}<tr><td colspan="6">{% call ui.empty('No categories yet', 'Import greytHR\'s Employee Category Report, or add one below.', 'layers') %}{% endcall %}</td></tr>{% endfor %}
 </tbody></table></div>
 {% for r in cat_rows %}<form id="cf-{{ r.c.id }}" method="post" action="/settings/categories/save" class="hidden">{{ ui.csrf_field() }}<input type="hidden" name="cid" value="{{ r.c.id }}"></form>
