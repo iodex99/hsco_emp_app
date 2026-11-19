@@ -321,7 +321,7 @@ def approve_extra_wfh(period: str = Form(...), emp_no: str = Form(...), days: st
     month correction (audited, with the reason) and mark the WFH flag reviewed. Only unapproved extra days are
     deducted; the Excel follows (built from the app at download)."""
     from datetime import datetime
-    from app.models import FlagReview, MonthOverrideRow
+    from app.models import MonthOverrideRow
     from app.services.compute import compute_period
     p = pick_period(c, period)
     back = f"/flags?period={p.key}&code=WFH_OVER_LIMIT" if p else "/flags"
@@ -361,6 +361,34 @@ def approve_extra_wfh(period: str = Form(...), emp_no: str = Form(...), days: st
     name = c.db.scalar(select(Employee.name).where(Employee.emp_no == emp_no)) or emp_no
     return redirect(back, f"{name}: {n:g} extra WFH day(s) approved — deduction recalculated." if n else
                     f"{name}: approval removed — the WFH deduction applies again.")
+
+
+@router.post("/flags/waive-shortfall")
+def waive_shortfall(period: str = Form(...), emp_no: str = Form(...), reason: str = Form(""), c: Ctx = Depends(hr)):
+    """A partner waived the hours-shortfall deduction for this month: month correction "shortfall_waived" (audited,
+    with the reason), month recalculated (the flag becomes an info note). Undo on the employee's page (Corrections)."""
+    from datetime import datetime
+    from app.models import FlagReview, MonthOverrideRow
+    from app.services.compute import compute_period
+    p = pick_period(c, period)
+    back = f"/flags?period={p.key}" if p else "/flags"
+    if p is None or p.status != "DRAFT":
+        return redirect(back, "This month is finalised — re-open it to change a deduction.")
+    if not reason.strip():
+        return redirect(back, "Say who waived it (a reason is required for every manual change).")
+    emp_no = emp_no.strip().upper()
+    o = c.db.scalar(select(MonthOverrideRow).where(MonthOverrideRow.period_id == p.id, MonthOverrideRow.emp_no == emp_no,
+                                                   MonthOverrideRow.field == "shortfall_waived"))
+    if o is None:
+        o = MonthOverrideRow(period_id=p.id, emp_no=emp_no, field="shortfall_waived", value="true", reason="")
+        c.db.add(o)
+    o.value, o.reason, o.created_by, o.created_at = "true", reason.strip(), c.user.username, datetime.now()
+    audit(c.db, c.user, "override.month", "employee", emp_no, {"period": p.key, "field": "shortfall_waived",
+                                                               "value": "true", "reason": reason.strip()}, c.ip)
+    c.db.flush()
+    compute_period(c.db, p)
+    name = c.db.scalar(select(Employee.name).where(Employee.emp_no == emp_no)) or emp_no
+    return redirect(back, f"{name}: hours deduction waived — recalculated.")
 
 
 @router.post("/flags/review")

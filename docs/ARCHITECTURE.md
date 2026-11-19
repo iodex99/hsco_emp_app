@@ -237,3 +237,24 @@ v1.7.1: `calendars_for_month` also returns the calendars loaded for the year; `e
 v1.7.5: `POST /flags/wfh-approve` (HR; period, emp_no, days, reason) → `MonthOverrideRow(field="wfh_approved_days")` +
 `FlagReview` note + audit + `compute_period`; `MONTH_OVERRIDABLE` includes `wfh_approved_days`;
 `excel._wfh_term` subtracts the approved days in the formula.
+
+## Whole-app review (v1.8.0)
+- **CSV standard** (`static/table.js` `csv(btn)` → `exportCsv(all)`): rows = `this._order` (on-screen order) filtered
+  by `_shown`; columns = visible (or all) exportable ones (`type != none` or `data-export`), plus identity columns
+  (group / category / location) always. A column whose cells are mostly people (`.person` block or
+  `data-csv="Name (EMPNO)"`) is split into *Employee No* + *Name*. Value order: `data-csv` → numeric `data-v` (raw,
+  ≤ 4 dp) → date `data-v` (ISO) → text (multiple badges/tags joined `; `, "—" → blank). Formula-like text is
+  prefixed with `'`. File `hsco-<data-csv>-<yyyymmdd-hhmm>.csv`, UTF-8 BOM, CRLF.
+- **Excel** (`reports/excel.py`): `SHEET_GUIDE` (order, tab colour, one-line purpose) → `_finish(wb, title, org,
+  status, contents_lines, guide)` builds *Contents*, orders and colours tabs and calls `_polish(ws)` (freeze, filter,
+  print: landscape, fit to width, print titles, footer). *Payroll Input* links to the payroll sheet by formula.
+- **Waive**: `POST /flags/waive-shortfall` (HR; period, emp_no, reason; draft months only) →
+  `MonthOverrideRow(field="shortfall_waived", value="true")` + audit + `compute_period`. `services/compute.py`
+  passes it as text (with `remark`, `exempt`); engine `MONTH_OVERRIDABLE` includes it; RULES_VERSION 9.
+- Day-override redirect lists pinned month figures (`OVERRIDE_LABELS`); `employee_month.html` groups status codes
+  by `status_meaning` (policy.status_map).
+- Template filters `plural`, `readable` (`web.py`); `_fmt_num` strips trailing zeros. `metrics.compute_kpis` adds
+  `no_opening` (Overview banner). `base.html` `.print-head` (print only).
+- Import templates (`routes/reports.py` `_wb`): hidden *Lists* sheet + list validations (no error alert), date
+  formats, freeze/filter, Instructions second. `imports.py` leave opening: rows without any balance skipped; a
+  missing balance never overwrites a stored one.

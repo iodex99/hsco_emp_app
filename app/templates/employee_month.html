@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
 {% block title %}{{ r.name }} · {{ period.label }}{% endblock %}
+{% macro status_opts() -%}{% set B = {'present':'Present','leave':'Leave','compoff':'Comp-off','absent':'Absent','lop':'Loss of pay','off':'Off / holiday'} %}{% for b, lbl in B.items() %}<optgroup label="{{ lbl }}">{% for s in status_codes if status_meaning.get(s) == b %}<option value="{{ s }}">{{ s }} — {{ lbl|lower }}</option>{% endfor %}</optgroup>{% endfor %}{%- endmacro %}
 {% block content %}
 {% set editable = can_hr and period.status != 'FINALISED' %}
 <div class="crumbs"><a href="/periods/{{ period.key }}">Payroll leave sheet</a> {{ ui.icon('chevron-right','sm') }} <span>{{ r.name }}</span></div>
@@ -12,7 +13,7 @@
     <a class="btn ghost icon" {% if next_emp %}href="/periods/{{ period.key }}/employee/{{ next_emp }}"{% endif %} title="Next employee (→)" id="next-emp">{{ ui.icon('chevron-right') }}</a>
     {% if history|length > 1 %}<select data-nav aria-label="Month">{% for h in history %}<option value="/periods/{{ h.key }}/employee/{{ r.emp_no }}" {{ 'selected' if h.key == period.key }}>{{ h.label }}</option>{% endfor %}</select>{% endif %}
     <a class="btn ghost" href="/locations?period={{ period.key }}&t_signins={{ ({'q': r.emp_no})|tojson|urlencode }}" title="Every sign-in of {{ r.name }} this month with its place">{{ ui.icon('map-pin','sm') }} Sign-ins &amp; places</a>
-    <a class="btn sec" href="/employees/{{ r.emp_no }}">{{ ui.icon('user','sm') }} Employee settings</a>
+    <a class="btn sec" href="/employees/{{ r.emp_no }}">{{ ui.icon('user','sm') }} {{ 'Employee settings' if can_hr else 'Employee details' }}</a>
   </div>
 </div>
 
@@ -197,8 +198,12 @@
     <form method="post" action="/periods/{{ period.key }}/employee/{{ r.emp_no }}/day-override" id="day-form" class="mt" style="border-top:1px solid var(--border);padding-top:16px">
       {{ ui.csrf_field() }}<input type="hidden" name="day" id="dw-day">
       <h3 style="font-size:14px;margin-bottom:12px">Correct this day</h3>
-      <div class="row"><div class="field"><label>First half</label><select name="s1" id="dw-s1"><option value="">(no change)</option>{% for s in status_codes %}<option>{{ s }}</option>{% endfor %}</select></div>
-        <div class="field"><label>Second half</label><select name="s2" id="dw-s2"><option value="">(no change)</option>{% for s in status_codes %}<option>{{ s }}</option>{% endfor %}</select></div></div>
+      {% set pinned = m_ovr|selectattr('field', 'in', ['total_week_days','holidays','leave_days','absent_days','wfh_days','total_hours','extra_days','extra_hours','required_hours','deduction_days'])|list %}
+      {% if pinned %}<div class="alert warn small" style="margin-bottom:12px">{{ ui.icon('triangle-alert','sm') }}<span>This month has fixed figures
+        ({% for o in pinned %}{{ override_labels.get(o.field, o.field) }} = {{ o.value }}{{ ', ' if not loop.last }}{% endfor %}) — they override what the days add up to.
+        Remove them under <b>Corrections</b> if this day correction should count.</span></div>{% endif %}
+      <div class="row"><div class="field"><label>First half</label><select name="s1" id="dw-s1"><option value="">(no change)</option>{{ status_opts() }}</select></div>
+        <div class="field"><label>Second half</label><select name="s2" id="dw-s2"><option value="">(no change)</option>{{ status_opts() }}</select></div></div>
       <div class="row"><div class="field"><label>Day type</label><select name="day_type"><option value="">(no change)</option><option value="WORKDAY">Working day</option><option value="WEEKLY_OFF">Weekly off</option><option value="HOLIDAY">Holiday</option></select></div>
         <div class="field"><label>Hours worked</label><input name="work_hm" placeholder="HH:MM" pattern="\d{1,2}:\d{2}"></div></div>
       <div class="chips mb" id="quick">
@@ -211,7 +216,7 @@
   </div></aside><div class="scrim"></div>
 
 {% if editable %}
-<aside class="drawer" id="adjust" aria-label="Adjust a month figure"><div class="dh"><h2>Adjust a month figure</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<aside class="drawer" id="adjust" aria-label="Adjust a month figure"><div class="dh"><h2>Adjust a month figure</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
 <form method="post" action="/periods/{{ period.key }}/employee/{{ r.emp_no }}/month-override" style="display:contents">{{ ui.csrf_field() }}
 <div class="db">
   <div class="field"><label>Figure</label><select name="field" id="adj-field">{% for k,v in override_labels.items() %}<option value="{{ k }}" data-cur="{{ d.get(k, '') if k != 'exempt' else ('yes' if d.exempt else 'no') }}">{{ v }}</option>{% endfor %}</select>
@@ -220,7 +225,7 @@
   <div class="field"><label>Reason <span class="muted">(required)</span></label><textarea name="reason" rows="3" required placeholder="e.g. Partner approved exception for audit season"></textarea></div>
 </div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn">Apply</button></div></form></aside><div class="scrim"></div>
 
-<aside class="drawer" id="opening" aria-label="Opening balances"><div class="dh"><h2>Opening balances</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<aside class="drawer" id="opening" aria-label="Opening balances"><div class="dh"><h2>Opening balances</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
 <form method="post" action="/periods/{{ period.key }}/employee/{{ r.emp_no }}/opening" style="display:contents">{{ ui.csrf_field() }}
 <div class="db"><p class="muted small" style="margin-top:0">Balances at the start of {{ period.label }}. Usually only needed once, in the first month you use the app.</p>
   <div class="field"><label>Paid leave balance (days)</label><input name="leave_balance" inputmode="decimal" value="{{ opening.leave_balance if opening and opening.leave_balance is not none else '' }}"></div>

@@ -63,6 +63,7 @@
       </div>{% endif %}
     </header>
     <main class="content">
+<div class="print-head">{{ org or '' }}{% if cur_period %} · {{ cur_period.label }} ({{ 'Final' if cur_period.status == 'FINALISED' else 'Draft' }}){% endif %} · printed {{ now().strftime('%d-%b-%Y %H:%M') }}{% if user %} by {{ user.username }}{% endif %}</div>
       {% if upd and upd.available and upd.phase not in ('restarting',) %}
       <div class="upd" id="upd-banner" role="status">{{ ui.icon('sparkles') }}
         <span><b>Version {{ upd.latest.version or ('build ' ~ upd.latest.build) }} is available</b> · you have {{ upd.current.version }}{% if upd.current.build %} (build {{ upd.current.build }}){% endif %}</span>

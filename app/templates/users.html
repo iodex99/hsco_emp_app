@@ -19,7 +19,7 @@
 {% endfor %}</tbody></table></div></div></div>
 <div class="card"><div class="bd small muted"><b style="color:var(--text)">Roles</b> — <b>Viewer</b>: partners and the board; can see everything, change nothing. <b>HR</b>: imports, corrections, opening balances, calendars, finalising months. <b>Admin</b>: everything, plus calculation rules, users and re-opening finalised months.</div></div>
 
-<aside class="drawer" id="newuser"><div class="dh"><h2>Add user</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<aside class="drawer" id="newuser"><div class="dh"><h2>Add user</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
 <form method="post" action="/users" style="display:contents">{{ ui.csrf_field() }}<div class="db">
   <div class="field"><label>Username</label><input name="username" required placeholder="e.g. priya.hr"><div class="help">Letters, numbers, dot, dash, underscore.</div></div>
   <div class="field"><label>Full name</label><input name="full_name"></div>
@@ -29,7 +29,7 @@
 </div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn">Create user</button></div></form></aside><div class="scrim"></div>
 
 {% for u in rows %}
-<aside class="drawer" id="u{{ u.id }}"><div class="dh"><div><h2>{{ u.full_name or u.username }}</h2><div class="small muted">{{ u.username }}</div></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<aside class="drawer" id="u{{ u.id }}"><div class="dh"><div><h2>{{ u.full_name or u.username }}</h2><div class="small muted">{{ u.username }}</div></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
 <div class="db">
   <form method="post" action="/users/{{ u.id }}/update">{{ ui.csrf_field() }}
     <div class="field"><label>Full name</label><input name="full_name" value="{{ u.full_name }}"></div>

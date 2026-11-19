@@ -195,3 +195,15 @@ review queue shows *Approve WFH* for T004; a reason is required; approving 1 of 
 note, audit entry; the Excel downloaded next has the new deduction, a formula with "−1" that equals the app, and the
 approval in *Corrections*; 2 → no deduction; 0 → removed (1 day again); the correction is offered on the employee
 page. Browser on real data: approved HS195's extra day from the review queue (drawer, chips, recalculated, reviewed).
+
+## v1.8.0 — whole-app review
+New: filters (`0.5`, `34.5`, plural, readable audit details); **Waive** from the review queue (reason required,
+correction + audit, deduction 0, info flag, Excel *Exempt (hours)* = Waived with a formula giving 0, finalised months
+refused); day drawer groups status codes and warns about fixed month figures; Overview opening-balance banner;
+import templates round trip (drop-downs, frozen header, dates, Yes/No; master re-import changes nothing — the hidden
+*Lists* sheet is not data; leave opening: one balance filled → only that saved, a stored balance not cleared).
+Updated: export tests for the Excel *Contents* / *Payroll Input* sheets and Category columns; e2e CSV — *Columns shown*
+vs *All columns*, Employee No + Name split, rows in screen order, raw numbers; real-data review-queue count.
+Browser on the real October copy: review queue at 1200 / 1440 px, Waive drawer, day drawer, Overview banner, holiday
+calendars, audit log, print preview, CSV of the payroll sheet (97 rows) and punch exceptions (1,198 rows), Excel
+"Preparing…" — no console errors. Full suite: **157 passed** (incl. e2e and real data).

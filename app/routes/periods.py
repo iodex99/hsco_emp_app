@@ -27,6 +27,7 @@ OVERRIDE_LABELS = {
     "extra_days": "Extra working days (L)", "extra_hours": "Holiday/off-day hours to exclude (P)",
     "required_hours": "Hours required (N)", "deduction_days": "Deduction days", "exempt": "Exempt this month (yes/no)",
     "remark": "Remark", "wfh_approved_days": "Extra WFH approved (days)",
+    "shortfall_waived": "Hours deduction waived (yes/no)",
 }
 
 
@@ -152,6 +153,7 @@ def drill(key: str, emp_no: str, c: Ctx = Depends(viewer)):
                   opening=opening, history=history, override_labels=OVERRIDE_LABELS, raw_status=raw_status,
                   day_types=[WORKDAY, WEEKLY_OFF, HOLIDAY], policy=get_policy(c.db),
                   status_codes=sorted(get_policy(c.db).status_map.keys()),
+                  status_meaning=get_policy(c.db).status_map,
                   sc=INS.employee_scorecard(INS.insights(c.db, p, with_matrix=False), emp_no))
 
 
@@ -186,7 +188,15 @@ def add_day_override(key: str, emp_no: str, day: str = Form(...), day_type: str 
     audit(c.db, c.user, "override.day", "employee", emp_no,
           {"period": p.key, "day": day, "day_type": day_type, "s1": s1, "s2": s2, "work": work_hm, "reason": reason}, c.ip)
     compute_period(c.db, p)
-    return redirect(f"/periods/{key}/employee/{emp_no}", f"Day override saved for {d:%d-%b}.")
+    pinned = [OVERRIDE_LABELS.get(o.field, o.field) for o in c.db.scalars(select(MonthOverrideRow).where(
+        MonthOverrideRow.period_id == p.id, MonthOverrideRow.emp_no == emp_no))
+        if o.field in ("total_week_days", "holidays", "leave_days", "absent_days", "wfh_days", "total_hours",
+                       "extra_days", "extra_hours", "required_hours", "deduction_days")]
+    msg = f"Day override saved for {d:%d-%b}."
+    if pinned:
+        msg += (" Note: this month also has fixed figures (" + ", ".join(pinned) + ") — they still override what the "
+                "days add up to; remove them under Corrections if this day should count.")
+    return redirect(f"/periods/{key}/employee/{emp_no}", msg)
 
 
 @router.post("/periods/{key}/employee/{emp_no}/day-override/{oid}/delete")
@@ -211,7 +221,7 @@ def add_month_override(key: str, emp_no: str, field: str = Form(...), value: str
         return redirect(f"/periods/{key}/employee/{emp_no}", "Field cannot be overridden.")
     if not reason.strip():
         return redirect(f"/periods/{key}/employee/{emp_no}", "A reason is required for every manual change.")
-    if field == "exempt":
+    if field in ("exempt", "shortfall_waived"):
         value = "true" if value.strip().lower() in ("1", "y", "yes", "true") else "false"
     elif field != "remark":
         try:

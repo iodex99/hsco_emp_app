@@ -36,7 +36,10 @@ Add more methods under **My security** (several phones, keys).
 - **Group** by a column (e.g. Group or Location) to see counts and subtotals per group; ▾ collapses a group.
 - **Columns**: hide or show columns (the payroll sheet has *Key columns* / *All columns* presets).
 - **Views**: save the current setup (e.g. "BSS with deductions") and reuse it next month; *Copy link* shares it.
-- **CSV** downloads exactly what you see.
+- **CSV** downloads the rows you see (filter, search and sort as on screen). If columns are hidden it asks: *Columns
+  shown* or *All columns*. Every CSV has **Employee No** and **Name** in separate columns, plain numbers (units in the
+  header), dates as yyyy-mm-dd and opens directly in Excel.
+- **Print** (Ctrl+P) prints the table only, headed with the firm, month (Draft / Final) and who printed it.
 
 ## Month end (≈ 10 minutes)
 1. In greytHR export for the month: **Attendance Muster Report**, **Employee Swipe Details**,
@@ -73,8 +76,9 @@ draft months.
 
 ## Parallel run (first months)
 Upload your manual MIS workbook too. **Reconciliation** lists every difference between your sheet and the app.
-For October 2026: 91 of 97 identical once the employee settings were entered; the 6 differences are explained in
-`docs/DATA_ANALYSIS.md`.
+For October 2026 (v1.0 rules): 91 of 97 identical once the employee settings were entered; the 6 differences are
+explained in `docs/DATA_ANALYSIS.md`. Rules added since (WFH on own off-days, closed Saturdays, ½-day WFH deduction,
+categories) intentionally differ from the manual sheet; Reconciliation labels those rows *app rule*.
 
 ## Rules & calendars
 Policy numbers (8.5 h/day, 4 h block = ½ day, WFH limit 2, comp-off ≥ 5 h, late thresholds, exempt groups),
@@ -157,3 +161,19 @@ in the payroll Excel (*Punch Exceptions*, *Exceptions by Employee*).
    greytHR's own holiday marks are used for that year). No Excel file? Open the calendar and
    use **Paste a list** (copy the table from a PDF or email). Tick *Optional* for optional holidays.
 4. A one-off holiday for a category: *Targeted holidays* → Categories.
+
+## Waive the hours deduction (v1.8)
+Review queue → *Hours shortfall → leave deduction* → **Waive**: when a partner lets someone off the hours shortfall
+for the month. Say who approved it (required). The hours part of the deduction is removed (WFH over the limit is
+still deducted), the month recalculates and the Excel shows *Waived* in the *Exempt (hours)* column. Undo it on the
+employee's page → *Corrections*. *Mark reviewed* on its own never changes a figure.
+
+## The payroll Excel (v1.8)
+Opens on **Contents** (the month's key totals and what each sheet is for). Give payroll the **Payroll Input** sheet:
+only people with a leave deduction, LOP or salary deduction. *Payroll Leave Sheet* is the full MIS layout with live
+formulas. Every sheet prints on landscape pages with the month and status in the footer.
+
+## Import templates (v1.8)
+Imports → templates: drop-downs list the values the app knows, dates are dd-mm-yyyy, the Instructions sheet explains
+every column. The leave opening template lists everyone in the latest month with *As Of* already filled — type only
+the balances you have; rows left blank are skipped and never clear a balance already saved.

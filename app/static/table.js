@@ -139,6 +139,7 @@
       const keys = (s.g ? [{ k: s.g, d: "asc" }] : []).concat(s.s);
       const sorted = this.rows.slice().sort((a, b) => this.cmp(a, b, keys));
       const shown = [];
+      this._order = sorted;                                  // the order on screen (the CSV follows it)
       sorted.forEach((r) => { const ok = this.match(r); r.style.display = ok ? "" : "none"; r._shown = ok; if (ok) shown.push(r); this.body.appendChild(r); });
       if (s.g && this.byKey[s.g]) this.renderGroups(shown);
       this.renderHidden(); this.renderSortMarks(); this.renderTotals(shown);
@@ -183,7 +184,7 @@
         const c = this.cols[i]; let v = 0;
         shown.forEach((r) => { const x = c ? this.val(r, { ...c, type: "num" }) : NaN; if (!isNaN(x)) v += x; });
         const dec = td.dataset.dec !== undefined ? +td.dataset.dec : 2;
-        td.textContent = (Number.isInteger(v) ? v : v.toFixed(dec)) + (td.dataset.unit || "");
+        td.textContent = (Number.isInteger(v) ? v : parseFloat(v.toFixed(dec))) + (td.dataset.unit || "");   // 90.5, not 90.50
       });
     }
     // ---------------------------------------------------------------- headers & chips
@@ -220,7 +221,7 @@
           <button type="button" class="tt-btn" data-a="group">${icon("layers")} Group<span class="tt-n" data-n="g"></span></button>
           <button type="button" class="tt-btn" data-a="columns">${icon("columns-3")} Columns<span class="tt-n" data-n="h"></span></button>
           <button type="button" class="tt-btn" data-a="views">${icon("bookmark")} Views</button>
-          <button type="button" class="tt-btn" data-a="csv" title="Download what you see as CSV">${icon("download")} CSV</button>
+          <button type="button" class="tt-btn" data-a="csv" title="Download the rows shown as CSV (opens in Excel)">${icon("download")} CSV</button>
           <span class="tt-count muted small"></span>
         </div>
         <div class="tt-active"></div>`;
@@ -344,16 +345,77 @@
       };
       bind();
     }
-    csv() {
-      const vis = this.cols.filter((c) => c.type !== "none" && !this.state.h.includes(c.key));
-      const cell = (r, c) => { const td = r.cells[c.i]; if (!td) return ""; let t = (td.dataset.csv ?? td.innerText).replace(/\s*\n\s*/g, " · ").trim();
-        if (/^[=+@]/.test(t) || /^-[^0-9.]/.test(t)) t = "'" + t; return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
-      const head = (t) => (/[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t);
-      const lines = [vis.map((c) => head(c.label)).join(",")];
-      this.rows.filter((r) => r._shown).forEach((r) => lines.push(vis.map((c) => cell(r, c)).join(",")));
-      const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    // ---------------------------------------------------------------- CSV (app-wide standard, v1.8)
+    // Rows exactly as shown (filter, search, sort). Employee No and Name in their own columns; numbers raw (unit in
+    // the header); dates ISO (yyyy-mm-dd [hh:mm]); lists joined with "; "; blank = none; no icons, badges or initials.
+    csv(btn) {
+      const hidden = this.state.h.filter((k) => this.byKey[k] && this.byKey[k].type !== "none");
+      if (!btn || !hidden.length) return this.exportCsv(false);
+      const nv = this.cols.filter((c) => this.exportable(c) && !this.state.h.includes(c.key)).length;
+      const na = this.cols.filter((c) => this.exportable(c)).length;
+      const p = pop(btn, `<div class="tt-h">Download CSV</div><div class="tt-list">
+        <button type="button" data-all="0"><span>Columns shown</span><span class="tt-type">${nv} columns</span></button>
+        <button type="button" data-all="1"><span>All columns</span><span class="tt-type">${na} columns</span></button></div>
+        <div class="small muted" style="padding:6px 10px 2px">Rows as shown — current filter, search and sort.</div>`);
+      if (!p) return;
+      $$("[data-all]", p).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); closePop(); this.exportCsv(b.dataset.all === "1"); }));
+    }
+    exportable(c) { return c.type !== "none" || c.th.hasAttribute("data-export"); }
+    exportCsv(all) {
+      const IDRE = /^[A-Z0-9][A-Z0-9_\-\/.]{0,19}$/;
+      const ALWAYS = new Set(["group", "category", "cat", "location", "loc"]);      // identity columns travel along
+      const cols = this.cols.filter((c) => this.exportable(c) && (all || !this.state.h.includes(c.key) || ALWAYS.has(c.key)));
+      const rows = (this._order || this.rows).filter((r) => r._shown);
+      const person = (td) => {
+        if (!td) return null;
+        const m = /^(.*) \(([^()]+)\)$/.exec(td.dataset.csv || "");
+        if (m && IDRE.test(m[2].trim())) return { name: m[1].trim(), no: m[2].trim() };
+        const pe = td.querySelector(".person"); if (!pe) return null;
+        const b = pe.querySelector("b"), sub = pe.querySelector("div > span");
+        const no = ((sub && sub.textContent) || "").trim().split(/[\s·]+/)[0] || "";
+        return { name: (b ? b.textContent : "").trim(), no: IDRE.test(no) ? no : "" };
+      };
+      // a column of people becomes two columns: Employee No, Name
+      const isPerson = (c) => { const s = rows.slice(0, 25); return s.length && s.filter((r) => person(r.cells[c.i])).length >= 0.8 * s.length; };
+      const text = (td) => {
+        const tags = $$(".badge, .tag", td);
+        let t = tags.length > 1 ? tags.map((x) => x.textContent.replace(/\s+/g, " ").trim()).filter(Boolean).join("; ")
+                                : td.textContent.replace(/\s+/g, " ").trim();
+        t = t.replace(/[✎•]/g, "").trim();
+        return /^[—–-]$/.test(t) ? "" : t;
+      };
+      const value = (td, c) => {
+        if (!td) return "";
+        if (td.dataset.csv !== undefined) return td.dataset.csv;
+        if (c.type === "num") {
+          const raw = td.dataset.v ?? td.textContent, v = this.num(raw);
+          return isNaN(v) ? text(td) : String(+v.toFixed(4));
+        }
+        if (c.type === "date" && td.dataset.v) return td.dataset.v.replace("T", " ").slice(0, 16);
+        return text(td);
+      };
+      const q = (t) => {
+        t = t == null ? "" : String(t);
+        if (/^[=+\-@\t\r]/.test(t) && isNaN(+t)) t = "'" + t;                      // never a formula in Excel
+        return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+      };
+      const plan = cols.map((c) => ({ c, p: isPerson(c) }));
+      const head = [];
+      plan.forEach(({ c, p }) => { if (p) head.push("Employee No", c.label === "Employee" ? "Name" : c.label); else head.push(c.label); });
+      const lines = [head.map(q).join(",")];
+      rows.forEach((r) => {
+        const out = [];
+        plan.forEach(({ c, p }) => {
+          if (p) { const x = person(r.cells[c.i]) || { no: "", name: value(r.cells[c.i], c) }; out.push(x.no, x.name); }
+          else out.push(value(r.cells[c.i], c));
+        });
+        lines.push(out.map(q).join(","));
+      });
+      const d = new Date(), z = (n) => String(n).padStart(2, "0");
+      const stamp = `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
+      const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-      a.download = (this.t.dataset.csv || this.id) + ".csv"; document.body.appendChild(a); a.click(); a.remove();
+      a.download = `hsco-${this.t.dataset.csv || this.id}-${stamp}.csv`; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
   }

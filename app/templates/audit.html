@@ -23,7 +23,7 @@
 <thead><tr><th data-key="when" data-type="date">When</th><th data-key="who" data-type="enum">Who</th><th data-key="what" data-type="enum">What</th><th data-key="type" data-type="enum">Type</th><th data-key="about" data-type="text">About</th><th data-key="details" data-type="text">Details</th></tr></thead><tbody>
 {% for a in rows %}<tr><td class="small" style="white-space:nowrap" data-v="{{ a.ts.isoformat() }}">{{ a.ts.strftime('%d %b %Y, %H:%M:%S') }}</td><td>{{ a.username or '—' }}</td>
 <td data-f="{{ labels.get(a.action, a.action) }}"><span title="{{ a.action }}" class="{{ 'neg' if 'fail' in a.action or 'locked' in a.action else 'strong' }}">{{ labels.get(a.action, a.action) }}</span></td><td class="small">{{ cat_of.get(a.action.split('.')[0], 'Other') }}</td><td class="small">{{ a.entity }} {{ a.entity_id }}</td>
-<td class="small muted" style="max-width:520px">{% for k, v in (a.details or {}).items() %}<span class="tag">{{ k }}: {{ v if v is string or v is number else v|tojson }}</span>{% endfor %}</td></tr>
+<td class="small muted" style="max-width:520px">{% for k, v in (a.details or {}).items() %}<span class="tag">{{ k|replace('_', ' ') }}: {{ v|readable }}</span>{% endfor %}</td></tr>
 {% else %}<tr><td colspan="6">{% call ui.empty('No entries', 'Nothing matches that search.', 'scroll-text') %}{% endcall %}</td></tr>{% endfor %}</tbody></table></div></div></div>
 {% if pages > 1 %}{% set qs = 'q=' ~ (q|urlencode) ~ '&user=' ~ (user|urlencode) ~ '&cat=' ~ (cat|urlencode) ~ '&date_from=' ~ date_from ~ '&date_to=' ~ date_to %}
 <div class="row" style="justify-content:center;gap:8px">

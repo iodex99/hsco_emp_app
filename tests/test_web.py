@@ -297,7 +297,22 @@ def test_exports(loaded):
     r = c.get("/exports/2026-10.xlsx")
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/vnd.openxmlformats")
     wb = load_workbook(io.BytesIO(r.content))
-    assert wb.sheetnames[:3] == ["Payroll Leave Sheet", "Board Summary", "Flags"]
+    assert wb.sheetnames[:6] == ["Contents", "Payroll Leave Sheet", "Payroll Input", "Leave & Comp-off Ledger",
+                                 "Corrections", "Flags"]                                       # v1.8 order
+    cs = wb["Contents"]
+    links = {cs.cell(row=i, column=1).value: cs.cell(row=i, column=1).hyperlink for i in range(1, cs.max_row + 1)
+             if cs.cell(row=i, column=1).hyperlink}
+    assert links["Payroll Leave Sheet"].location == "'Payroll Leave Sheet'!A1" or "Payroll Leave Sheet" in str(links["Payroll Leave Sheet"].target or links["Payroll Leave Sheet"].location)
+    assert any(cs.cell(row=i, column=1).value == "Leave deduction (days)" for i in range(1, 20))
+    pws = wb["Payroll Leave Sheet"]
+    assert pws.page_setup.orientation == "landscape" and pws.print_title_rows == "$5:$5" and pws.page_setup.fitToWidth == 1
+    assert pws.sheet_properties.tabColor is not None
+    pin = wb["Payroll Input"]
+    assert [c_.value for c_ in pin[5]][:7] == ["Employee No", "Name", "Group", "Category", "Location",
+                                              "Leave deduction (days)", "Payroll LOP (days)"]
+    pin_rows = {pin.cell(row=i, column=1).value: i for i in range(6, pin.max_row + 1) if pin.cell(row=i, column=1).value}
+    assert "T002" in pin_rows and str(pin.cell(row=pin_rows["T002"], column=6).value).startswith("='Payroll Leave Sheet'!V")
+    assert "T003" not in pin_rows                           # partner: no deduction → not listed
     for s in ("Late & Punctuality", "WFH & Locations", "Regularisation & Punches", "Leave & Comp-off Ledger",
               "People Movement", "Daily Detail", "Rules Applied", "Scorecard", "Groups Compared"):
         assert s in wb.sheetnames
@@ -325,7 +340,7 @@ def test_exports(loaded):
     i3 = rows["T003"]                    # Partner: the WFH term is not in the formula at all
     assert "CEILING(MAX(0,J" not in ws.cell(row=i3, column=22).value
     led = [c_.value for c_ in wb["Leave & Comp-off Ledger"][5]]
-    assert led[6:9] == ["Shortfall deduction", "WFH over-limit deduction", "Unauthorised absence"]
+    assert led[7:10] == ["Shortfall deduction", "WFH over-limit deduction", "Unauthorised absence"]   # (+ Category)
     # the HTML board pack was removed in v1.6 (the app itself is the board view)
     assert c.get("/exports/2026-10.html").status_code == 404
     assert "/exports/2026-10.html" not in c.get("/exports").text and "Board pack" not in c.get("/").text
@@ -439,7 +454,7 @@ def test_bulk_review_and_employee_filter(loaded):
                headers={"X-CSRF-Token": tok}).json()
     assert j["count"] == 2
     page = c.get("/flags?period=2026-10&emp=T004&show=reviewed").text
-    assert page.count("bulk-ok") == 2
+    assert page.count("bulk-ok") == 4                     # detail + the (hidden) review-note column, 2 rows
     j = c.post("/flags/review", json={"period": "2026-10", "items": items[:2], "action": "reopen"},
                headers={"X-CSRF-Token": tok}).json()
     assert j["count"] == 2 and "bulk-ok" not in c.get("/flags?period=2026-10&emp=T004&show=reviewed").text
@@ -1029,7 +1044,9 @@ def _result_days(emp):
 
 # ---------------------------------------------------------------- v1.4.1 review & performance regressions
 
-def test_attention_counts_zero_percent_as_zero():
+def test_attention_counts_zero_percent_as_zero(data_dir):
+    from app.db import init_db
+    init_db()                      # its own empty database (never the developer's data folder)
     from app.services import insights as INS
     from app.services.settings import get_policy
     from app.db import session_scope
@@ -1310,7 +1327,8 @@ def test_location_exports(loaded):
     lw = load_workbook(io.BytesIO(r.content))
     assert lw.sheetnames == ["Punches", "Places", "By person"]
     rows = [[cell.value for cell in row] for row in lw["Punches"].iter_rows(min_row=6)]
-    assert any(r[3] == "Astra" and str(r[5]).startswith("Office biometric") for r in rows)       # biometric punches too
+    assert any(r[3] == "Biometric" and r[4] == "Office (biometric)" and str(r[5]).startswith("Office biometric")
+               for r in rows)                                                                 # biometric punches too (v1.8 labels)
     assert any(r[6] == "At Acme Pharma (BKC)" and r[10] == 19.066 for r in rows)                # remark + coordinates
     assert "Office check" not in [c.value for c in lw["Punches"][5]]
     assert c.get("/exports/2099-01/locations.xlsx").status_code == 404
@@ -1405,7 +1423,9 @@ def test_viewer_cannot_change_logo(client):
 
 
 
-def test_attention_absence_part_uses_12_month_days():
+def test_attention_absence_part_uses_12_month_days(data_dir):
+    from app.db import init_db
+    init_db()                      # its own empty database (never the developer's data folder)
     from app.services import insights as INS
     from app.services.settings import get_policy
     from app.db import session_scope
@@ -1511,3 +1531,113 @@ def test_backup_now_button(loaded):
     r = c.post("/settings/backup", data={"csrf": csrf_of(c, "/settings")}, follow_redirects=True)
     assert "Backup written and verified" in r.text and "Backups &amp; data safety" in r.text
     assert "manual" in c.get("/settings").text
+
+
+# ---------------------------------------------------------------- v1.8.0 whole-app review
+
+def test_number_plural_and_audit_filters():
+    from app.web import _fmt_num, _plural, _readable
+    assert _fmt_num(0.5) == "0.5" and _fmt_num(34.50) == "34.5" and _fmt_num(2.25) == "2.25" and _fmt_num(3.0) == "3"
+    assert _plural(1, "day") == "day" and _plural(0.5, "day") == "day" and _plural(2, "day") == "days"
+    assert _plural(3, "person", "people") == "people"
+    assert _readable(["a", "b"]) == "a, b" and _readable({"x": 1, "y": ["p", "q"]}) == "x: 1; y: p, q"
+    assert _readable("Approved — partner") == "Approved — partner" and _readable(None) == ""
+
+
+def test_waive_hours_deduction_from_review_queue(loaded):
+    """v1.8.0: Review queue → Waive (a partner waived the hours-shortfall deduction): month correction
+    shortfall_waived with the reason, deduction gone, info note instead, Excel follows; undo on the employee page."""
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import AuditLog, MonthOverrideRow
+    c = loaded
+    d1, f1 = _result("T001")
+    assert d1["shortfall_deduction_days"] > 0 and "SHORTFALL_DEDUCTION" in {f["code"] for f in f1}
+    page = c.get("/flags?period=2026-10&code=SHORTFALL_DEDUCTION").text
+    assert 'data-waive="T001"' in page and 'action="/flags/waive-shortfall"' in page
+    assert "does not change any figure" in page
+    csrf = csrf_of(c, "/flags?period=2026-10")
+    r = c.post("/flags/waive-shortfall", data={"csrf": csrf, "period": "2026-10", "emp_no": "T001", "reason": " "},
+               follow_redirects=True)
+    assert "reason is required" in r.text
+    r = c.post("/flags/waive-shortfall", data={"csrf": csrf, "period": "2026-10", "emp_no": "t001",
+                                               "reason": "Waived by partner"}, follow_redirects=True)
+    assert "hours deduction waived" in r.text
+    d1, f1 = _result("T001")
+    codes = {f["code"] for f in f1}
+    assert d1["shortfall_deduction_days"] == 0 and "SHORTFALL_DEDUCTION" not in codes and "SHORTFALL_EXEMPT" in codes
+    assert any("waived this month" in f["message"] for f in f1)
+    with session_scope() as db:
+        o = db.scalar(select(MonthOverrideRow).where(MonthOverrideRow.emp_no == "T001",
+                                                     MonthOverrideRow.field == "shortfall_waived"))
+        assert o and o.value == "true" and o.reason == "Waived by partner"
+        assert any(a.action == "override.month" and "shortfall_waived" in str(a.details) for a in db.scalars(select(AuditLog)))
+    assert "Hours deduction waived" in c.get("/periods/2026-10/employee/T001").text
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    ws = wb["Payroll Leave Sheet"]
+    i = {ws.cell(row=k, column=1).value: k for k in range(6, ws.max_row + 1)}["T001"]
+    assert ws.cell(row=i, column=21).value == "Waived" and ws.cell(row=i, column=22).value.startswith(f'=IF(U{i}<>"No",0,')
+    corr = [[x.value for x in row] for row in wb["Corrections"].iter_rows(min_row=6) if row[0].value]
+    assert any("Waived by partner" in str(r_) for r_ in corr), corr
+    # finalised months cannot be changed from here
+    with session_scope() as db:
+        from app.models import Period
+        db.scalar(select(Period).where(Period.year == 2026, Period.month == 10)).status = "FINALISED"
+    r = c.post("/flags/waive-shortfall", data={"csrf": csrf, "period": "2026-10", "emp_no": "T002",
+                                               "reason": "x"}, follow_redirects=True)
+    assert "finalised" in r.text
+
+
+def test_day_drawer_explains_codes_and_warns_about_fixed_figures(loaded):
+    c = loaded
+    base = "/periods/2026-10/employee/T001"
+    page = c.get(base).text
+    assert '<optgroup label="Leave">' in page and "— absent</option>" in page
+    csrf = csrf_of(c, base)
+    c.post(base + "/month-override", data={"csrf": csrf, "field": "absent_days", "value": "0", "reason": "Fixed by HR"})
+    r = c.post(base + "/day-override", data={"csrf": csrf, "day": "2026-10-05", "s1": "A", "s2": "A",
+                                             "work_hm": "00:00", "reason": "No punch"}, follow_redirects=True)
+    assert "also has fixed figures" in r.text
+    assert "they override what the days add up to" in c.get(base).text
+
+
+def test_overview_warns_when_opening_balances_missing(loaded):
+    page = loaded.get("/").text
+    assert "Leave opening balances missing for" in page and "/exports/templates/leave_opening.xlsx" in page
+
+
+def test_import_templates_round_trip(loaded, tmp_path):
+    """v1.8.0 templates: drop-downs, frozen header, dd-mm-yyyy dates, explicit Yes/No; the leave opening template is
+    pre-filled for the latest month and rows left blank never clear a stored balance."""
+    c = loaded
+    wb = load_workbook(io.BytesIO(c.get("/exports/templates/employee_master.xlsx").content))
+    ws = wb["Data"]
+    assert wb.sheetnames[:2] == ["Data", "Instructions"] and wb["Lists"].sheet_state == "hidden"
+    assert ws.freeze_panes == "C2" and ws.data_validations.dataValidation
+    heads = [x.value for x in ws[1]]
+    ex = heads.index("Exempt From Deduction") + 1
+    assert {ws.cell(row=r, column=ex).value for r in range(2, ws.max_row + 1) if ws.cell(row=r, column=1).value} <= {"Yes", "No"}  # never blank
+    assert ws.cell(row=2, column=heads.index("Date of Joining") + 1).number_format == "dd-mm-yyyy"
+    # re-importing the master unchanged changes nothing (the Lists sheet is not data)
+    f = tmp_path / "employee_master_template.xlsx"
+    f.write_bytes(c.get("/exports/templates/employee_master.xlsx").content)
+    before = {e: _result(e)[0]["deduction_days"] for e in ("T001", "T003", "T004")}
+    r = _upload(c, [f])
+    assert r.status_code == 200 and "Unexpected" not in r.text
+    assert {e: _result(e)[0]["deduction_days"] for e in before} == before
+    hw = load_workbook(io.BytesIO(c.get("/exports/templates/holidays.xlsx").content))
+    assert "Examples" in " ".join(str(x.value) for x in hw["Instructions"]["A"])
+    # leave opening: As Of pre-filled; one balance filled → only that one saved, the others untouched
+    base = "/periods/2026-10/employee/T002"
+    c.post(base + "/opening", data={"csrf": csrf_of(c, base), "leave_balance": "7", "compoff_balance": "0"})
+    lw = load_workbook(io.BytesIO(c.get("/exports/templates/leave_opening.xlsx").content))
+    ws = lw["Data"]
+    rows = {ws.cell(row=r, column=1).value: r for r in range(2, ws.max_row + 1) if ws.cell(row=r, column=1).value}
+    assert ws.cell(row=rows["T001"], column=5).value.strftime("%Y-%m-%d") == "2026-10-01"
+    ws.cell(row=rows["T001"], column=3, value=4.5)
+    f = tmp_path / "leave_opening.xlsx"
+    lw.save(f)
+    r = _upload(c, [f])
+    assert r.status_code == 200 and "Unexpected" not in r.text
+    assert _result("T001")[0]["leave_opening"] == 4.5 and _result("T002")[0]["leave_opening"] == 7
+    assert _result("T004")[0]["leave_opening"] is None

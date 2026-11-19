@@ -35,7 +35,7 @@ def _fmt_num(v, nd=2):
         return v
     if f.is_integer():
         return f"{int(f)}"
-    return f"{f:.{nd}f}"
+    return f"{f:.{nd}f}".rstrip("0").rstrip(".")          # 0.5 · 34.5 · 2.25 (no trailing zeros)
 
 
 def _fmt_hm(minutes):
@@ -52,6 +52,26 @@ def _tojson_safe(v) -> Markup:
     return Markup(json.dumps(v, default=str).replace("</", "<\\/").replace("<!--", "<\\!--"))
 
 
+def _plural(n, one: str, many: str = "") -> str:
+    """'1 day' / '2 days' / '0.5 day' — {{ n|plural('day') }}."""
+    try:
+        f = float(n)
+    except (TypeError, ValueError):
+        return one
+    return one if abs(f) <= 1 else (many or one + "s")
+
+
+def _readable(v) -> str:
+    """Audit details: lists joined, dicts as key: value, never unicode escapes."""
+    if isinstance(v, list):
+        return ", ".join(_readable(x) for x in v)
+    if isinstance(v, dict):
+        return "; ".join(f"{k}: {_readable(x)}" for k, x in v.items())
+    return "" if v is None else str(v)
+
+
+templates.env.filters["plural"] = _plural
+templates.env.filters["readable"] = _readable
 templates.env.filters["tojson_safe"] = _tojson_safe
 templates.env.filters["dmy"] = lambda d: d.strftime("%d-%b-%Y") if isinstance(d, (date, datetime)) else (d or "")
 templates.env.globals["now"] = datetime.now

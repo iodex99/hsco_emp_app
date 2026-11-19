@@ -54,7 +54,7 @@
   </tr></thead><tbody>
   {% for r in I.rows|sort(attribute='attention', reverse=True) %}
   <tr data-href="/periods/{{ key }}/employee/{{ r.emp_no }}">
-    <td data-v="{{ r.name }}" data-csv="{{ r.emp_no }} {{ r.name }}">{{ ui.person(r.name, r.emp_no, '/periods/' ~ key ~ '/employee/' ~ r.emp_no) }}</td>
+    <td data-v="{{ r.name }}" data-csv="{{ r.name }} ({{ r.emp_no }})">{{ ui.person(r.name, r.emp_no, '/periods/' ~ key ~ '/employee/' ~ r.emp_no) }}</td>
     <td>{{ r.group }}</td><td class="small">{{ r.category }}</td><td>{{ r.location }}</td>
     <td class="num" data-v="{{ r.tenure_m if r.tenure_m is not none else '' }}">{% if r.tenure_m is not none %}{{ (r.tenure_m // 12) ~ 'y ' if r.tenure_m >= 12 }}{{ r.tenure_m % 12 }}m{% endif %}</td>
     <td class="num" data-v="{{ r.attention }}"><span class="score {{ 'bad' if r.attention >= 50 else 'warn' if r.attention >= 25 else 'ok' }}"><i style="width:{{ r.attention }}%"></i><b>{{ r.attention }}</b></span></td>
@@ -92,17 +92,18 @@
       <th data-key="p" data-type="num" class="num" title="Present days (incl. late and WFH)">Pres.</th><th data-key="t" data-type="num" class="num">Late</th>
       <th data-key="a" data-type="num" class="num">Abs.</th><th data-key="l" data-type="num" class="num">Leave</th>
       <th data-key="tot" data-type="num" data-label="Total" class="num hm-tot" id="hm-tot-h" title="Days in the states highlighted in the legend (all marked days when nothing is highlighted)">Total<small id="hm-tot-sub">all days</small></th>
-      {% for d in I.matrix.dates %}<th data-type="none" class="hm-d {{ 'we' if I.matrix.weekdays[loop.index0] in ('Sat','Sun') }}" title="{{ I.matrix.weekdays[loop.index0] }} {{ d }}">{{ d[8:]|int }}<small>{{ I.matrix.weekdays[loop.index0][0] }}</small></th>{% endfor %}
+      {% for d in I.matrix.dates %}<th data-type="none" data-export data-label="{{ d }}" class="hm-d {{ 'we' if I.matrix.weekdays[loop.index0] in ('Sat','Sun') }}" title="{{ I.matrix.weekdays[loop.index0] }} {{ d }}">{{ d[8:]|int }}<small>{{ I.matrix.weekdays[loop.index0][0] }}</small></th>{% endfor %}
     </tr></thead><tbody>
     {% set cmap = {'P':'p','T':'t','W':'w','½':'h','L':'l','C':'c','A':'a','X':'x','O':'o','H':'y','E':'e','.':'n'} %}
     {% for r in I.matrix.rows %}<tr data-href="/periods/{{ key }}/employee/{{ r.emp_no }}">
-      <td data-v="{{ r.name }}" class="hm-name"><a href="/periods/{{ key }}/employee/{{ r.emp_no }}">{{ r.name }}</a></td><td class="small">{{ r.group }}</td><td class="small">{{ r.category }}</td>
+      <td data-v="{{ r.name }}" data-csv="{{ r.name }} ({{ r.emp_no }})" class="hm-name"><a href="/periods/{{ key }}/employee/{{ r.emp_no }}">{{ r.name }}</a></td><td class="small">{{ r.group }}</td><td class="small">{{ r.category }}</td>
       {% set np = r.s.count('P') + r.s.count('T') + r.s.count('W') %}
       <td class="num" data-v="{{ np }}">{{ np }}</td><td class="num" data-v="{{ r.s.count('T') }}">{{ r.s.count('T') or '' }}</td>
       <td class="num" data-v="{{ r.s.count('A') + r.s.count('X') }}">{{ (r.s.count('A') + r.s.count('X')) or '' }}</td>
       <td class="num" data-v="{{ r.s.count('L') + r.s.count('C') }}">{{ (r.s.count('L') + r.s.count('C')) or '' }}</td>
       {% set nall = r.s|length - r.s.count('.') %}<td class="num hm-tot" data-v="{{ nall }}">{{ nall }}</td>
-      {% for ch in r.s %}<td class="hm-c s-{{ cmap.get(ch, 'n') }}"></td>{% endfor %}
+      {% set codes = {'P':'P','T':'Late','W':'WFH','½':'Half leave','L':'Leave','C':'Comp-off','A':'Absent','X':'LOP','O':'Weekly off','H':'Holiday','E':'Worked off-day','.':''} %}
+      {% for ch in r.s %}<td class="hm-c s-{{ cmap.get(ch, 'n') }}" data-csv="{{ codes.get(ch, ch) }}"></td>{% endfor %}
     </tr>{% endfor %}
   </tbody>
   <tfoot><tr class="tfoot"><td>Total · <span data-count="#hm">{{ I.matrix.rows|length }}</span> people</td><td></td><td></td>

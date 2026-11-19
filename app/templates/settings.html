@@ -59,7 +59,7 @@
 {% endfor %}</textarea><div class="help">One per line: CODE=present | absent | leave | compoff | lop | off</div></div>
   </div></div>
 </fieldset></div>
-{% if can_admin %}<div class="hd" style="border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end"><button class="btn">Save rules</button></div>{% endif %}
+{% if can_admin %}<div class="hd sticky-save" style="border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end"><span class="small muted" style="margin-right:auto">Saving recalculates every draft month.</span><button class="btn">Save rules</button></div>{% endif %}
 </form>
 </section>
 
@@ -111,6 +111,8 @@
 </section>
 
 <section class="pane" data-pane="holidays">
+{% if cals %}<div class="chips mb" aria-label="Jump to">{% for c in cals %}<a class="chip" href="#cal-{{ c.id }}">{{ c.name }} <span class="n">{{ c.holidays|selectattr('day.year', 'equalto', this_year)|list|length }}</span></a>{% endfor %}
+  <a class="chip" href="#targeted">Targeted holidays <span class="n">{{ targeted|length }}</span></a></div>{% endif %}
 <div class="grid g-1-2" style="align-items:start">
   <div class="card"><div class="hd"><h2>How holidays work</h2></div><div class="bd small" style="color:var(--text-2)">
     <p style="margin-top:0">Each <b>category</b> uses its own holiday list (Categories tab). Without one: the additional
@@ -129,11 +131,11 @@
   </div></div>
   <div>
   {% for c in cals %}
-  <div class="card"><div class="hd"><h2>{{ c.name }}</h2>{% if c.is_default %}<span class="badge b-ok">Default</span>{% endif %}<span class="sub">{{ c.holidays|length }} holidays{% if cal_use.get(c.id) %} · list of {{ cal_use[c.id]|join(', ') }}{% endif %}</span>
+  <div class="card" id="cal-{{ c.id }}"><div class="hd"><h2>{{ c.name }}</h2>{% if c.is_default %}<span class="badge b-ok">Default</span>{% endif %}<span class="sub">{{ c.holidays|length }} holidays{% if cal_use.get(c.id) %} · list of {{ cal_use[c.id]|join(', ') }}{% endif %}</span>
     <div class="tools">{% if not c.is_default %}<form method="post" action="/settings/calendars/{{ c.id }}/default" class="inline">{{ ui.csrf_field() }}<button class="btn sm ghost">Make default</button></form>{% endif %}
       <form method="post" action="/settings/calendars/{{ c.id }}/delete" class="inline" data-confirm="Delete calendar {{ c.name }}?">{{ ui.csrf_field() }}<button class="btn sm ghost" title="Delete">{{ ui.icon('trash-2','sm') }}</button></form></div></div>
     <div class="bd" style="padding-top:4px">
-    {% for y, hs in c.holidays|groupby('day.year')|reverse %}<details class="cal-year" {{ 'open' if y == this_year or loop.length == 1 }}><summary><b>{{ y }}</b> <span class="muted small">{{ hs|length }} holiday{{ 's' if hs|length != 1 }}{% set no = hs|selectattr('optional')|list|length %}{% if no %} · {{ no }} optional{% endif %}</span></summary>
+    {% for y, hs in c.holidays|groupby('day.year')|reverse %}<details class="cal-year" {{ 'open' if (y == this_year or loop.length == 1) and hs|length <= 6 }}><summary><b>{{ y }}</b> <span class="muted small">{{ hs|length }} holiday{{ 's' if hs|length != 1 }}{% set nxt = hs|selectattr('day', 'ge', now().date())|list %}{% if nxt %} · next: {{ nxt[0].name }} {{ nxt[0].day.strftime('%d %b') }}{% endif %}{% set no = hs|selectattr('optional')|list|length %}{% if no %} · {{ no }} optional{% endif %}</span></summary>
       <ul class="list">{% for h in hs %}<li><span class="badge b-violet" style="min-width:86px;justify-content:center">{{ h.day.strftime('%d %b %Y') }}</span><span class="muted small" style="width:28px">{{ h.day.strftime('%a') }}</span> {{ h.name }}{% if h.optional %} <span class="badge b-grey" title="A working day unless greytHR marks it a holiday for the person">optional</span>{% endif %}
       <span class="r"><form method="post" action="/settings/holidays/{{ h.id }}/delete" class="inline">{{ ui.csrf_field() }}<button class="btn sm ghost" title="Remove">{{ ui.icon('x','sm') }}</button></form></span></li>{% endfor %}</ul></details>
     {% else %}<p class="muted small">No holidays yet.</p>{% endfor %}

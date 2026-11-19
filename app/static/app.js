@@ -54,7 +54,14 @@
       const q = qi.value.trim().toLowerCase();
       if (!q) { qr.classList.remove("open"); return; }
       const all = await loadPeople();
-      renderResults(all.filter((e) => (e.name + " " + e.emp_no + " " + (e.group || "")).toLowerCase().includes(q)).slice(0, 8));
+      renderResults(all.filter((e) => (e.name + " " + e.emp_no + " " + (e.group || "")).toLowerCase().includes(q))
+        .sort((x, y) => {                                   // employee-number prefix first (in number order), then name
+          const px = x.emp_no.toLowerCase().startsWith(q), py = y.emp_no.toLowerCase().startsWith(q);
+          if (px !== py) return px ? -1 : 1;
+          if (px) return x.emp_no.localeCompare(y.emp_no, undefined, { numeric: true });
+          const nx = x.name.toLowerCase().startsWith(q), ny = y.name.toLowerCase().startsWith(q);
+          return nx === ny ? x.name.localeCompare(y.name) : (nx ? -1 : 1);
+        }).slice(0, 8));
     });
     qi.addEventListener("keydown", (e) => {
       const items = $$("a", qr);
@@ -220,6 +227,16 @@
     if (lr.status === "applied" && lr.to_build === u.current.build) H.toast(`Updated to v${lr.version || u.current.version} (build ${lr.to_build})`);
     else if (lr.status === "rolled_back" || lr.status === "failed") H.toast(`Update to build ${lr.to_build} did not install and was rolled back: ${lr.error || ""}`);
   })();
+
+  // ---------- downloads: feedback while the workbook is being built (a few seconds) ----------
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest('a[href*="/exports/"][href$=".xlsx"]');
+    if (!a || a.classList.contains("is-busy")) return;
+    const html = a.innerHTML;
+    a.classList.add("is-busy"); a.setAttribute("aria-busy", "true");
+    a.innerHTML = html.replace(/(<\/svg>)?\s*[^<]*$/, (m, svg) => (svg || "") + " Preparing…");
+    setTimeout(() => { a.classList.remove("is-busy"); a.removeAttribute("aria-busy"); a.innerHTML = html; }, 6000);
+  });
 
   // ---------- ranked lists: top N + search ----------
   (function () {

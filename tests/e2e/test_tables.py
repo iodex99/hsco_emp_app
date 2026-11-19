@@ -181,15 +181,20 @@ def test_payroll_sheet_search_filter_sort_group_columns_views_csv(page):
 
     # CSV of exactly what is shown
     pg.click("[data-chips] .chip[data-chip=deduction]")
-    with pg.expect_download() as dl:
+    def download(which):                      # v1.8: hidden columns → choose "Columns shown" / "All columns"
         pg.click(f"{bar(pg)} .tt-btn[data-a=csv]")
-    text = open(dl.value.path(), encoding="utf-8-sig").read()
-    rows = list(csv.reader(io.StringIO(text)))
-    assert rows[0][0] == "Employee" and "Deduction days" in rows[0] and "Remark" in rows[0]
-    assert len(rows) - 1 == len(visible_ids(pg)) == 3          # T001, T002, T004 (WFH, v1.6.6)
-    assert any("T002" in r[0] for r in rows[1:])
+        with pg.expect_download() as dl:
+            pg.click(f'.tt-pop [data-all="{which}"]')
+        return list(csv.reader(io.StringIO(open(dl.value.path(), encoding="utf-8-sig").read())))
+    shown, every = download("0"), download("1")
+    for rows in (shown, every):
+        assert rows[0][:2] == ["Employee No", "Name"] and "Deduction days" in rows[0]   # number and name split
+        assert [r[0] for r in rows[1:]] == visible_ids(pg)                              # rows as on screen, in order
+        assert len(rows) - 1 == 3                                # T001, T002, T004 (WFH, v1.6.6)
+    assert set(shown[0]) < set(every[0]) and "Remark" in every[0]
+    assert all(not v.endswith(" d") for r in shown[1:] for v in r)                       # raw numbers, no units
     # footer total follows the filter
-    assert pg.inner_text("#res tfoot td[data-sum][data-unit]") == "2.50 d"
+    assert pg.inner_text("#res tfoot td[data-sum][data-unit]") == "2.5 d"
 
 
 def test_review_queue_employees_days_and_audit(page):

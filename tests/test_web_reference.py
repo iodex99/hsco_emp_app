@@ -86,7 +86,7 @@ def test_real_month_end_to_end(client):
     # --- dashboard + flags + drill-down on real data
     html = c.get("/?period=2026-10").text
     assert "October 2026" in html and "Over WFH limit" in html
-    assert c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT").text.count("WFH days (limit 2)") == 2      # HS179, HS195 (v1.6.4 off days; v1.7.4 closed Saturdays: HS016)
+    assert c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT").text.count("data-wfh=\"") == 2      # HS179, HS195 (v1.6.4 off days; v1.7.4 closed Saturdays: HS016)
     for e in ("HS001", "HS068", "HS207", "PC006"):
         assert c.get(f"/periods/2026-10/employee/{e}").status_code == 200
 

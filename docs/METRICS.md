@@ -9,6 +9,7 @@ Code: `app/engine/compute.py` (per employee), `app/services/metrics.py` (organis
 | New joinees / Exits | DOJ / DOL within the month (exits also suggested from the DOJ active list) |
 | Attendance rate | Σ days present ÷ Σ (week days − holidays) |
 | Leave deductions | employees with shortfall deduction; total deduction days |
+| Opening balances missing (v1.8) | `no_opening` = people whose month has no leave opening balance — Overview banner (HR) and Excel *Contents* "Leave balances not set" |
 | Payroll LOP days | LOP status days + days beyond leave balance (+ comp-off overdraft if configured) |
 | Over WFH limit | employees with WFH days > limit (2); WFH counts only on the person's own working days (v1.6.4); ½ day of leave per extra day (v1.6.5) |
 | Persistently late | > 60 min late on ≥ 10 days (non-partners) |

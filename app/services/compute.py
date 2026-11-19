@@ -134,7 +134,7 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
     m_ovr: dict = {}
     for o in db.scalars(select(MonthOverrideRow).where(MonthOverrideRow.period_id == period.id)):
         v = o.value
-        if o.field not in ("remark", "exempt"):
+        if o.field not in ("remark", "exempt", "shortfall_waived"):
             try:
                 v = float(v)
             except ValueError:

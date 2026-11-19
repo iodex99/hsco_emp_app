@@ -330,6 +330,8 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
         elif kind == "leave_opening":
             recs = P.parse_leave_opening(rows, ds)
             for r in recs:
+                if r["leave_balance"] is None and r.get("compoff_balance") is None:
+                    continue                      # nothing filled in (template rows) — never clears a stored balance
                 d: Optional[date] = r.get("as_of")
                 ym = (d.year, d.month) if d else period_hint
                 if not ym:
@@ -340,7 +342,8 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                 if lo is None:
                     lo = LeaveOpening(emp_no=r["emp_no"], year=ym[0], month=ym[1])
                     db.add(lo)
-                lo.leave_balance = r["leave_balance"]
+                if r["leave_balance"] is not None:
+                    lo.leave_balance = r["leave_balance"]
                 if r.get("compoff_balance") is not None:
                     lo.compoff_balance = r["compoff_balance"]
                 lo.created_by = user.username if user else ""

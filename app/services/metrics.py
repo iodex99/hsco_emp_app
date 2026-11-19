@@ -79,6 +79,7 @@ def compute_kpis(db: Session, period: Period, policy=None, res=None, emps=None) 
         "new_joinees": sum(1 for e in emps.values() if e.doj and month_start <= e.doj <= month_end),
         "exits": sum(1 for e in emps.values() if e.dol and month_start <= e.dol <= month_end),
         "deduction_employees": sum(1 for d in D if d.get("deduction_days")),
+        "no_opening": sum(1 for d in D if d.get("leave_opening") is None),
         "deduction_days": tot("deduction_days"),
         "salary_deduction_days": tot("salary_deduction_days"),
         "payroll_lop_days": tot("payroll_lop_days"),

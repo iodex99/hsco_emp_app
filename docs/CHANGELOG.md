@@ -1,5 +1,69 @@
 # Changelog
 
+## 1.8.0 — 2026-11-19 — whole-app review: downloads, CSVs, review queue, corrections
+Owner: "go through the whole app, see what can be improved … also the excel downloads, the csv downloads, how we can
+add value / how the csv can be improved for every export … do all, check all".
+
+**CSV (every table — one standard)**
+- *CSV* asks **Columns shown** or **All columns** when columns are hidden; rows are always the ones on screen (filter,
+  search, sort — now in the on-screen order).
+- Employee columns become two: **Employee No** and **Name** (sortable / VLOOKUP-able in Excel); numbers are raw
+  (`0.5`, `186.6333` — unit in the header, no "d" / "h"); dates ISO (`2026-10-01`, `2026-10-01 11:15`); lists joined
+  with `; `; "—" becomes blank; no badges, icons or initials. Group / Category / Location always travel along.
+- Text that Excel would run as a formula (`=`, `+`, `-`, `@` …) is neutralised. File name
+  `hsco-<table>-<month>-<yyyymmdd-hhmm>.csv`, UTF-8 with BOM (opens correctly in Excel).
+- Per page: heatmap exports a status per day (P, WFH, Leave, Holiday …); punch exceptions export issues with the
+  minutes late, In and Out as separate columns, and "corrected in the app"; review queue exports the message and
+  the review note; employees export the working pattern in words; locations export every person at a place, not
+  the first five.
+
+**Payroll Excel**
+- New first sheet **Contents**: month, status (DRAFT / FINAL), key totals (deduction days, LOP, salary deduction,
+  open exceptions, corrections, balances not set) and every sheet with one line on what it is for; coloured tabs
+  (payroll / exceptions / detail).
+- New sheet **Payroll Input**: only the people payroll must act on (leave deduction, LOP or salary deduction), linked
+  to the payroll sheet by formula, with totals.
+- Every sheet: Employee No + Name + Group + **Category**, frozen headers and filters, real dates (`dd-mmm-yyyy`),
+  print set-up (landscape, fit to width, repeated header row, "Page n of m" footer with the month and status).
+- Leave balances that were never imported say **not set** (grey) instead of blank; the deduction column has a note
+  with the rule. Flags sheet lists open items first. Daily detail says *Working day / Weekly off / Holiday — name*.
+- Punches & locations workbook: same finish, biometric punches labelled *Biometric*, a **By person** sheet with
+  Group / Category / Location.
+
+**Review queue**
+- **Waive** on *Hours shortfall → leave deduction*: a partner waived the hours deduction for the month (reason
+  required). Saved as the month correction *Hours deduction waived* (audited, undo on the employee page); the flag
+  becomes an info note; the Excel shows **Waived** in *Exempt (hours)* and its formula gives 0 for the hours part
+  (a WFH-over-limit deduction still applies). Calculation rules version 9.
+- The *Mark reviewed* drawer says plainly that reviewing changes no figure (use Approve WFH, Waive or a correction).
+- On screens narrower than 1500 px the type list sits above the table (as chips), so the detail text is never
+  hidden behind the buttons; the buttons are shorter (*Reviewed*, *Waive*).
+
+**Corrections**
+- Day correction: the status lists are grouped by meaning (Present / Leave / Comp-off / Absent / Loss of pay / Off)
+  and say what each code means. If the month has fixed figures (e.g. *Absent days* set by hand), a warning says they
+  still override what the days add up to — also in the message after saving.
+
+**Elsewhere**
+- Overview: a banner when leave opening balances are missing (with the template link) — balances, salary deduction
+  and leave liability depend on them.
+- Numbers drop trailing zeros everywhere (`0.5 d`, `34.5`, footers `90.5`); "1 day" / "2 days".
+- Excel download links show **Preparing…** while the workbook is built.
+- Printing a page prints the table only, with a header line: firm, month (Draft / Final), printed when and by whom.
+- Employees: chip **Not in <latest month>** (active in the master, missing from that month's attendance).
+- Rules & calendars → Holiday calendars: chips to jump to a list (count for this year), long years start collapsed,
+  each year shows the next holiday. *Save rules* stays visible at the bottom while scrolling.
+- Audit log details are readable (lists joined, no `\u2014` escapes); import history shows file types by name;
+  punch exceptions show "Late > 1 h · 1 h 15 m"; employee search lists employee-number matches first.
+- Accessibility: every drawer close button is labelled; the faintest text colour has more contrast.
+
+**Import templates**
+- Drop-downs for known values (groups, categories, locations, weekly-off patterns, Yes/No, calendars — other values
+  can still be typed), frozen header with filters, date columns formatted `dd-mm-yyyy`, Instructions as the second
+  sheet. Employee master writes **No** for not-exempt (never blank). Holiday template has worked examples.
+- Leave opening template is pre-filled with *As Of* = the 1st of the latest month. **Fix:** rows with no balance
+  are skipped and a blank balance cell no longer clears a stored balance (previously a blank row overwrote it).
+
 ## 1.7.5 — 2026-11-19 — approve extra WFH from the review queue
 Owner: "in some instances more than 2 days WFH is also allowed, on manager / partner discretion, but we won't get that
 data from the records … by default it will be deducted in the system but make provision that the user can override it

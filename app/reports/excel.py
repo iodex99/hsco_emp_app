@@ -69,8 +69,10 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
     from app.services import locations as LOC
     org = get_general(db)
     L = LOC.report(db, period)
-    names = {e.emp_no: e.name for e in db.scalars(select(Employee))}
+    emps = {e.emp_no: e for e in db.scalars(select(Employee))}
+    names = {k: e.name for k, e in emps.items()}
     mobile = {(r["emp_no"], r["ts"]): r for r in L["rows"]}
+    kind = lambda t: {"astra": "Biometric", "mobile sign in": "Mobile", "permission": "Permission"}.get((t or "").strip().lower(), t or "")  # noqa: E731
     wb = Workbook()
     ws = wb.active
     ws.title = "Punches"
@@ -78,10 +80,13 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
     for s in db.scalars(select(SwipeRow).where(SwipeRow.period_id == period.id).order_by(SwipeRow.ts, SwipeRow.emp_no)):
         r = mobile.get((s.emp_no, s.ts))
         if r:
-            rows.append([s.ts, s.emp_no, names.get(s.emp_no, s.emp_no), r["swipe_type"] or "Mobile", r["type"], r["place"],
+            rows.append([s.ts, s.emp_no, names.get(s.emp_no, s.emp_no), kind(r["swipe_type"]) or "Mobile",
+                         r["type"] if (r["swipe_type"] or "").lower() != "permission" else "Permission", r["place"],
                          r["note"], r["reason"], r["device"], r["approval"], s.lat, s.lon])
         else:
-            rows.append([s.ts, s.emp_no, names.get(s.emp_no, s.emp_no), s.swipe_type or "", s.location_type or "",
+            rows.append([s.ts, s.emp_no, names.get(s.emp_no, s.emp_no), kind(s.swipe_type),
+                         s.location_type or ("Office (biometric)" if (s.swipe_type or "").lower() == "astra"
+                                             else "Permission" if (s.swipe_type or "").lower() == "permission" else ""),
                          s.place or ("Office biometric" + (f" ({s.door})" if s.door else "")), s.note or "",
                          s.reason or "", s.device or "", s.approval or "", s.lat, s.lon])
     _table(ws, 5, ["When", "Employee No", "Name", "Punch type", "Tagged as", "Place", "Remark",
@@ -100,11 +105,19 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
              b["first"], b["last"]] for b in L["places"]],
            [46, 14, 30, 9, 8, 44, 36, 16, 16], org, f"Places people signed in from — {period.label}")
     ws3 = wb.create_sheet("By person")
-    _table(ws3, 5, ["Employee No", "Name", "Mobile sign-ins", "With GPS", "Places", "Client", "WFH", "On duty",
-                    "Tagged Office", "Permission requests"],
-           [[p["emp_no"], p["name"], p["sign_ins"], p["gps"], p["places"], p["client"], p["wfh"], p["onduty"],
-             p["office_tagged"], p["permission"]] for p in L["people"]],
-           [10, 24] + [12] * 8, org, f"Mobile sign-ins by person — {period.label}")
+    _table(ws3, 5, ["Employee No", "Name", "Group", "Category", "Location", "Mobile sign-ins", "With GPS", "Places",
+                    "Client", "WFH", "On duty", "Tagged Office", "Permission requests"],
+           [[p["emp_no"], p["name"], getattr(emps.get(p["emp_no"]), "group", ""), getattr(emps.get(p["emp_no"]), "category", ""),
+             getattr(emps.get(p["emp_no"]), "location", ""), p["sign_ins"], p["gps"], p["places"], p["client"], p["wfh"],
+             p["onduty"], p["office_tagged"], p["permission"]] for p in L["people"]],
+           [10, 24, 9, 18, 10] + [12] * 8, org, f"Mobile sign-ins by person — {period.label}")
+    for wsx, cols in ((ws2, (8, 9)),):
+        for row in wsx.iter_rows(min_row=6):
+            for ci in cols:
+                if row[ci - 1].value:
+                    row[ci - 1].number_format = "dd-mmm-yyyy hh:mm"
+    _finish(wb, f"Punches & locations — {period.label}", org, "FINAL" if period.status == "FINALISED" else "DRAFT",
+            guide=[("Punches", NAVY, ""), ("Places", "2E7D32", ""), ("By person", "2E7D32", "")])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -177,9 +190,9 @@ def build_workbook(db: Session, period: Period) -> bytes:
     title = f"Attendance & Leave Calculation — {period.label} ({'FINAL' if period.status == 'FINALISED' else 'DRAFT'})"
     heads = ["Employee No", "Name", "Group", "Location", "Total Week Days", "Holiday", "Days Leaves Taken",
              "Days Absent", "Days Present", "WFH", "Total Hours Present (HH:MM)", "Extra Working Days",
-             "Total Days Worked", "Hours Required", "Total Hours Present (decimal)", "Working on Holiday/Off-day to exclude",
+             "Total Days Worked", "Hours Required", "Total Hours Present (decimal)", "Off-day / holiday hours (excluded)",
              "Actual Hours Worked", "Shortfall / Excess", "Remark",
-             "Hours / Day", "Exempt (hours)", "Deduction Days (½ per 4h short + per WFH day over limit)", "PL Taken", "Comp-off Taken",
+             "Hours / Day", "Exempt (hours)", "Deduction Days", "PL Taken", "Comp-off Taken",
              "Unauthorised Absent", "LOP (approved)", "Leave Opening", "Leave Credit", "Total Leave Debit",
              "Leave Closing", "Salary Deduction Days", "Payroll LOP Days", "Comp-off Earned", "Flags", "Category"]
     widths = [10, 24, 9, 9, 8, 8, 8, 8, 8, 6, 10, 8, 8, 9, 10, 10, 10, 10, 34, 7, 7, 10, 7, 8, 9, 7, 8, 7, 8, 8, 9, 8, 8, 40, 20]
@@ -198,15 +211,17 @@ def build_workbook(db: Session, period: Period) -> bytes:
             11: MX.hm(th * 60), 12: d["extra_days"], 13: f"=E{i}-F{i}-G{i}-H{i}",
             14: f"=M{i}*T{i}", 15: round(th, 4), 16: round(d["extra_hours"], 4), 17: f"=O{i}-P{i}",
             18: f"=ROUND(Q{i}-N{i},2)", 19: d.get("remark", ""), 20: d.get("hours_per_day", pol.hours_per_day),
-            21: "Yes" if d.get("exempt") else "No",
-            # hours part (0 when exempt: column U) + WFH part (row without it when the person is not deducted
+            21: "Yes" if d.get("exempt") else ("Waived" if str((d.get("overrides") or {}).get("shortfall_waived") or "")
+                                                .lower() == "true" else "No"),
+            # hours part (0 when exempt or waived for the month: column U not "No") + WFH part (row without it when the person is not deducted
             # for WFH: Partner-type group or a month exception)
-            22: f'=IF(U{i}="Yes",0,IF(-R{i}>{grace},CEILING(ROUND(-R{i},4)/{blk},1)*{per_blk},0))' + _wfh_term(d, i, pol),
+            22: f'=IF(U{i}<>"No",0,IF(-R{i}>{grace},CEILING(ROUND(-R{i},4)/{blk},1)*{per_blk},0))' + _wfh_term(d, i, pol),
             23: d.get("pl_days"), 24: d.get("cof_days"), 25: d.get("unauth_absent_days"), 26: d.get("lop_days"),
             27: d.get("leave_opening"), 28: d.get("leave_credit"), 29: d.get("leave_debit_total"),
             30: d.get("leave_closing"), 31: d.get("salary_deduction_days"), 32: d.get("payroll_lop_days"),
             33: d.get("compoff_earned"),
-            34: "; ".join(f["code"] for f in r.flags if f["severity"] in ("critical", "high", "medium")),
+            34: "; ".join(MX.FLAG_LABELS.get(f["code"], f["code"]) for f in r.flags
+                          if f["severity"] in ("critical", "high", "medium")),
             35: (r.category or "") + (f" + {d['additional_category']}" if d.get("additional_category") else ""),
         }
         if (r.emp_no, "required_hours") in ovr:
@@ -222,11 +237,20 @@ def build_workbook(db: Session, period: Period) -> bytes:
                 c = ws.cell(row=i, column=fmap[field])
                 c.fill = OVR
                 c.comment = Comment(f"Manual override by {o.created_by}: {o.reason}", "HSCO app")
+        for col in (27, 30):                      # no opening balance imported: say so instead of a blank
+            if vals[col] is None:
+                c = ws.cell(row=i, column=col, value="not set")
+                c.fill, c.font = GREY, Font(italic=True, color="888888")
         if d.get("deduction_days"):
             ws.cell(row=i, column=22).fill = RED
         if d.get("salary_deduction_days"):
             ws.cell(row=i, column=31).fill = RED
     last = HR_ + len(res)
+    ws.cell(row=HR_, column=22).comment = Comment(
+        f"½ day per {pol.shortfall_block_hours:g} h short (rounded up; none when column U is Yes / Waived) + "
+        f"{pol.wfh_excess_deduction_days:g} day per WFH day over {pol.wfh_limit_days:g} not approved by a manager / partner",
+        "HSCO app")
+    no_open = sum(1 for r in res if (r.data or {}).get("leave_opening") is None)
     ws.auto_filter.ref = f"A{HR_}:{get_column_letter(len(heads))}{last}"
     ws.conditional_formatting.add(f"R{HR_ + 1}:R{last}", CellIsRule(operator="lessThan", formula=["0"], fill=RED))
     ws.conditional_formatting.add(f"J{HR_ + 1}:J{last}", CellIsRule(operator="greaterThan", formula=[str(pol.wfh_limit_days)], fill=AMBER))
@@ -239,7 +263,39 @@ def build_workbook(db: Session, period: Period) -> bytes:
                                           "O, P, T or J (WFH) and Excel recalculates the deduction. Generated "
                                           f"{datetime.now():%d-%b-%Y %H:%M} from the app's figures at that moment, "
                                           "including every correction (see the Corrections sheet) and review "
-                                          "(see Flags).").font = Font(italic=True, color="666666")
+                                          "(see Flags)." + (f" Leave balances 'not set' for {no_open} people: import the "
+                                                            "opening balances (leave opening template) to complete "
+                                                            "the closing balance and salary deduction."
+                                                            if no_open else "")).font = Font(italic=True, color="666666")
+
+    # ------------------------------------------------------------------ payroll input (what the payroll team needs)
+    pi = wb.create_sheet("Payroll Input")
+    rowmap = {r.emp_no: i for i, r in enumerate(res, start=HR_ + 1)}
+    pick = [r for r in res if (r.data or {}).get("deduction_days") or (r.data or {}).get("payroll_lop_days")
+            or (r.data or {}).get("salary_deduction_days")]
+    P = "'Payroll Leave Sheet'!"
+    prow = [[r.emp_no, r.name, r.group, r.category, r.location, f"={P}V{rowmap[r.emp_no]}", f"={P}AF{rowmap[r.emp_no]}",
+             f"={P}AE{rowmap[r.emp_no]}", f"={P}AD{rowmap[r.emp_no]}", f"={P}S{rowmap[r.emp_no]}"] for r in pick]
+    _table(pi, 5, ["Employee No", "Name", "Group", "Category", "Location", "Leave deduction (days)", "Payroll LOP (days)",
+                   "Salary deduction (days)", "Leave balance after", "Remark"], [], [10, 24, 9, 18, 10, 12, 12, 12, 12, 60],
+           org, f"Payroll input — {period.label} ({'FINAL' if period.status == 'FINALISED' else 'DRAFT'}): "
+                f"{len(pick)} people with a leave deduction, LOP or salary deduction")
+    for i_, row in enumerate(prow, start=6):
+        for j_, v in enumerate(row, start=1):
+            c = _put(pi, i_, j_, v, text=j_ in (1, 2, 3, 4, 5))
+            if 6 <= j_ <= 9:
+                c.number_format = "0.0#"
+    if prow:
+        pi.auto_filter.ref = f"A5:J{5 + len(prow)}"
+        t = 6 + len(prow) + 1
+        pi.cell(row=t, column=2, value="TOTAL").font = Font(bold=True)
+        for col in "FGH":
+            pi[f"{col}{t}"] = f"=SUBTOTAL(9,{col}6:{col}{5 + len(prow)})"
+            pi[f"{col}{t}"].font = Font(bold=True)
+    else:
+        pi.cell(row=6, column=1, value="Nobody has a leave deduction, LOP or salary deduction this month.")
+    pi.cell(row=4, column=1, value="Figures are linked to the Payroll Leave Sheet (they follow any edit there). People "
+                                   "without a deduction or LOP are not listed.").font = Font(italic=True, color="666666")
 
     # ------------------------------------------------------------------ 2. board summary
     ws = wb.create_sheet("Board Summary")
@@ -292,6 +348,9 @@ def build_workbook(db: Session, period: Period) -> bytes:
     from app.models import FlagReview
     rv = {(r.emp_no, r.code): r for r in db.scalars(select(FlagReview).where(FlagReview.period_id == period.id))}
     rows = []
+    sev_rank = {"critical": 0, "high": 1, "medium": 2, "info": 3}
+    m["flags"] = sorted(m["flags"], key=lambda f: (1 if rv.get((f["emp_no"], f["code"])) else 0 if f["severity"] != "info" else 2,
+                                                   sev_rank.get(f["severity"], 9), f["code"], f["emp_no"]))
     for f in m["flags"]:
         r = rv.get((f["emp_no"], f["code"]))
         status = "Reviewed" if r else ("Open" if f["severity"] in ("critical", "high", "medium") else "Info")
@@ -333,29 +392,29 @@ def build_workbook(db: Session, period: Period) -> bytes:
     rows = []
     for r in res:
         d = r.data
-        rows.append([r.emp_no, r.name, r.group, d.get("late_days"), d.get("very_late_days"), d.get("avg_late_min"),
+        rows.append([r.emp_no, r.name, r.group, r.category, d.get("late_days"), d.get("very_late_days"), d.get("avg_late_min"),
                      MX.hm(d.get("avg_in_min")), MX.hm(d.get("avg_out_min")), d.get("early_exit_days"),
                      d.get("short_days"), d.get("late_sitting_days"), d.get("avg_work_hours")])
-    rows.sort(key=lambda x: -(x[3] or 0))
-    _table(ws, 5, ["Employee No", "Name", "Group", f"Late days (> {pol.late_grace_min} min)", "Very late (> 1 h)",
+    rows.sort(key=lambda x: -(x[4] or 0))
+    _table(ws, 5, ["Employee No", "Name", "Group", "Category", f"Late days (> {pol.late_grace_min} min)", "Very late (> 1 h)",
                    "Avg minutes late", "Avg in-time", "Avg out-time", "Early exits", f"Days < {pol.min_daily_hours:g} h",
-                   "Late sitting days", "Avg hours / day"], rows, [10, 24, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10], org,
+                   "Late sitting days", "Avg hours / day"], rows, [10, 24, 9, 18, 10, 10, 10, 10, 10, 10, 10, 10, 10], org,
            f"Punctuality — {period.label} (information only: 'late coming' is not a deduction under policy)")
 
     ws = wb.create_sheet("WFH & Locations")
     rows = []
     for r in res:
         d = r.data
-        rows.append([r.emp_no, r.name, r.group, d.get("wfh_days"), d.get("partial_wfh_days"),
+        rows.append([r.emp_no, r.name, r.group, r.category, d.get("wfh_days"), d.get("partial_wfh_days"),
                      "OVER LIMIT" if (d.get("wfh_days") or 0) > pol.wfh_limit_days else "", d.get("client_days"),
                      d.get("onduty_days"), d.get("biometric_swipes"), d.get("mobile_swipes"), d.get("mobile_office_swipes")])
-    rows.sort(key=lambda x: -(x[3] or 0))
-    _table(ws, 5, ["Employee No", "Name", "Group", "WFH days", "of which partial", f"> {pol.wfh_limit_days:g} days",
+    rows.sort(key=lambda x: -(x[4] or 0))
+    _table(ws, 5, ["Employee No", "Name", "Group", "Category", "WFH days", "of which partial", f"> {pol.wfh_limit_days:g} days",
                    "Client-location days", "On-duty days", "Biometric swipes", "Mobile swipes", "Mobile 'Office' swipes"],
-           rows, [10, 24, 9, 9, 9, 12, 10, 10, 10, 10, 12], org, f"WFH & work locations — {period.label}")
+           rows, [10, 24, 9, 18, 9, 9, 12, 10, 10, 10, 10, 12], org, f"WFH & work locations — {period.label}")
     for i, row in enumerate(rows, start=6):
-        if row[5]:
-            ws.cell(row=i, column=6).fill = AMBER
+        if row[6]:
+            ws.cell(row=i, column=7).fill = AMBER
 
     # ------------------------------------------------------------------ mobile sign-ins with place names
     from app.services import locations as LOC
@@ -376,17 +435,21 @@ def build_workbook(db: Session, period: Period) -> bytes:
                [[b["place"], b["main_type"], b["types"], b["count"], b["people"], ", ".join(b["people_names"]),
                  b["notes"], b["first"], b["last"]] for b in L["places"]],
                [44, 14, 30, 9, 8, 40, 36, 16, 16], org, f"Places people signed in from — {period.label}")
+        for row in ws.iter_rows(min_row=6):
+            for ci in (8, 9):
+                if row[ci - 1].value:
+                    row[ci - 1].number_format = "dd-mmm-yyyy hh:mm"
 
     ws = wb.create_sheet("Regularisation & Punches")
     rows = []
     for r in res:
         d = r.data
-        rows.append([r.emp_no, r.name, r.group, d.get("regularised_days"), d.get("permission_swipes"),
+        rows.append([r.emp_no, r.name, r.group, r.category, d.get("regularised_days"), d.get("permission_swipes"),
                      d.get("missing_punch_days"), d.get("no_punch_present_days"), "Yes" if d.get("auto_attendance") else "",
                      d.get("total_swipes")])
-    rows.sort(key=lambda x: -(x[3] or 0))
-    _table(ws, 5, ["Employee No", "Name", "Group", "Regularised days", "Permission swipes", "Missing-punch days",
-                   "Present with no punch", "Auto attendance", "Total swipes"], rows, [10, 24, 9, 12, 12, 12, 12, 10, 10],
+    rows.sort(key=lambda x: -(x[4] or 0))
+    _table(ws, 5, ["Employee No", "Name", "Group", "Category", "Regularised days", "Permission swipes", "Missing-punch days",
+                   "Present with no punch", "Auto attendance", "Total swipes"], rows, [10, 24, 9, 18, 12, 12, 12, 12, 10, 10],
            org, f"Regularisation & punch integrity — {period.label}")
 
     # punch exceptions, day by day (same list as the Punch exceptions page)
@@ -408,24 +471,24 @@ def build_workbook(db: Session, period: Period) -> bytes:
     ws = wb.create_sheet("Exceptions by Employee")
     keys = ["missing", "nopunch", "edited", "permission", "rejected", "wfh", "wfh_over", "wfh_closed", "wfh_offday", "wfh_leave", "very_late",
             "early", "short", "absent", "offday_work"]
-    _table(ws, 5, ["Employee No", "Name", "Group"] + [X["labels"][k] for k in keys] + ["WFH deduction (days)"],
-           [[pp["emp_no"], pp["name"], pp["group"]] + [pp[k] or None for k in keys] + [pp["wfh_deduction"] or None]
-            for pp in X["people"]],
-           [10, 24, 9] + [11] * (len(keys) + 1), org, f"Exceptions by employee — {period.label}")
+    _table(ws, 5, ["Employee No", "Name", "Group", "Category"] + [X["labels"][k] for k in keys] + ["WFH deduction (days)"],
+           [[pp["emp_no"], pp["name"], pp["group"], pp.get("category", "")] + [pp[k] or None for k in keys]
+            + [pp["wfh_deduction"] or None] for pp in X["people"]],
+           [10, 24, 9, 18] + [11] * (len(keys) + 1), org, f"Exceptions by employee — {period.label}")
 
     ws = wb.create_sheet("Leave & Comp-off Ledger")
     rows = []
     for r in res:
         d = r.data
-        rows.append([r.emp_no, r.name, r.group, d.get("leave_opening"), d.get("leave_credit"), d.get("leave_debit_pl"),
+        rows.append([r.emp_no, r.name, r.group, r.category, d.get("leave_opening"), d.get("leave_credit"), d.get("leave_debit_pl"),
                      d.get("leave_debit_shortfall"), d.get("leave_debit_wfh"), d.get("leave_debit_absent"),
                      d.get("leave_debit_compoff"),
                      d.get("leave_closing"), d.get("salary_deduction_days"), d.get("compoff_opening"),
                      d.get("compoff_earned"), d.get("cof_days"), d.get("compoff_closing"), d.get("payroll_lop_days")])
-    _table(ws, 5, ["Employee No", "Name", "Group", "Leave opening", "Credit", "PL taken", "Shortfall deduction",
+    _table(ws, 5, ["Employee No", "Name", "Group", "Category", "Leave opening", "Credit", "PL taken", "Shortfall deduction",
                    "WFH over-limit deduction", "Unauthorised absence", "Comp-off overdraft", "Leave closing", "Salary deduction days",
                    "Comp-off opening", "Comp-off earned", "Comp-off taken", "Comp-off closing", "Payroll LOP days"],
-           rows, [10, 24, 9] + [11] * 14, org, f"Leave & comp-off ledger — {period.label} (FY Apr–Mar, {pol.annual_leave_days:g} days)")
+           rows, [10, 24, 9, 18] + [11] * 14, org, f"Leave & comp-off ledger — {period.label} (FY Apr–Mar, {pol.annual_leave_days:g} days)")
 
     # ------------------------------------------------------------------ insights scorecard (docs/METRICS.md "Insights")
     from app.services import insights as INS
@@ -476,7 +539,12 @@ def build_workbook(db: Session, period: Period) -> bytes:
         row += 1
         for p in m["people"][key]:
             for i, kk in enumerate(["emp_no", "name", "group", "location", "doj", "dol", "years"], start=1):
-                _put(ws, row, i, p.get(kk, ""), text=True)
+                v = p.get(kk, "")
+                if kk in ("doj", "dol") and isinstance(v, str) and len(v) == 10 and v[4] == "-":
+                    v = date.fromisoformat(v)
+                c = _put(ws, row, i, v, text=True)
+                if isinstance(v, date):
+                    c.number_format = "dd-mmm-yyyy"
             row += 1
         row += 1
     for i, w in enumerate([10, 26, 10, 10, 12, 12, 7], start=1):
@@ -491,12 +559,19 @@ def build_workbook(db: Session, period: Period) -> bytes:
                                     ("MISSING PUNCH", dd.get("missing")), ("REGULARISED", dd.get("regularised")),
                                     ("WFH", dd.get("wfh")), ("OFF-DAY WORK", dd.get("extra")),
                                     ("COMP-OFF EARNED", dd.get("co_earned")), ("OVERRIDE", dd.get("overridden"))) if on]
-            rows.append([r.emp_no, r.name, dd["date"], dd["wd"], dd["type"], dd["s1"], dd["s2"], dd["in"], dd["out"],
-                         MX.hm(dd["work_min"]), dd.get("late_min") or "", ", ".join(dd.get("locs", [])),
+            rows.append([r.emp_no, r.name, date.fromisoformat(dd["date"]), dd["wd"],
+                         {"WORKDAY": "Working day", "WEEKLY_OFF": "Weekly off", "HOLIDAY": "Holiday"}.get(dd["type"], dd["type"])
+                         + (f" — {dd['holiday']}" if dd.get("holiday") else ""),
+                         dd["s1"], dd["s2"], dd["in"], dd["out"],
+                         round(dd["work_min"] / 60, 2) if dd["work_min"] else None, dd.get("late_min") or None,
+                         ", ".join(dd.get("locs", [])),
                          _day_places(dd), ", ".join(tags), "; ".join(dd.get("notes", []))])
     _table(ws, 5, ["Employee No", "Name", "Date", "Day", "Day type", "Session 1", "Session 2", "In", "Out", "Hours",
                    "Minutes late", "Tagged as", "Places (punch time · place · remark)", "Tags", "Notes"], rows,
-           [10, 22, 11, 5, 11, 8, 8, 7, 7, 7, 8, 22, 60, 30, 40], org, f"Daily detail — {period.label}")
+           [10, 22, 11, 5, 18, 8, 8, 7, 7, 7, 8, 22, 60, 30, 40], org, f"Daily detail — {period.label}")
+    for i in range(6, 6 + len(rows)):
+        ws.cell(row=i, column=3).number_format = "dd-mmm-yyyy"
+        ws.cell(row=i, column=10).number_format = "0.00"
 
     # ------------------------------------------------------------------ reconciliation
     rc = MX.reconciliation(db, period)
@@ -529,7 +604,141 @@ def build_workbook(db: Session, period: Period) -> bytes:
         ("Source", "greytHR Muster (day status & hours), Swipe Details (punches/locations), DOJ report, app master data"),
     ]
     _table(ws, 5, ["Rule", "Applied as"], [list(n) for n in notes], [26, 110], org, "Rules applied in this workbook")
+    ws.auto_filter.ref = None  # noqa
+    ws.freeze_panes = "A6"
+    for i in range(6, 6 + len(notes)):
+        ws.cell(row=i, column=2).alignment = Alignment(wrap_text=True, vertical="top")
 
+    status = "FINAL" if period.status == "FINALISED" else "DRAFT"
+    kk = m.get("kpis", {})
+    open_flags = sum(1 for f in m["flags"] if f["severity"] != "info" and not rv.get((f["emp_no"], f["code"])))
+    _finish(wb, f"Attendance & leave — {period.label}", org, status, contents_lines=[
+        ("Month", f"{period.label} ({status})"),
+        ("Employees", len(res)),
+        ("People with a leave deduction", sum(1 for r in res if (r.data or {}).get("deduction_days"))),
+        ("Leave deduction (days)", round(sum((r.data or {}).get("deduction_days") or 0 for r in res), 2)),
+        ("Payroll LOP (days)", round(sum((r.data or {}).get("payroll_lop_days") or 0 for r in res), 2)),
+        ("Salary deduction (days)", round(sum((r.data or {}).get("salary_deduction_days") or 0 for r in res), 2)),
+        ("Open exceptions (not reviewed)", open_flags),
+        ("Manual corrections", len(corr)),
+        ("Leave balances not set", no_open),
+    ])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------- finishing touches (v1.8)
+SHEET_GUIDE = [
+    # (sheet, tab colour, one line on what it is for) — also the order of the workbook
+    ("Contents", NAVY, "This page: key figures and every sheet."),
+    ("Payroll Leave Sheet", NAVY, "The month for payroll in the MIS layout — live formulas; edit E–H, J, O, P or T and the deduction recalculates."),
+    ("Payroll Input", NAVY, "Only what payroll needs: people with a leave deduction, LOP or salary deduction (linked to the payroll sheet)."),
+    ("Leave & Comp-off Ledger", NAVY, "Opening, credit, every debit and closing leave / comp-off per person."),
+    ("Corrections", NAVY, "Every manual correction included in these figures, with the reason, who and when."),
+    ("Flags", NAVY, "Exceptions found by the app and whether each was reviewed (open items first)."),
+    ("Punch Exceptions", "C77700", "Day by day: missing / incorrect punches, regularisations, WFH, late, early, short, absence."),
+    ("Exceptions by Employee", "C77700", "The same exceptions counted per person."),
+    ("Regularisation & Punches", "C77700", "Regularised days, permission swipes, missing punches per person."),
+    ("Late & Punctuality", "C77700", "Late arrivals, early exits, short days, late sitting (information only)."),
+    ("WFH & Locations", "C77700", "WFH days (limit), client / on-duty days, biometric vs mobile punches."),
+    ("Board Summary", "2E7D32", "Firm-level figures for partners, by group and by category."),
+    ("Scorecard", "2E7D32", "Per person: attention score and its reasons, attendance, punctuality, hours, leave."),
+    ("Groups Compared", "2E7D32", "Groups side by side."),
+    ("Categories Compared", "2E7D32", "Categories (holiday list & working pattern) side by side."),
+    ("People Movement", "2E7D32", "Joiners, exits, possible exits, anniversaries."),
+    ("Reconciliation", "2E7D32", "App vs the manual MIS sheet, employee by employee."),
+    ("Daily Detail", "7A869A", "Every person, every day: status, in / out, hours, places, tags, notes."),
+    ("Sign-ins & Places", "7A869A", "Every mobile sign-in with its place name."),
+    ("Places", "7A869A", "Places people signed in from."),
+    ("Rules Applied", "7A869A", "The rules and settings behind these figures."),
+]
+NO_HIDE = {"Contents", "Payroll Leave Sheet", "Payroll Input", "Board Summary", "People Movement", "Rules Applied"}
+
+
+def _header_row(ws):
+    fp = ws.freeze_panes
+    if not fp:
+        return None
+    import re as _re
+    m = _re.match(r"[A-Z]+(\d+)$", fp)
+    return int(m.group(1)) - 1 if m and int(m.group(1)) > 1 else None
+
+
+def _polish(ws, footer: str, a3: bool = False, hide_empty: bool = True) -> None:
+    """Print setup (landscape, fit to one page wide, header row repeated, footer), number formats by header, and
+    columns that are empty for the whole sheet hidden."""
+    from openpyxl.worksheet.properties import PageSetupProperties
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A3 if a3 else ws.PAPERSIZE_A4
+    ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+    ws.oddFooter.left.text = footer
+    ws.oddFooter.right.text = "Page &P of &N"
+    hr = _header_row(ws)
+    if not hr:
+        return
+    ws.print_title_rows = f"{hr}:{hr}"
+    last = ws.max_row
+    for col in range(1, ws.max_column + 1):
+        h = str(ws.cell(row=hr, column=col).value or "")
+        fmt = "0.00000" if h in ("Latitude", "Longitude") else "0.0" if "%" in h else None
+        if fmt:
+            for r in range(hr + 1, last + 1):
+                c = ws.cell(row=r, column=col)
+                if isinstance(c.value, (int, float)):
+                    c.number_format = fmt
+        if hide_empty and ws.title not in NO_HIDE and last > hr and h not in ("Employee No", "Name"):
+            if all(ws.cell(row=r, column=col).value in (None, "") for r in range(hr + 1, last + 1)):
+                ws.column_dimensions[get_column_letter(col)].hidden = True
+
+
+def _finish(wb, title: str, org: dict, status: str, guide=None, contents_lines=None) -> None:
+    """Workbook properties, tab colours, order, a Contents sheet with hyperlinks, print setup on every sheet."""
+    from app import __version__
+    guide = guide or SHEET_GUIDE
+    wb.properties.title = title
+    wb.properties.creator = org.get("org_name") or "HSCO"
+    wb.properties.keywords = f"{status}; app v{__version__}"
+    footer = f"{org.get('org_short') or org.get('org_name', '')} · {title} · {status}"
+    for ws in wb.worksheets:
+        _polish(ws, footer, a3=ws.title == "Payroll Leave Sheet")
+    if contents_lines is not None:
+        ws = wb.create_sheet("Contents", 0)
+        ws["A1"] = org.get("org_name", "")
+        ws["A1"].font = Font(bold=True, size=14, color=NAVY)
+        ws["A2"] = title
+        ws["A2"].font = Font(bold=True, size=12)
+        ws["A3"] = f"{status} · generated {datetime.now():%d-%b-%Y %H:%M} from the app's current figures · app v{__version__}"
+        ws["A3"].font = Font(italic=True, color="666666")
+        r = 5
+        ws.cell(row=r, column=1, value="Key figures").font = Font(bold=True, size=12)
+        for k, v in contents_lines:
+            r += 1
+            ws.cell(row=r, column=1, value=k)
+            c = ws.cell(row=r, column=2, value=v)
+            c.font = Font(bold=True)
+            c.alignment = Alignment(horizontal="left")
+        r += 2
+        ws.cell(row=r, column=1, value="Sheets").font = Font(bold=True, size=12)
+        names = set(wb.sheetnames)
+        for name, _colour, what in guide:
+            if name == "Contents" or name not in names:
+                continue
+            r += 1
+            c = ws.cell(row=r, column=1, value=name)
+            c.hyperlink = f"#'{name}'!A1"
+            c.font = Font(color="1F5FBF", underline="single")
+            ws.cell(row=r, column=2, value=what).alignment = Alignment(wrap_text=True, vertical="top")
+        ws.column_dimensions["A"].width = 34
+        ws.column_dimensions["B"].width = 110
+        _polish(ws, footer, hide_empty=False)
+    # order and tab colours
+    order = [n for n, _c, _w in guide if n in wb.sheetnames]
+    rest = [ws.title for ws in wb.worksheets if ws.title not in order]
+    wb._sheets = [wb[n] for n in order + rest]
+    colours = {n: c for n, c, _w in guide}
+    for ws in wb.worksheets:
+        if ws.title in colours:
+            ws.sheet_properties.tabColor = colours[ws.title]
+    wb.active = 0

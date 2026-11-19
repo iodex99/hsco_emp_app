@@ -42,14 +42,14 @@
     <span class="small muted" style="margin-left:auto">Quick filters</span>
   </div>
   <div data-table-for="#res"></div>
-  <div class="bd"><div class="tw" style="max-height:68vh"><table id="res" data-table data-csv="payroll-leave-sheet-{{ period.key }}" data-default-hidden="group,category,week,hol,hours,offh,bal" class="compact">
+  <div class="bd"><div class="tw" style="max-height:68vh"><table id="res" data-table data-csv="payroll-leave-sheet-{{ period.key }}" data-default-hidden="group,category,week,hol,hours,offh,bal,salary,exempt" class="compact">
 <thead><tr>
   <th class="sticky" data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="category" data-type="enum">Category</th>
   <th class="num" data-key="week" data-type="num" title="Total week days (E)">Week days</th><th class="num" data-key="hol" data-type="num" title="Holidays (F)">Holidays</th>
   <th class="num" data-key="leave" data-type="num" title="Leaves taken (G)">Leave</th><th class="num" data-key="absent" data-type="num" title="Absent (H)">Absent</th><th class="num" data-key="present" data-type="num" title="Days present (I)">Present</th>
   <th class="num" data-key="wfh" data-type="num">WFH</th><th class="num" data-key="hours" data-type="num" title="Total hours present">Hours</th><th class="num" data-key="offh" data-type="num" title="Hours on weekly-off/holiday, excluded">Off-day h</th>
   <th class="num" data-key="actual" data-type="num" title="Actual hours">Actual h</th><th class="num" data-key="required" data-type="num" title="Required hours">Required h</th><th class="num" data-key="balance" data-type="num" data-label="Hours +/−">+/− h</th>
-  <th class="num" data-key="deduction" data-type="num" data-label="Deduction days">Deduction</th><th class="num" data-key="bal" data-type="num" data-label="Leave balance" title="Leave balance after this month">Leave bal.</th><th class="num" data-key="lop" data-type="num" data-label="LOP days" title="Payroll loss-of-pay days">LOP</th>
+  <th class="num" data-key="deduction" data-type="num" data-label="Deduction days">Deduction</th><th class="num" data-key="bal" data-type="num" data-label="Leave balance" title="Leave balance after this month">Leave bal.</th><th class="num" data-key="lop" data-type="num" data-label="LOP days" title="Payroll loss-of-pay days">LOP</th><th class="num" data-key="salary" data-type="num" data-label="Salary deduction (days)" title="Days deducted from salary because leave ran out">Salary ded.</th><th data-key="exempt" data-type="enum" data-label="Exempt (hours)">Exempt</th>
   <th data-key="remark" data-type="text">Remark</th><th class="num" data-key="flags" data-type="num" title="High/medium flags">Flags</th>
 </tr></thead>
 <tbody>
@@ -66,6 +66,7 @@
   <td class="num" data-v="{{ d.deduction_days }}">{% if d.deduction_days %}<span class="badge b-bad">{{ d.deduction_days|n }} d</span>{% elif d.exempt and d.balance_hours < 0 %}<span class="badge b-grey" title="{{ d.remark }}">exempt</span>{% else %}<span class="muted">—</span>{% endif %}</td>
   <td class="num" data-v="{{ d.leave_closing if d.leave_closing is not none else '' }}">{{ d.leave_closing|n if d.leave_closing is not none else '—' }}</td>
   <td class="num {{ 'neg' if d.payroll_lop_days }}" data-v="{{ d.payroll_lop_days or 0 }}">{{ d.payroll_lop_days|n if d.payroll_lop_days else '' }}</td>
+  <td class="num" data-v="{{ d.salary_deduction_days or 0 }}">{{ d.salary_deduction_days|n if d.salary_deduction_days else '' }}</td><td class="small">{{ 'Yes' if d.exempt else 'No' }}</td>
   <td class="small remark">{{ d.remark }}{% if d.overrides %} <span class="badge b-violet" title="{{ d.overrides|tojson }}">corrected</span>{% endif %}</td>
   <td class="num" data-v="{{ r.flag_count }}">{% if r.flag_count %}<span class="badge b-warn">{{ r.flag_count }}</span>{% endif %}</td>
 </tr>{% endfor %}
@@ -74,20 +75,20 @@
   <td class="num"></td><td class="num"></td><td data-sum class="num">{{ D|sum(attribute='leave_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='absent_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='days_present')|n }}</td>
   <td data-sum class="num">{{ D|sum(attribute='wfh_days')|n }}</td><td class="num"></td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='extra_hours')|n(0) }}</td>
   <td data-sum data-dec="0" class="num">{{ D|sum(attribute='actual_hours')|n(0) }}</td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='required_hours')|n(0) }}</td><td class="num"></td>
-  <td data-sum data-unit=" d" class="num">{{ D|sum(attribute='deduction_days')|n }} d</td><td class="num"></td><td data-sum class="num">{{ D|sum(attribute='payroll_lop_days')|n }}</td><td></td><td></td></tr></tfoot>
+  <td data-sum data-unit=" d" class="num">{{ D|sum(attribute='deduction_days')|n }} d</td><td class="num"></td><td data-sum class="num">{{ D|sum(attribute='payroll_lop_days')|n }}</td><td data-sum class="num"></td><td></td><td></td><td></td></tr></tfoot>
 </table></div></div>
 </div>
 <p class="help">Required hours = days present × {{ policy.hours_per_day|n }} h. Shortfall is deducted at ½ day per {{ policy.shortfall_block_hours|n }} h (rounded up). Exempt: {{ policy.exempt_groups|join(', ') }}. Click any row for the day-by-day record and to make corrections. Press <kbd>/</kbd> to find someone.</p>
 
 {% if can_admin and period.status == 'FINALISED' %}
-<aside class="drawer" id="reopen" aria-label="Re-open month"><div class="dh"><h2>Re-open {{ period.label }}</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<aside class="drawer" id="reopen" aria-label="Re-open month"><div class="dh"><h2>Re-open {{ period.label }}</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
 <form method="post" action="/periods/{{ period.key }}/reopen" style="display:contents">{{ ui.csrf_field() }}
 <div class="db"><div class="alert warn">{{ ui.icon('triangle-alert') }}<span>Payroll may already have used this sheet. Re-opening allows imports and corrections again; it is recorded in the audit log.</span></div>
 <div class="field"><label>Reason</label><textarea name="reason" rows="3" required placeholder="e.g. Late regularisation approved by partner"></textarea></div></div>
 <div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn danger">Re-open month</button></div></form></aside><div class="scrim"></div>
 {% endif %}
 {% if can_admin and period.status == 'DRAFT' %}
-<aside class="drawer" id="delmonth" aria-label="Delete month"><div class="dh"><h2>Delete {{ period.label }}?</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<aside class="drawer" id="delmonth" aria-label="Delete month"><div class="dh"><h2>Delete {{ period.label }}?</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
 <form method="post" action="/periods/{{ period.key }}/delete" style="display:contents">{{ ui.csrf_field() }}
 <div class="db"><div class="alert bad">{{ ui.icon('triangle-alert') }}<span>For a month imported by mistake (for example a wrong date in a file). Everything for {{ period.label }} is removed — imported files, results, corrections and reviews. Later months are recalculated. This is recorded in the audit log and cannot be undone; re-import the files to bring the month back.</span></div>
 <div class="field"><label>Reason</label><textarea name="reason" rows="2" required placeholder="e.g. File had a wrong year"></textarea></div>

@@ -100,6 +100,10 @@ not counted in `wfh_days` (nor in `swipes_half`), so not towards the limit or th
 **Approved extra WFH (v1.7.5, owner):** month correction `wfh_approved_days` (from the review queue or the employee
 page, with a reason): `wfh_deduction_days = max(0, wfh_excess_days − wfh_approved_days) × wfh_excess_deduction_days`.
 By default nothing is approved (the system deducts).
+**Waived hours deduction (v1.8.0):** month correction `shortfall_waived` = true (review queue *Waive* or the
+employee page, with a reason) → `shortfall_deduction_days = 0` for that month; the WFH-over-limit part still
+applies; flag `SHORTFALL_EXEMPT` "… deduction waived this month" instead of `SHORTFALL_DEDUCTION`. Excel column U
+(*Exempt (hours)*) = `Waived`; the deduction formula takes the hours part only when U = "No". RULES_VERSION 9.
 Flag `WFH_OVER_LIMIT` when > **2**. HR's manual sheet counted off-day WFH too (DATA_ANALYSIS §2).
 **Deduction (v1.6.5, owner):** `wfh_excess_days = ceil(max(0, wfh_days − wfh_limit_days))`;
 `wfh_deduction_days = wfh_excess_days × wfh_excess_deduction_days` (default **0.5**; 0 = flag only), 0 only when the

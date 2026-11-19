@@ -23,6 +23,7 @@ SEV_CRITICAL, SEV_HIGH, SEV_MEDIUM, SEV_INFO = "critical", "high", "medium", "in
 MONTH_OVERRIDABLE = (
     "total_week_days", "holidays", "leave_days", "absent_days", "wfh_days", "total_hours",
     "extra_days", "extra_hours", "required_hours", "deduction_days", "exempt", "remark", "wfh_approved_days",
+    "shortfall_waived",
 )
 
 _TIME_RE = re.compile(r"(\d{1,2})(?:[:.](\d{2}))?\s*:?\s*(am|pm)?", re.I)
@@ -124,7 +125,8 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
 # 6 = v1.7.0: employee categories (pattern / calendar / hours per category), optional holidays.
 # 7 = v1.7.4: WFH on a working Saturday the office is closed (only the 1st Saturday open) is not counted as WFH.
 # 8 = v1.7.5: extra WFH days approved by a manager / partner (month correction) are not deducted.
-RULES_VERSION = 8
+# 9 = v1.8.0: the hours-shortfall deduction can be waived for a month (month correction "shortfall_waived").
+RULES_VERSION = 9
 
 
 def office_closed_saturday(d: date, policy: Policy) -> bool:
@@ -341,7 +343,8 @@ def compute_employee_month(
     res.exempt = bool(exempt_reason)
     month_exception = exempt_reason == "Exception granted for this month"
     res.wfh_deduction_exempt = month_exception or bool(emp.group and emp.group in set(policy.wfh_deduction_exempt_groups))
-    res.shortfall_deduction_days = 0.0 if res.exempt else deduction_for_shortfall(res.shortfall_hours, policy)
+    waived = str(month_overrides.get("shortfall_waived") or "").strip().lower() in ("1", "y", "yes", "true")
+    res.shortfall_deduction_days = 0.0 if res.exempt or waived else deduction_for_shortfall(res.shortfall_hours, policy)
     # WFH above the monthly limit: policy.wfh_excess_deduction_days of leave per extra WFH day (owner, v1.6.5)
     res.wfh_excess_days = float(math.ceil(max(0.0, res.wfh_days - policy.wfh_limit_days) - 1e-9))
     try:
@@ -502,6 +505,8 @@ def _flags(res: EmployeeMonth, emp: Employee, policy: Policy, flags: list) -> No
             + (f" calculated; deduction set manually to {res.deduction_days:g}" if manual else " deducted from leave"))
     elif res.exempt and res.shortfall_hours > 0:
         add("SHORTFALL_EXEMPT", SEV_INFO, f"{res.shortfall_hours:.2f} h short but exempt")
+    elif res.shortfall_hours > 0 and str((res.overrides or {}).get("shortfall_waived") or "").lower() == "true":
+        add("SHORTFALL_EXEMPT", SEV_INFO, f"{res.shortfall_hours:.2f} h short — deduction waived this month")
     if res.unauth_absent_days:
         add("UNAUTHORISED_ABSENCE", SEV_HIGH, f"{res.unauth_absent_days:g} day(s) absent without approved leave")
     if res.wfh_days > policy.wfh_limit_days:

@@ -65,7 +65,7 @@
     <th data-key="n" data-type="num" class="num" data-sum>Sign-ins</th><th data-key="people" data-type="num" class="num">People</th><th data-key="who" data-type="text">Who</th>
     <th data-key="notes" data-type="text">Remarks</th><th data-key="first" data-type="date">First</th><th data-key="last" data-type="date">Last</th></tr></thead><tbody>
   {% for b in R.places %}<tr><td class="strong small">{{ b.place }}</td><td>{{ b.main_type }}</td><td class="small muted">{{ b.types }}</td>
-    <td class="num">{{ b.count }}</td><td class="num">{{ b.people }}</td><td class="small">{{ b.people_names[:5]|join(', ') }}{% if b.people_names|length > 5 %} +{{ b.people_names|length - 5 }}{% endif %}</td>
+    <td class="num">{{ b.count }}</td><td class="num">{{ b.people }}</td><td class="small" data-csv="{{ b.people_names|join('; ') }}">{{ b.people_names[:5]|join(', ') }}{% if b.people_names|length > 5 %} +{{ b.people_names|length - 5 }}{% endif %}</td>
     <td class="small">{{ b.notes }}</td><td class="small" data-v="{{ b.first.isoformat() }}">{{ b.first.strftime('%d %b') }}</td><td class="small" data-v="{{ b.last.isoformat() }}">{{ b.last.strftime('%d %b') }}</td></tr>
   {% else %}<tr><td colspan="9" class="muted">No places with GPS this month.</td></tr>{% endfor %}
   </tbody></table></div></div></div></section>
