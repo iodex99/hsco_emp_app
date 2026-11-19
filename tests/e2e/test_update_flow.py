@@ -167,6 +167,10 @@ def test_update_end_to_end(installed):
         h = _wait(lambda: (_health(port) or {}).get("build") == 2 and _health(port), 60, "build 2")
         assert h["version"] == "9.9.9"
         page.wait_for_load_state("load")
+        # the page reloads itself after a successful update and shows the toast once (remembered in localStorage);
+        # if that reload won the race, forget it so the reload below must show the toast again
+        page.evaluate("Object.keys(localStorage).filter(k => k.startsWith('upd-seen-'))"
+                      ".forEach(k => localStorage.removeItem(k))")
         page.goto(base + "/")
         page.wait_for_selector(".toast:has-text('Updated to v9.9.9')", timeout=10_000)
         assert page.query_selector("#upd-banner") is None

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.3 — 2026-11-19 — the intermittent CI failure found and fixed (test only)
+`tests/e2e/test_update_flow.py` failed now and then (builds 17 and 21; reproduced here on a second run): after a
+successful update the page reloads itself and shows "Updated to v…" once (remembered in the browser); when that
+reload won the race, the test's own reload found the toast already shown and timed out. The test now clears that
+memory before its reload. No app change.
+
 ## 1.7.2 — 2026-11-19 — release of the 1.7.1 fixes; CI names failing tests
 The GitHub build of 1.7.1 (run 21) failed in the test step although the same commit passes in a clean checkout here
 (136 passed, 13 real-data tests skipped) — as once before (build-17). The build log needs a login, so the workflow now

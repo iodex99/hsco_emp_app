@@ -181,4 +181,4 @@ employee numbers, file names, `effective(loaded)`, pasted weekday-after-date and
 `.github/workflows/release.yml` runs `pytest -rfE --junitxml=test-results/junit.xml`; on failure
 `scripts/ci_annotate.py` prints a `::error` annotation per failed test (message + last traceback lines), visible via
 `GET /repos/<owner>/<repo>/check-runs/<job id>/annotations` without authentication.
-
+Flaky test fixed (v1.7.3): the update-flow toast race (see CHANGELOG) — 3 consecutive local runs green.
