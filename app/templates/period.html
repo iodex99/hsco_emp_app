@@ -42,9 +42,9 @@
     <span class="small muted" style="margin-left:auto">Quick filters</span>
   </div>
   <div data-table-for="#res"></div>
-  <div class="bd"><div class="tw" style="max-height:68vh"><table id="res" data-table data-csv="payroll-leave-sheet-{{ period.key }}" data-default-hidden="group,week,hol,hours,offh,bal" class="compact">
+  <div class="bd"><div class="tw" style="max-height:68vh"><table id="res" data-table data-csv="payroll-leave-sheet-{{ period.key }}" data-default-hidden="group,category,week,hol,hours,offh,bal" class="compact">
 <thead><tr>
-  <th class="sticky" data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th>
+  <th class="sticky" data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="category" data-type="enum">Category</th>
   <th class="num" data-key="week" data-type="num" title="Total week days (E)">Week days</th><th class="num" data-key="hol" data-type="num" title="Holidays (F)">Holidays</th>
   <th class="num" data-key="leave" data-type="num" title="Leaves taken (G)">Leave</th><th class="num" data-key="absent" data-type="num" title="Absent (H)">Absent</th><th class="num" data-key="present" data-type="num" title="Days present (I)">Present</th>
   <th class="num" data-key="wfh" data-type="num">WFH</th><th class="num" data-key="hours" data-type="num" title="Total hours present">Hours</th><th class="num" data-key="offh" data-type="num" title="Hours on weekly-off/holiday, excluded">Off-day h</th>
@@ -56,7 +56,7 @@
 {% for r in rows %}{% set d = r.data %}
 <tr class="click" data-href="/periods/{{ period.key }}/employee/{{ r.emp_no }}"
     data-tags="{{ 'deduction' if d.deduction_days }} {{ 'lop' if d.payroll_lop_days }} {{ 'wfh' if d.wfh_days > policy.wfh_limit_days }} {{ 'flags' if r.flag_count }} {{ 'override' if d.overrides }} {{ 'exempt' if d.exempt }}">
-  <td class="sticky" data-v="{{ r.name }}" data-csv="{{ r.name }} ({{ r.emp_no }})">{{ ui.person(r.name, r.emp_no ~ ' · ' ~ (r.group or '—')) }}</td><td>{{ r.group }}</td>
+  <td class="sticky" data-v="{{ r.name }}" data-csv="{{ r.name }} ({{ r.emp_no }})">{{ ui.person(r.name, r.emp_no ~ ' · ' ~ (r.group or '—')) }}</td><td>{{ r.group }}</td><td class="small">{{ r.category }}</td>
   <td class="num">{{ d.total_week_days|n }}</td><td class="num">{{ d.holidays|n }}</td><td class="num">{{ d.leave_days|n }}</td>
   <td class="num {{ 'neg' if d.absent_days }}">{{ d.absent_days|n }}</td><td class="num">{{ d.days_present|n }}</td>
   <td class="num">{% if d.wfh_days > policy.wfh_limit_days %}<span class="badge b-warn">{{ d.wfh_days|n }}</span>{% else %}{{ d.wfh_days|n }}{% endif %}</td>
@@ -70,7 +70,7 @@
   <td class="num" data-v="{{ r.flag_count }}">{% if r.flag_count %}<span class="badge b-warn">{{ r.flag_count }}</span>{% endif %}</td>
 </tr>{% endfor %}
 </tbody>
-<tfoot><tr class="tfoot"><td class="sticky">Total · <span data-count="#res">{{ rows|length }}</span> shown</td><td></td>
+<tfoot><tr class="tfoot"><td class="sticky">Total · <span data-count="#res">{{ rows|length }}</span> shown</td><td></td><td></td>
   <td class="num"></td><td class="num"></td><td data-sum class="num">{{ D|sum(attribute='leave_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='absent_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='days_present')|n }}</td>
   <td data-sum class="num">{{ D|sum(attribute='wfh_days')|n }}</td><td class="num"></td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='extra_hours')|n(0) }}</td>
   <td data-sum data-dec="0" class="num">{{ D|sum(attribute='actual_hours')|n(0) }}</td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='required_hours')|n(0) }}</td><td class="num"></td>

@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`140 passed` (v1.6.7; v1.6.6 and v1.6.5: 137; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`147 passed` (v1.7.0; v1.6.7: 140; v1.6.6 and v1.6.5: 137; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
@@ -152,3 +152,18 @@ hours flag vs WFH-only / hours-exempt deductions, manual deduction wording, swip
 old-rule months (`_wfh_term`), HS045 leave-day WFH on real data. Full suite **140 passed** (incl. 10 browser tests).
 Browser crawl of every page on real data: admin 227 pages, 0 errors, 0 JS errors (slowest: Punch exceptions 0.5 s
 server, 1.1 MB); viewer 226 pages, only the 4 admin pages refused (403) as intended. Heatmap footer filled on load.
+
+## v1.7.0 — employee categories
+Unit: loose name matching, category from file name, `effective()` precedence (employee / category / additional /
+greytHR / default), pasted lists (6 formats, "Good Friday" kept, headers skipped), optional holiday taken / not taken,
+migration MUSTER → CATEGORY once, footer rows never employees, real files all detected (category report, 7 holiday
+sheets, Location never the calendar, Day column). Web (synthetic): category report + Mum list (optional holiday, no
+20-Oct) + Carlyle list without a Category column, Article via additional category, conflict listed then resolved by a
+revised list that replaces the year (moved date removed, wrong year fixed by the Day column), category weekly offs and
+hours, employee override, rename keeps people, delete refused, targeted by category, paste a list, categories on every
+page and in the Excel, audit. Real data: 96 employees categorised (counts per category), report spelling kept, two MDS
+files → one list with 2 optional, no default calendar, Carlyle 2-Oct holiday and the conflict list, Insights. Browser:
+the journey now clicks every tab of Overview / Insights / Settings / Punch exceptions / Locations (a chart error only
+shows when its tab is drawn — verified by re-introducing the bug). Visual check on a copy of the installed data:
+upload of the 7 files 1.2 s, Categories tab, calendars by year, employees list / form, Overview and Insights by
+category, day view of a Carlyle holiday. Full suite 147 passed.

@@ -26,22 +26,22 @@
     {% for t, label, cls, grp in X.types %}{% if X.counts[t] %}<button class="chip" type="button" data-chip="{{ t }}">{{ label }} <span class="n">{{ X.counts[t] }}</span></button>{% endif %}{% endfor %}
   </div></div>
   <div data-table-for="#ex"></div>
-  <div class="bd"><div class="tw" style="max-height:70vh"><table id="ex" class="compact" data-table data-csv="punch-exceptions-{{ key }}" data-default-hidden="notes,status">
-  <thead><tr><th data-key="date" data-type="date">Date</th><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th>
+  <div class="bd"><div class="tw" style="max-height:70vh"><table id="ex" class="compact" data-table data-csv="punch-exceptions-{{ key }}" data-default-hidden="notes,status,cat">
+  <thead><tr><th data-key="date" data-type="date">Date</th><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="cat" data-type="enum">Category</th>
     <th data-key="issues" data-type="text">Issues</th><th data-key="inout" data-type="text">In – out</th><th data-key="hrs" data-type="num" class="num">Hours</th>
     <th data-key="punches" data-type="text">Punches</th><th data-key="why" data-type="text">Reason / remark</th>
     <th data-key="status" data-type="enum">greytHR status</th><th data-key="notes" data-type="text">Notes</th></tr></thead><tbody>
   {% for r in X.rows %}<tr data-tags="{{ r.issues|join(' ') }}" data-href="{{ r.href }}">
     <td data-v="{{ r.date }}" class="small" style="white-space:nowrap">{{ r.date[8:] }} {{ ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][r.date[5:7]|int] }} <span class="muted">{{ r.wd }}</span>{% if r.type != 'WORKDAY' %} <span class="tag">{{ r.holiday or 'Weekly off' }}</span>{% endif %}</td>
     <td data-v="{{ r.name }}" data-csv="{{ r.name }} ({{ r.emp_no }})">{{ ui.person(r.name, r.emp_no) }}</td>
-    <td class="small">{{ r.group }}</td>
+    <td class="small">{{ r.group }}</td><td class="small">{{ r.category }}</td>
     <td data-v="{% for k_ in r.issues %}{{ X.labels[k_] }}{{ ', ' if not loop.last }}{% endfor %}">{% for k_ in r.issues %}<span class="badge {{ X.classes[k_] }}">{{ X.labels[k_] }}{% if k_ == 'very_late' and r.late_min %} {{ r.late_min }} min{% endif %}</span> {% endfor %}{% if r.overridden %}<span class="badge b-ok" title="Corrected in the app">corrected</span>{% endif %}</td>
     <td class="small tnum" style="white-space:nowrap">{% if r.in %}{{ r.in }} – {{ r.out or '?' }}{% else %}—{% endif %}</td>
     <td class="num small" data-v="{{ (r.work_min / 60)|round(2) }}">{{ '%d:%02d'|format(r.work_min // 60, r.work_min % 60) if r.work_min else '' }}</td>
     <td class="small" data-v="{{ r.punches }}">{{ r.punches or '—' }}{% if r.n_punches == 1 %} <span class="muted">(1 punch)</span>{% endif %}</td>
     <td class="small">{% if r.reason %}<span class="tag">{{ r.reason }}</span> {% endif %}{{ r.remark }}</td>
     <td class="small">{{ r.status }}</td><td class="small muted">{{ r.notes }}</td></tr>
-  {% else %}<tr><td colspan="10">{% call ui.empty('No exceptions this month', 'Every day has a clean pair of punches.', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="11">{% call ui.empty('No exceptions this month', 'Every day has a clean pair of punches.', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
   </tbody></table></div></div></div>
   <p class="small muted mt-s">{{ ui.icon('info','sm') }} One row per employee and day with all its issues. Click a row to open that day (punches, places, and the correction form). Partners on automatic attendance are not checked for punches.</p>
 </section>
@@ -49,7 +49,7 @@
 <section class="pane" data-pane="people"><div class="card flush">
   <div data-table-for="#exp"></div>
   <div class="bd"><div class="tw" style="max-height:70vh"><table id="exp" class="compact" data-table data-csv="punch-exceptions-by-employee-{{ key }}">
-  <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th>
+  <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="cat" data-type="enum">Category</th>
     <th data-key="missing" data-type="num" class="num">Missing punch</th><th data-key="nopunch" data-type="num" class="num" title="Present, no punch at all">No punch</th>
     <th data-key="edited" data-type="num" class="num" title="In/out changed in greytHR with no matching punch">Times changed</th>
     <th data-key="permission" data-type="num" class="num" title="Regularisation (permission) requests">Regularisation req.</th>
@@ -62,13 +62,13 @@
     <th data-key="early" data-type="num" class="num">Early exit</th><th data-key="short" data-type="num" class="num">Short day</th>
     <th data-key="absent" data-type="num" class="num">Absent / LOP</th><th data-key="offday" data-type="num" class="num">Worked day off</th></tr></thead><tbody>
   {% for p in X.people %}<tr data-href="{{ p.href }}">
-    <td data-v="{{ p.name }}" data-csv="{{ p.name }} ({{ p.emp_no }})">{{ ui.person(p.name, p.emp_no) }}{% if p.auto %} <span class="tag" title="Automatic attendance: punches not checked">auto</span>{% endif %}</td><td class="small">{{ p.group }}</td>
+    <td data-v="{{ p.name }}" data-csv="{{ p.name }} ({{ p.emp_no }})">{{ ui.person(p.name, p.emp_no) }}{% if p.auto %} <span class="tag" title="Automatic attendance: punches not checked">auto</span>{% endif %}</td><td class="small">{{ p.group }}</td><td class="small">{{ p.category }}</td>
     {% for f in ('missing', 'nopunch', 'edited', 'permission', 'rejected', 'wfh', 'wfh_over') %}<td class="num {{ 'neg' if f in ('missing', 'nopunch', 'wfh_over') and p[f] }}" data-v="{{ p[f] }}">{{ p[f] or '' }}</td>{% endfor %}
     <td class="num {{ 'neg' if p.wfh_deduction }}" data-v="{{ p.wfh_deduction }}">{{ (p.wfh_deduction|n ~ ' d') if p.wfh_deduction else '' }}</td>
     {% for f in ('wfh_offday', 'wfh_leave', 'very_late', 'early', 'short', 'absent', 'offday_work') %}<td class="num" data-v="{{ p[f] }}">{{ p[f] or '' }}</td>{% endfor %}</tr>
-  {% else %}<tr><td colspan="17">{% call ui.empty('Nothing to show', '', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="18">{% call ui.empty('Nothing to show', '', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
   </tbody>
-  {% if X.people %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#exp">{{ X.people|length }}</span> people</td><td></td>
+  {% if X.people %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#exp">{{ X.people|length }}</span> people</td><td></td><td></td>
     {% for i in range(15) %}<td class="num" data-sum{{ ' data-unit=" d"' if i == 7 }}></td>{% endfor %}</tr></tfoot>{% endif %}
   </table></div></div></div>
 </section>

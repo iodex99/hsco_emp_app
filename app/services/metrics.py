@@ -114,6 +114,24 @@ def compute_kpis(db: Session, period: Period, policy=None, res=None, emps=None) 
     return kpis
 
 
+def _breakdown(D: list[dict], by: str) -> list[dict]:
+    """Group / category table: headcount and totals per value of `by` (blank → "(not set)")."""
+    groups = defaultdict(lambda: Counter())
+    for d in D:
+        c = groups[d.get(by) or "(not set)"]
+        c["headcount"] += 1
+        for k in ("days_present", "pl_days", "cof_days", "unauth_absent_days", "lop_days", "wfh_days", "late_days",
+                  "regularised_days", "deduction_days", "actual_hours", "required_hours", "extra_days"):
+            c[k] += d.get(k) or 0
+        c["deduction_emps"] += 1 if d.get("deduction_days") else 0
+    rows = []
+    for g, c in sorted(groups.items()):
+        row = {"group": g, **{k: round(v, 2) for k, v in c.items()}}
+        row["hours_vs_required_pct"] = round(100 * c["actual_hours"] / c["required_hours"], 1) if c["required_hours"] else None
+        rows.append(row)
+    return rows
+
+
 def period_metrics(db: Session, period: Period) -> dict:
     policy = get_policy(db)
     res = results_for(db, period)
@@ -135,21 +153,8 @@ def period_metrics(db: Session, period: Period) -> dict:
     flag_summary = [{"code": c, "label": FLAG_LABELS.get(c, c), "severity": s, "count": n}
                     for (c, s), n in sorted(flag_counts.items(), key=lambda x: (SEV_ORDER.get(x[0][1], 9), -x[1]))]
 
-    # groups
-    groups = defaultdict(lambda: Counter())
-    for d in D:
-        g = d.get("group") or "(not set)"
-        c = groups[g]
-        c["headcount"] += 1
-        for k in ("days_present", "pl_days", "cof_days", "unauth_absent_days", "lop_days", "wfh_days", "late_days",
-                  "regularised_days", "deduction_days", "actual_hours", "required_hours", "extra_days"):
-            c[k] += d.get(k) or 0
-        c["deduction_emps"] += 1 if d.get("deduction_days") else 0
-    group_rows = []
-    for g, c in sorted(groups.items()):
-        row = {"group": g, **{k: round(v, 2) for k, v in c.items()}}
-        row["hours_vs_required_pct"] = round(100 * c["actual_hours"] / c["required_hours"], 1) if c["required_hours"] else None
-        group_rows.append(row)
+    group_rows = _breakdown(D, "group")
+    category_rows = _breakdown(D, "category")
 
     # location mix
     loc_mix = Counter()
@@ -187,6 +192,7 @@ def period_metrics(db: Session, period: Period) -> dict:
         "flag_summary": flag_summary,
         "flags": flag_rows,
         "groups": group_rows,
+        "categories": category_rows,
         "location_mix": [{"label": k, "count": v} for k, v in loc_mix.most_common()],
         "late_by_weekday": [{"wd": w, "count": late_by_wd.get(w, 0)} for w in wd_order],
         "in_time_hist": [{"bucket": k, "count": in_hist[k]} for k in sorted(in_hist)],

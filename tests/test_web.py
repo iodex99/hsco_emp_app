@@ -625,7 +625,8 @@ def test_targeted_holidays_settings_import_and_wfh(loaded):
     assert day_of("T002", "2026-10-16")["type"] == "HOLIDAY"                 # calendar row: everyone
     t = c.get("/exports/templates/holidays.xlsx")
     hdr = [x.value for x in openpyxl.load_workbook(io.BytesIO(t.content)).active[1]]
-    assert hdr[:6] == ["Date", "Holiday", "Calendar", "For Locations", "For Groups", "For Employees"]
+    assert hdr[:10] == ["Date", "Day", "Holiday", "Category", "Is Optional", "Calendar", "For Categories",
+                        "For Locations", "For Groups", "For Employees"]
 
 
 def test_rule_change_recalculates_draft_months_once(loaded):
@@ -680,11 +681,170 @@ def test_punch_exceptions_page_and_excel(loaded):
     assert "openDay(qd)" in c.get("/periods/2026-10/employee/T006?day=2026-10-14").text
     wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
     ws = wb["Punch Exceptions"]
-    assert [x.value for x in ws[5]][:6] == ["Date", "Day", "Employee No", "Name", "Group", "Issues"]
+    assert [x.value for x in ws[5]][:7] == ["Date", "Day", "Employee No", "Name", "Group", "Category", "Issues"]
     assert ws.max_row - 5 == len(X["rows"])
     assert "Exceptions by Employee" in wb.sheetnames and wb["Exceptions by Employee"].max_row - 5 == len(X["people"])
     # viewers can see it too
     assert c.get("/exceptions").status_code == 200
+
+
+def _xlsx(rows, sheet="Sheet0"):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet
+    for r in rows:
+        ws.append(r)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _post_files(c, files):
+    return c.post("/imports", data={"csrf": csrf_of(c, "/imports")},
+                  files=[("files", (n, b, "application/octet-stream")) for n, b in files])
+
+
+def test_categories_end_to_end(loaded):
+    """v1.7: employee categories from greytHR's category report; each category's holiday list (incl. optional
+    holidays, a Day column with a wrong year, a list without a Category column named in the file name); replace-by-
+    year; category weekly offs / hours; employee override; rename / delete; targeted by category; paste a list;
+    disagreements with greytHR; categories everywhere (pages + Excel)."""
+    from datetime import date
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import Category, Employee, HolidayCalendar
+    c = loaded
+    day = lambda emp, d: next(x for x in _result_days(emp) if x["date"] == d)  # noqa: E731
+    # 1) category report (as greytHR exports it: title row, then the header)
+    rep = _xlsx([["Employee Category Report"],
+                 ["Employee Number", "Employee Name", "Curr.Location", "Curr.Category", "Additional Category"],
+                 ["T001", "Asha Rao", "Mumbai", "HSCO (Mum)", None], ["T002", "Bilal Khan", "Mumbai", "HSCO (Mum)", None],
+                 ["T004", "Dev Mehta", "Mumbai", "Article", "Hsco (Mum)"], ["T006", "Farhan Ali", "Delhi", "HSCO (Carlyle)", None],
+                 ["Total number of records : 4"]])
+    # 2) the Mum list without 20-Oct (greytHR marks it H) + an optional holiday; 3) a printed list with a Day column
+    #    and a wrong year; 4) a Carlyle list with no Category column (category from the file name)
+    mum = _xlsx([["Holiday Date", "Description", "Is Optional", "Location", "Category"],
+                 [date(2026, 1, 26), "Republic Day", "No", "Mumbai", "HSCO (Mum)"],
+                 [date(2026, 3, 3), "Holi", "No", "Mumbai", "HSCO (Mum)"],
+                 [date(2026, 10, 7), "Mum festival", "No", "Mumbai", "HSCO (Mum)"],
+                 [date(2026, 10, 9), "Optional day", "Optional", "Mumbai", "HSCO (Mum)"],
+                 [date(2026, 11, 10), "Diwali", "No", "Mumbai", "HSCO (Mum)"],
+                 [date(2026, 12, 25), "Christmas", "No", "Mumbai", "HSCO (Mum)"]])
+    carlyle = _xlsx([["Sr. No.", "Holiday Day", "Date"], [1, "New Year", date(2026, 1, 1)],
+                     [2, "Carlyle day", date(2026, 10, 15)], [3, "Dussehra", date(2026, 10, 20)]], "Sheet1")
+    r = _post_files(c, [("Holiday List Importer HSCO (Mum).xlsx", mum), ("EmployeeCategoryReport.xlsx", rep),
+                        ("Holiday List Importer HSCO (Carlyle) 2026.xlsx", carlyle)])
+    assert r.status_code == 200 and "Employee category report" in r.text and "HSCO (Mum) 2026: 6 holidays (1 optional) loaded" in r.text
+    with session_scope() as db:
+        emps = {e.emp_no: e for e in db.scalars(select(Employee))}
+        cats = {x.name: x for x in db.scalars(select(Category))}
+        assert (emps["T001"].category, emps["T004"].category, emps["T004"].additional_category) == \
+            ("HSCO (Mum)", "Article", "HSCO (Mum)")                       # "Hsco (Mum)" matched to the same category
+        assert emps["T006"].location == "Delhi" and emps["T003"].category == ""
+        assert set(cats) == {"HSCO (Mum)", "Article", "HSCO (Carlyle)"}
+        cal_mum = db.get(HolidayCalendar, cats["HSCO (Mum)"].holiday_calendar_id)
+        assert cal_mum.name == "HSCO (Mum)" and not cal_mum.is_default and len(cal_mum.holidays) == 6
+        assert db.get(HolidayCalendar, cats["HSCO (Carlyle)"].holiday_calendar_id).name == "HSCO (Carlyle)"
+        assert cats["Article"].holiday_calendar_id is None
+    # each category's own list; Article follows its additional category (Mum); no category → greytHR
+    assert day("T001", "2026-10-07")["type"] == "HOLIDAY" and day("T001", "2026-10-07")["holiday"] == "Mum festival"
+    assert day("T004", "2026-10-07")["type"] == "HOLIDAY"
+    assert day("T006", "2026-10-14")["type"] == "WORKDAY" and day("T006", "2026-10-15")["type"] == "HOLIDAY"
+    assert day("T001", "2026-10-15")["type"] == "WORKDAY"                         # Carlyle's day is not Mum's
+    assert day("T003", "2026-10-07")["type"] == "WORKDAY" and day("T005", "2026-10-20")["type"] == "HOLIDAY"
+    # optional holiday not taken (greytHR shows P) → a working day with a note
+    d9 = day("T001", "2026-10-09")
+    assert d9["type"] == "WORKDAY" and any("Optional holiday (Optional day) — not taken" in n for n in d9["notes"])
+    # the Mum list has no 20-Oct but greytHR marks it H → listed under "Check these dates"
+    assert day("T001", "2026-10-20")["type"] == "WORKDAY"
+    st = c.get("/settings").text
+    assert 'data-tab="categories"' in st and 'id="cat-conf"' in st and "2026-10-20" in st and "HSCO (Mum)" in st
+    assert "No holiday list yet" not in st                    # Article people get the Mum list via their additional category
+    # 5) a revised Mum list (20-Oct added, 7-Oct moved to 12-Oct) replaces 2026: moved date removed, conflict gone
+    mum2 = _xlsx([["Holiday Date", "Day", "Description", "Is Optional", "Category"],
+                  [date(2026, 1, 26), "Monday", "Republic Day", "No", "HSCO (Mum)"],
+                  [date(2026, 3, 3), "Tuesday", "Holi", "No", "HSCO (Mum)"],
+                  [date(2026, 10, 12), "Monday", "Mum festival", "No", "HSCO (Mum)"],
+                  [date(2026, 10, 20), "Tuesday", "Dussehra", "No", "HSCO (Mum)"],
+                  [date(2025, 11, 10), "Tuesday", "Diwali", "No", "HSCO (Mum)"],         # wrong year, Day column fixes it
+                  [date(2026, 12, 25), "Friday", "Christmas", "No", "HSCO (Mum)"]])
+    r = _post_files(c, [("Holiday List Importer HSCO (Mum) revised.xlsx", mum2)])
+    assert "removed Mum festival 07-Oct, Optional day 09-Oct" in r.text and "taken as 10-Nov-2026" in r.text
+    assert day("T001", "2026-10-07")["type"] == "WORKDAY" and day("T001", "2026-10-12")["type"] == "HOLIDAY"
+    assert day("T001", "2026-10-20")["type"] == "HOLIDAY"
+    conf = c.get("/settings").text.split('id="cat-conf"')[1].split("</table>")[0]
+    assert "2026-10-20" not in conf                                      # resolved
+    assert "2026-10-12" in conf and "Holiday — Mum festival" in conf      # the list's new date: greytHR still says working
+    # 6) category settings: weekly offs + hours; an employee's own pattern still wins
+    with session_scope() as db:
+        mum_id = db.scalar(select(Category.id).where(Category.name == "HSCO (Mum)"))
+        cal_id = db.scalar(select(Category.holiday_calendar_id).where(Category.id == mum_id))
+    csrf = csrf_of(c, "/settings")
+    r = c.post("/settings/categories/save", data={"csrf": csrf, "cid": str(mum_id), "name": "HSCO (Mum)",
+                                                  "holiday_calendar_id": str(cal_id), "weekly_off": "ALL_SAT_OFF",
+                                                  "hours_per_day": "8"}, follow_redirects=True)
+    assert "saved" in r.text
+    assert day("T001", "2026-10-03")["type"] == "WORKDAY"     # the master file set MUSTER for T001 explicitly: it wins
+    c.post("/employees/save", data={"csrf": csrf_of(c, "/employees/T001"), "emp_no": "T001", "name": "Asha Rao",
+                                    "group": "BSS", "category": "HSCO (Mum)", "weekly_off": "CATEGORY",
+                                    "is_active": "1", "doj": "2023-04-03"})
+    assert day("T001", "2026-10-03")["type"] == "WEEKLY_OFF"                      # follows the category now
+    assert _result("T001")[0]["hours_per_day"] == 8.0
+    c.post("/employees/save", data={"csrf": csrf_of(c, "/employees/T002"), "emp_no": "T002", "name": "Bilal Khan",
+                                    "group": "ATA", "category": "HSCO (Mum)", "weekly_off": "MUSTER",
+                                    "is_active": "1", "doj": "2024-07-01"})
+    assert day("T002", "2026-10-03")["type"] == "WORKDAY"                         # own pattern (greytHR) wins
+    page = c.get("/employees/T001").text
+    assert "Follow category — All Saturdays" in page and "category: 8" in page and 'list="cats"' in page
+    # 7) rename keeps the people; deleting a category with people is refused
+    c.post("/settings/categories/save", data={"csrf": csrf, "cid": str(mum_id), "name": "HSCO (Mumbai)",
+                                              "holiday_calendar_id": str(cal_id), "weekly_off": "ALL_SAT_OFF",
+                                              "hours_per_day": "8"})
+    with session_scope() as db:
+        assert db.get(Employee, "T001").category == "HSCO (Mumbai)" and db.get(Employee, "T004").additional_category == "HSCO (Mumbai)"
+    r = c.post(f"/settings/categories/{mum_id}/delete", data={"csrf": csrf}, follow_redirects=True)
+    assert "still has employees" in r.text
+    # 8) a targeted holiday for a category (Carlyle) only
+    c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-13", "name": "Carlyle offsite",
+                                                "categories": ["HSCO (Carlyle)"]})
+    assert day("T006", "2026-10-13")["type"] == "HOLIDAY" and day("T001", "2026-10-13")["type"] == "WORKDAY"
+    # 9) paste a list (as copied from the New Delhi PDF) into a new calendar
+    c.post("/settings/calendars", data={"csrf": csrf, "name": "Delhi 2026"})
+    with session_scope() as db:
+        delhi = db.scalar(select(HolidayCalendar).where(HolidayCalendar.name == "Delhi 2026"))
+    r = c.post(f"/settings/calendars/{delhi.id}/paste", follow_redirects=True, data={"csrf": csrf, "text": (
+        "India List of Holidays Calendar year 2026 – NEW DELHI:\nS.No Holiday Date\n1 Republic Day 26 January 2026\n"
+        "2 Holi 04 March 2026\n3 Mahavir Jayanti 31 March 2026\n4 Good Friday 03 April 2026\n"
+        "8 Mahatma Gandhi's Birthday 02 October 2026\n12 Christmas Day 25 December 2026\n")})
+    assert "Delhi 2026 2026: 6 holidays loaded" in r.text
+    with session_scope() as db:
+        hs = {h.day: h.name for h in db.scalars(select(HolidayCalendar).where(HolidayCalendar.id == delhi.id)).one().holidays}
+    assert hs[date(2026, 4, 3)] == "Good Friday" and hs[date(2026, 10, 2)] == "Mahatma Gandhi's Birthday"
+    # 10) categories everywhere
+    assert "HSCO (Mumbai)" in c.get("/employees").text and "No category" in c.get("/employees").text
+    assert "By category" in c.get("/?period=2026-10").text and "HSCO (Carlyle)" in c.get("/?period=2026-10").text
+    ins = c.get("/insights?period=2026-10").text
+    assert "Categories compared" in ins and 'id="cc"' in ins and 'data-key="category"' in ins
+    assert 'data-key="category"' in c.get("/periods/2026-10").text
+    assert "HSCO (Carlyle)" in c.get("/periods/2026-10/employee/T006").text
+    assert 'data-key="cat"' in c.get("/exceptions?period=2026-10").text
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    assert "Categories Compared" in wb.sheetnames
+    cc = {x[0].value for x in wb["Categories Compared"].iter_rows(min_row=6) if x[0].value}
+    assert {"HSCO (Mumbai)", "Article", "HSCO (Carlyle)"} <= cc
+    ws = wb["Payroll Leave Sheet"]
+    assert ws.cell(row=5, column=35).value == "Category"
+    rows = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
+    assert ws.cell(row=rows["T004"], column=35).value == "Article + HSCO (Mumbai)"
+    assert "Category" in [x.value for x in wb["Scorecard"][6]]
+    tpl = load_workbook(io.BytesIO(c.get("/exports/templates/employee_master.xlsx").content)).active
+    assert [x.value for x in tpl[1]][3:5] == ["Category", "Additional Category"]
+    # audit
+    with session_scope() as db:
+        from app.models import AuditLog
+        acts = {a.action for a in db.scalars(select(AuditLog))}
+    assert {"category.update", "holiday.paste", "holidays.list"} <= acts
 
 
 def _result_days(emp):

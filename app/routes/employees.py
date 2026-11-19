@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from app.engine.model import PATTERNS, WEEKDAY_NAMES
-from app.models import Employee, HolidayCalendar, MonthResult, Period
+from app.models import Category, Employee, HolidayCalendar, MonthResult, Period
+from app.services import categories as CAT
 from app.services import metrics as MX
 from app.services.audit import audit
 from app.services.compute import compute_period
@@ -17,7 +19,8 @@ from app.web import Ctx, hr, redirect, render, viewer
 
 router = APIRouter()
 
-FIELDS = ("name", "group", "location", "department", "designation", "email", "weekly_off", "off_weekdays",
+FIELDS = ("name", "group", "location", "category", "additional_category", "department", "designation", "email",
+          "weekly_off", "off_weekdays",
           "working_saturdays", "hours_per_day", "exempt", "exempt_reason", "holiday_calendar_id", "doj", "dol",
           "is_active", "notes")
 
@@ -31,19 +34,30 @@ def employees(c: Ctx = Depends(viewer)):
         for r in c.db.scalars(select(MonthResult).where(MonthResult.period_id == latest.id)):
             last[r.emp_no] = r
     cals = {cal.id: cal.name for cal in c.db.scalars(select(HolidayCalendar))}
-    return render(c, "employees.html", emps=emps, last=last, latest=latest, patterns=PATTERNS, cals=cals)
+    cats = CAT.by_key(c.db)
+    dcal = CAT.default_calendar_id(c.db)
+    eff = {e.emp_no: CAT.effective(e, cats, dcal) for e in emps}
+    return render(c, "employees.html", emps=emps, last=last, latest=latest, patterns=PATTERNS, cals=cals, eff=eff)
 
 
 @router.get("/employees/new", response_class=HTMLResponse)
 def new_employee(c: Ctx = Depends(hr)):
-    return _form(c, Employee(emp_no="", weekly_off="MUSTER", off_weekdays="5,6", is_active=True), new=True)
+    return _form(c, Employee(emp_no="", weekly_off=CAT.FOLLOW, off_weekdays="5,6", is_active=True), new=True)
 
 
 def _form(c: Ctx, e: Employee, new: bool = False, history=None):
     g = get_general(c.db)
     cals = c.db.scalars(select(HolidayCalendar).order_by(HolidayCalendar.name)).all()
+    cats = CAT.by_key(c.db)
+    # what the category would give (shown on the "Follow category" choices)
+    probe = Employee(emp_no=e.emp_no, category=e.category, additional_category=e.additional_category,
+                     weekly_off=CAT.FOLLOW, hours_per_day=None, holiday_calendar_id=None)
+    via = CAT.effective(probe, cats, CAT.default_calendar_id(c.db))
+    cal_names = {x.id: x.name for x in cals}
     return render(c, "employee_form.html", e=e, new=new, patterns=PATTERNS, cals=cals, groups=g.get("groups", []),
-                  locations=g.get("locations", []), weekday_names=WEEKDAY_NAMES, history=history or [])
+                  locations=g.get("locations", []), weekday_names=WEEKDAY_NAMES, history=history or [],
+                  categories=sorted(x.name for x in c.db.scalars(select(Category))), via=via,
+                  via_cal=cal_names.get(via.calendar_id, "greytHR's holiday marks"), follow=CAT.FOLLOW)
 
 
 @router.get("/employees/{emp_no}", response_class=HTMLResponse)
@@ -61,6 +75,7 @@ def _parse_date(s: str):
 
 @router.post("/employees/save")
 def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Form(""), location: str = Form(""),
+                        category: Optional[str] = Form(None), additional_category: Optional[str] = Form(None),
                         department: str = Form(""), designation: str = Form(""), email: str = Form(""),
                         weekly_off: str = Form("MUSTER"), off_weekdays: list[str] = Form([]),
                         working_saturdays: str = Form(""), hours_per_day: str = Form(""), exempt: str = Form(""),
@@ -82,9 +97,15 @@ def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Fo
         e.doj, e.dol = _parse_date(doj), _parse_date(dol)
     except ValueError:
         return redirect(f"/employees/{emp_no}", "Invalid number or date.")
-    if weekly_off not in PATTERNS:
-        weekly_off = "MUSTER"
+    if weekly_off not in PATTERNS and weekly_off != CAT.FOLLOW:
+        weekly_off = CAT.FOLLOW
     e.name, e.group, e.location = name.strip(), group.strip(), location.strip()
+    cache = CAT.by_key(c.db)
+    for fld, val in (("category", category), ("additional_category", additional_category)):
+        if val is None:                    # field not in the form: keep what the employee has
+            continue
+        cat = CAT.ensure(c.db, val, cache) if val.strip() else None      # loosely matched; new names are added
+        setattr(e, fld, cat.name if cat else "")
     e.department, e.designation, e.email = department.strip(), designation.strip(), email.strip()
     e.weekly_off = weekly_off
     e.off_weekdays = ",".join(sorted({x for x in off_weekdays if x.isdigit() and 0 <= int(x) <= 6})) or "5,6"

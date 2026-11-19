@@ -106,6 +106,7 @@ def month_exceptions(db: Session, period: Period) -> dict:
             remarks = sorted({s.get("note") for s in dd.get("swipes") or [] if s.get("note")})
             rows.append({
                 "date": dd["date"], "wd": dd.get("wd", ""), "emp_no": r.emp_no, "name": r.name, "group": r.group or "",
+                "category": r.category or "",
                 "issues": keys, "in": dd.get("in") or "", "out": dd.get("out") or "", "work_min": dd.get("work_min") or 0,
                 "status": (dd.get("s1") or "") + ("" if dd.get("s2") == dd.get("s1") else " / " + (dd.get("s2") or "")),
                 "type": dd.get("type"), "holiday": dd.get("holiday") or "", "punches": _punches(dd),
@@ -115,7 +116,8 @@ def month_exceptions(db: Session, period: Period) -> dict:
                 "href": f"/periods/{period.key}/employee/{r.emp_no}?day={dd['date']}",
             })
         if any(per.values()):
-            people.append({"emp_no": r.emp_no, "name": r.name, "group": r.group or "", "auto": auto,
+            people.append({"emp_no": r.emp_no, "name": r.name, "group": r.group or "", "category": r.category or "",
+                           "auto": auto,
                            "wfh_days": d.get("wfh_days") or 0, "wfh_deduction": d.get("wfh_deduction_days") or 0,
                            "href": f"/periods/{period.key}/employee/{r.emp_no}", **per,
                            "punch_issues": per["missing"] + per["nopunch"] + per["edited"] + per["rejected"]})

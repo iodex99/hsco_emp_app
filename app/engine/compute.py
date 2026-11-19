@@ -121,7 +121,8 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
 # 3 = v1.6.5: half a day of leave deducted per WFH day above the monthly limit.
 # 4 = v1.6.6: hours-exempt employees/groups are deducted for WFH too (only wfh_deduction_exempt_groups are not).
 # 5 = v1.6.7: a WFH sign-in on a day of full leave / absence is not a WFH day; flags follow the hours / WFH parts.
-RULES_VERSION = 5
+# 6 = v1.7.0: employee categories (pattern / calendar / hours per category), optional holidays.
+RULES_VERSION = 6
 
 
 def compute_employee_month(
@@ -198,10 +199,18 @@ def compute_employee_month(
         if day_type == WORKDAY and d in emp.targeted_holidays:
             day_type = HOLIDAY
             holiday_name = emp.targeted_holidays[d] or "Holiday"
+        opt_note = ""
+        if day_type == WORKDAY and d in emp.optional_holidays:
+            # optional holiday: a holiday only for those who took it — greytHR marks their day H
+            if muster_type == HOLIDAY:
+                day_type = HOLIDAY
+                holiday_name = f"{emp.optional_holidays[d] or 'Optional holiday'} (optional)"
+            else:
+                opt_note = f"Optional holiday ({emp.optional_holidays[d] or 'unnamed'}) — not taken"
         if ov and ov.day_type:
             day_type = ov.day_type
-        notes = []
-        if (emp.holidays is not None or d in emp.targeted_holidays) and (muster_type == HOLIDAY) != (day_type == HOLIDAY) \
+        notes = [opt_note] if opt_note else []
+        if (emp.holidays is not None or d in emp.targeted_holidays) and d not in emp.optional_holidays and (muster_type == HOLIDAY) != (day_type == HOLIDAY) \
                 and day_type != WEEKLY_OFF:
             notes.append("Holiday calendar differs from greytHR")
         if ptype and (ptype == WEEKLY_OFF) != (muster_type == WEEKLY_OFF) and muster_type != HOLIDAY:

@@ -77,7 +77,7 @@ def insights_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     if p.computed_at is None:
         return pending_month(c, p)
     data = INS.insights(c.db, p)
-    chart = {"hours_hist": data["hours_hist"], "groups": data["groups"],
+    chart = {"hours_hist": data["hours_hist"], "groups": data["groups"], "categories": data.get("categories", []),
              "trend": data["trend"]}
     return render(c, "insights.html", period=p, I=data, chart=chart, policy=get_policy(c.db))
 
@@ -128,7 +128,10 @@ async def do_import(request: Request, files: list[UploadFile] = File(...), perio
         y, m = period.split("-")
         hint = (int(y), int(m))
     # order matters: master data before attendance so the first compute already has groups/calendars
-    order = {"employee": 0, "holiday": 0, "date": 1, "doj": 1, "mis": 2, "summary": 3, "swipe": 4, "muster": 5}
+    # (category report first: holiday lists find their categories by name; a list for an unknown category still
+    # works — the category is created and matched loosely when the report comes later)
+    order = {"categ": -1, "employee": 0, "holiday": 0, "date": 1, "doj": 1, "mis": 2, "summary": 3, "swipe": 4,
+             "muster": 5}
     blobs = []
     for f in files:
         data = await f.read()

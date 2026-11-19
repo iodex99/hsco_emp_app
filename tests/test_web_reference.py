@@ -146,3 +146,48 @@ def test_real_signins_with_coordinates(client):
     rows = [[x.value for x in row] for row in load_workbook(io.BytesIO(r.content))["Punches"].iter_rows(min_row=6)]
     assert len(rows) > 1000 and sum(1 for x in rows if x[10] is not None) > 100
     assert all(x[5] for x in rows if x[10] is not None)                       # every GPS punch has a place name
+
+
+CAT_DIR = REF / "employeecategoryreportandholidaylists"
+
+
+@pytest.mark.skipif(not CAT_DIR.exists(), reason="category report / holiday lists not present")
+def test_real_categories_and_holiday_lists(client):
+    """v1.7 on the real files: greytHR's category report + every category's holiday list on top of October."""
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import Category, Employee, HolidayCalendar, MonthResult
+    c = client
+    make_user()
+    login_full(c)
+    base = ["DateOfJoiningReport.xlsx", "EmployeeSwipeDetails (1).xlsx", "Attendance Muster Report.xlsx"]
+    files = [("files", (f, (REF / f).read_bytes(), "application/octet-stream")) for f in base]
+    files += [("files", (f.name, f.read_bytes(), "application/octet-stream")) for f in sorted(CAT_DIR.glob("*.xlsx"))]
+    r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")}, files=files)
+    assert r.status_code == 200 and "Unexpected" not in r.text and "Could not" not in r.text, r.text[-2000:]
+    assert "Employee category report" in r.text and "HSCO (Carlyle) 2026: 16 holidays loaded" in r.text
+    assert "taken as 01-May-2026" in r.text and "taken as 25-Dec-2026" in r.text      # printed list's year typos
+    with session_scope() as db:
+        emps = {e.emp_no: e for e in db.scalars(select(Employee))}
+        cats = {x.name: x for x in db.scalars(select(Category))}
+        cal = {x.id: x for x in db.scalars(select(HolidayCalendar))}
+        assert sum(1 for e in emps.values() if e.category) == 96 and "TOTAL NUMBER OF RECORDS : 101" not in emps
+        assert {k: sum(1 for e in emps.values() if e.category == k) for k in cats} == {
+            "HSCO (Mum)": 66, "HSCO (Carlyle)": 14, "HSCO (CDTIPL)": 6, "HSCO (CDTIPL) Boutique": 3, "HSCO (Delhi)": 2,
+            "HSCO (MDS)": 1, "Article": 4, "HSCO (CBV)": 0}
+        assert emps["HS118"].category == "Article" and emps["HS118"].additional_category == "HSCO (Mum)"
+        assert emps["HS126"].additional_category == "Article"                    # cached VLOOKUP value
+        assert emps["HS068"].category == "HSCO (CDTIPL) Boutique"                # report spelling kept
+        mds = cal[cats["HSCO (MDS)"].holiday_calendar_id]
+        assert len(mds.holidays) == 12 and sum(h.optional for h in mds.holidays) == 2   # two MDS files → one list
+        assert not any(x.is_default for x in cal.values())
+        res = {r.emp_no: r for r in db.scalars(select(MonthResult))}
+    d2 = lambda e: next(x for x in res[e].days if x["date"] == "2026-10-02")  # noqa: E731
+    assert res["HS007"].category == "HSCO (Carlyle)" and d2("HS007")["type"] == "HOLIDAY"       # Carlyle list
+    assert d2("HS002")["type"] == "WORKDAY"                                                      # Mum list: none
+    st = c.get("/settings").text
+    conf = st.split('id="cat-conf"')[1].split("</table>")[0]
+    assert "2026-10-02" in conf and "HSCO (Carlyle)" in conf and "Mahatma Gandhi Jayanti" in conf
+    assert "No holiday list yet" in st and "HSCO (CDTIPL) (6)" in st and "HSCO (Delhi) (2)" in st
+    ins = c.get("/insights?period=2026-10").text
+    assert "Categories compared" in ins and "HSCO (Carlyle)" in ins

@@ -62,6 +62,31 @@ def _months_back(period: Period, n: int) -> list[tuple[int, int]]:
 _CACHE: dict = {}
 
 
+def _compare(rows: list[dict], by: str) -> list[dict]:
+    """One line per group / category: the firm's comparison measures (Insights → Groups compared)."""
+    out = []
+    by_g = defaultdict(list)
+    for x in rows:
+        by_g[x.get(by) or "(not set)"].append(x)
+    for g, rs in sorted(by_g.items()):
+        wd = sum(x["workdays"] for x in rs)
+        out.append({
+            "group": g, "headcount": len(rs),
+            "attendance_pct": _pct(sum(x["present_days"] for x in rs), wd),
+            "absenteeism_pct": _pct(sum(x["unplanned_days"] for x in rs), wd),
+            "punctuality_pct": _avg([x["punctuality_pct"] for x in rs if x["behaviour"]]),
+            "utilisation_pct": _pct(sum(x["actual_hours"] for x in rs), sum(x["required_hours"] for x in rs)),
+            "avg_hours": _avg([x["avg_hours"] for x in rs]),
+            "wfh_pct": _pct(sum(x["wfh_days"] for x in rs), sum(x["present_days"] for x in rs)),
+            "regularisation_pct": _pct(sum(x["regularised_days"] for x in rs if x["behaviour"]),
+                                       sum(x["present_days"] for x in rs if x["behaviour"])),
+            "absence_12m_days": round(sum(x["absence_12m_days"] for x in rs), 1),
+            "attention_avg": _avg([x["attention"] for x in rs]),
+            "deduction_days": round(sum(x["deduction_days"] for x in rs), 1),
+        })
+    return out
+
+
 def insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
     """Cached per period until any month is recalculated or employee master data / settings change."""
     from sqlalchemy import func
@@ -131,6 +156,7 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         ent = policy.annual_leave_days
         row = {
             "emp_no": r.emp_no, "name": r.name, "group": r.group or "", "location": r.location or "",
+            "category": r.category or d.get("category") or "",
             "behaviour": (r.group or "") not in excl,
             "tenure_m": tenure_m, "doj": e.doj.isoformat() if e and e.doj else "",
             "workdays": workdays, "present_days": d.get("days_present") or 0,
@@ -228,27 +254,9 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         "fy_label": f"FY {fy}-{str(fy + 1)[-2:]}",
     }
 
-    # ---------------------------------------------------------------- group comparison
-    groups = []
-    by_g = defaultdict(list)
-    for x in rows:
-        by_g[x["group"] or "(not set)"].append(x)
-    for g, rs in sorted(by_g.items()):
-        wd = sum(x["workdays"] for x in rs)
-        groups.append({
-            "group": g, "headcount": len(rs),
-            "attendance_pct": _pct(sum(x["present_days"] for x in rs), wd),
-            "absenteeism_pct": _pct(sum(x["unplanned_days"] for x in rs), wd),
-            "punctuality_pct": _avg([x["punctuality_pct"] for x in rs if x["behaviour"]]),
-            "utilisation_pct": _pct(sum(x["actual_hours"] for x in rs), sum(x["required_hours"] for x in rs)),
-            "avg_hours": _avg([x["avg_hours"] for x in rs]),
-            "wfh_pct": _pct(sum(x["wfh_days"] for x in rs), sum(x["present_days"] for x in rs)),
-            "regularisation_pct": _pct(sum(x["regularised_days"] for x in rs if x["behaviour"]),
-                                       sum(x["present_days"] for x in rs if x["behaviour"])),
-            "absence_12m_days": round(sum(x["absence_12m_days"] for x in rs), 1),
-            "attention_avg": _avg([x["attention"] for x in rs]),
-            "deduction_days": round(sum(x["deduction_days"] for x in rs), 1),
-        })
+    # ---------------------------------------------------------------- group / category comparison
+    groups = _compare(rows, "group")
+    categories = _compare(rows, "category")
 
     # ---------------------------------------------------------------- arrival heatmap & hours histogram
     buckets = sorted({b for _, b in arrivals}, key=lambda b: "00" if b.startswith("<") else "99" if "+" in b else b)
@@ -258,7 +266,7 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
 
     out = {
         "period": {"key": period.key, "label": period.label},
-        "kpis": kpis, "rows": rows, "groups": groups, "arrival": arrival,
+        "kpis": kpis, "rows": rows, "groups": groups, "categories": categories, "arrival": arrival,
         "hours_hist": [{"bucket": lab, "count": hours_hist.get(lab, 0)} for _, _, lab in HOURS_BUCKETS],
         "weights": WEIGHTS,
         "trend": insight_trend(db, period, hist, hist_ids),
@@ -322,7 +330,7 @@ def matrix(res: list[MonthResult]) -> dict:
         for dt in dates:
             dd = by.get(dt)
             cells.append(_state(dd) if dd else "")
-        out.append({"emp_no": r.emp_no, "name": r.name, "group": r.group or "", "s": "".join(
+        out.append({"emp_no": r.emp_no, "name": r.name, "group": r.group or "", "category": r.category or "", "s": "".join(
             (c[0] if c not in ("LOP", "LATE", "HALF", "WFH", "XW") else {"LOP": "X", "LATE": "T", "HALF": "½",
                                                                        "WFH": "W", "XW": "E"}[c]) if c else "."
             for c in cells)})

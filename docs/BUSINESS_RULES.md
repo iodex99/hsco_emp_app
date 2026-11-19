@@ -25,8 +25,13 @@ with the default shown. Engine code: `app/engine/compute.py` (pure functions, un
      `MUSTER` (use greytHR OFF), `STD_FIRST_SAT` (Sun off, Sat off except 1st), `ALL_SAT_OFF`, `SUN_ONLY`,
      `CUSTOM` (choose the weekly-off weekdays, e.g. Wednesday only for HS068, plus which Saturdays of the month are
      working when Saturday is an off day, e.g. `1,3`).
-   - Holiday: if the employee has a **holiday calendar** assigned (or a default calendar exists) → date in calendar;
-     otherwise greytHR `H`. A holiday on a weekly‑off day stays a weekly off.
+   - **Category (v1.7, §2b) decides the defaults**: weekly-off pattern, hours per day and holiday list come from the
+     employee's own settings, else their category, else their additional category, else greytHR / policy / the
+     default calendar.
+   - Holiday: if the employee has a **holiday calendar** (own → category's → additional category's → default) → date
+     in calendar; otherwise greytHR `H`. A holiday on a weekly‑off day stays a weekly off.
+   - **Optional holiday** (list flag *Is Optional*): a HOLIDAY only when greytHR marks the person's day `H` (they took
+     it, named "… (optional)"); otherwise a working day with the note "Optional holiday (…) — not taken".
    - **Targeted holiday** (v1.6.4, `targeted_holidays`, `services/holidays.py`): a holiday for some people only, on top
      of their calendar. Applies to every employee listed by number, plus everyone whose location is in *locations*
      (blank = any) **and** whose group is in *groups* (blank = any); at least one of the three must be set. Matching
@@ -148,7 +153,8 @@ Re‑open = admin only, reason mandatory, audit‑logged.
 **Delete a month** (v1.4.1) = admin only, DRAFT only, reason + typing the month name, audit‑logged; removes the month's
 imports, results, corrections and reviews; later draft months are recalculated.
 
-## 11. Import rules (v1.4.1)
+## 11. Import rules (v1.4.1; v1.7: employee numbers must be ≤ 20 characters, without spaces, with a digit — report
+footers such as "Total number of records : 101" are skipped)
 - **Month of a file:** day-level files (muster, swipes) belong to the month most of their dates fall in; a title month
   is only used when there are no dates (and a disagreement is reported). Files more than one month ahead of today
   are refused (usually a wrong year).
@@ -164,3 +170,23 @@ imports, results, corrections and reviews; later draft months are recalculated.
 ## 12. Calculation-rule changes (v1.6.4)
 `engine.compute.RULES_VERSION` is bumped whenever a rule changes; on the next start the app recalculates every
 calculated **draft** month once (`maintenance.recalc_on_rules_change`). Finalised months keep their figures.
+
+## 2b. Employee categories (v1.7)
+greytHR "Category" (HSCO (Mum), HSCO (Carlyle), HSCO (CDTIPL), HSCO (CDTIPL) Boutique, HSCO (Delhi), HSCO (MDS),
+HSCO (CBV), Article). `Employee.category` + `additional_category` (e.g. Article + HSCO (Mum)). `Category`: holiday list
+(calendar), weekly-off pattern ('' = not set), off weekdays / working Saturdays (CUSTOM), hours per day (blank = not set).
+**What applies** (first match): weekly offs — employee's own pattern (anything but *Follow category*) → category →
+additional category → greytHR muster; hours/day — employee → category → additional → policy; holidays — employee's
+calendar → category's → additional's → default calendar → greytHR `H`.
+**Names match loosely** (`categories.key`: letters/digits only, lower case, firm prefix "HSCO" dropped).
+**Imports:** *Employee Category Report* (Employee Number, Name, Curr.Location, Curr.Category, Additional Category —
+cached values of VLOOKUP cells are used) sets category / additional category / location; categories are created as
+needed; a category first created by a holiday list takes the report's spelling. **Holiday lists:** each row goes to
+its Category's own calendar (created and linked on first use, never the default) → else Calendar → else the category
+in the file name (no Category/Calendar column) → else Location (older lists) → "Standard". All rows of one file are
+applied together; for each calendar and year with ≥ 5 holidays the file **replaces** that year (moved dates removed;
+fewer = added only). A Day column is checked; a date whose year differs from the list's main year is corrected when
+the same day/month in that year falls on the stated weekday, otherwise reported. Pasted lists follow the same rules.
+**Targeted holidays** may name categories (matched against category and additional category).
+**Check these dates:** in the latest calculated draft month, a (category, date) where ≥ 50 % (and ≥ 2) of the
+category's people have "Holiday calendar differs from greytHR".

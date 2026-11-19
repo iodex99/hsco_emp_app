@@ -95,6 +95,8 @@ class Employee:
     exempt: bool = False
     exempt_reason: str = ""
     holidays: Optional[dict] = None        # {date: name} from assigned calendar, None = use muster
+    optional_holidays: dict = field(default_factory=dict)   # {date: name} optional holidays of that calendar (v1.7)
+    category: str = ""
     targeted_holidays: dict = field(default_factory=dict)   # {date: name} holidays aimed at this person (v1.6.4)
 
 

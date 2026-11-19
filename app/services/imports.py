@@ -17,7 +17,7 @@ from app.importers import parsers as P
 from app.importers.readers import read_workbook
 from app.config import get_config
 from app.models import (
-    Employee, Holiday, HolidayCalendar, ImportBatch, LeaveOpening, ManualMisRow, MusterRow, Period, Setting, SummaryRow,
+    Category, Employee, Holiday, HolidayCalendar, ImportBatch, LeaveOpening, ManualMisRow, MusterRow, Period, Setting, SummaryRow,
     SwipeRow, User,
 )
 from app.services.audit import audit
@@ -183,6 +183,8 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                                           + (", some columns were inferred from their values" if d.inferred else "")
                                           + "). Please confirm the columns before importing."})
     sha = hashlib.sha256(data).hexdigest()
+    hol_plan: list = []           # holiday-list rows of every sheet of this file, applied together after the loop
+    hol_sheets: list = []         # index in results of each holiday-list sheet (for the summary lines)
     # every employee once (no per-row lookups; new ones are added as they appear)
     emp_cache: dict = {e.emp_no: e for e in db.scalars(select(Employee))}
     for ds in dets:
@@ -267,11 +269,17 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                     e.location = r["location"]
                 db.add(ManualMisRow(period_id=period.id, emp_no=r["emp_no"], data=r))
                 n += 1
-        elif kind == "employee_master":
+        elif kind in ("employee_master", "employee_category"):
             recs = P.parse_employee_master(rows, ds)
             cals = {c.name.lower(): c for c in db.scalars(select(HolidayCalendar))}
+            from app.services import categories as CAT
+            cat_cache = CAT.by_key(db)
             for r in recs:
                 e = _ensure_employee(db, emp_cache, r["emp_no"], r.get("name", ""), "master")
+                for k in ("category", "additional_category"):
+                    if r.get(k):
+                        c = _category_from_report(db, cat_cache, emp_cache, r[k])
+                        setattr(e, k, c.name if c else r[k])
                 for k in ("name", "group", "location", "department", "designation", "email", "exempt_reason"):
                     if r.get(k):
                         setattr(e, k, r[k])
@@ -281,7 +289,14 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                 if "exempt" in r:
                     e.exempt = bool(r["exempt"])
                 if r.get("weekly_off"):
-                    e.weekly_off = r["weekly_off"].strip().upper()
+                    from app.engine.model import PATTERNS
+                    wo = r["weekly_off"].strip().upper().replace(" ", "_")
+                    wo = "CATEGORY" if wo in ("CATEGORY", "FOLLOW_CATEGORY", "AS_PER_CATEGORY") else wo
+                    if wo in PATTERNS or wo == "CATEGORY":
+                        e.weekly_off = wo
+                    else:
+                        warnings.append(f"{r['emp_no']}: weekly off pattern '{r['weekly_off']}' not recognised — kept "
+                                        f"{e.weekly_off}")
                 if r.get("working_saturdays"):
                     e.working_saturdays = r["working_saturdays"]
                 if r.get("holiday_calendar"):
@@ -320,9 +335,10 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
             recs = P.parse_holidays(rows, ds)
             from app.models import TargetedHoliday
             from app.services import holidays as TH
+            _check_weekdays(recs, warnings)
             emp_lookup = None
             for r in recs:
-                if r["for_locations"] or r["for_groups"] or r["for_employees"]:
+                if r["for_locations"] or r["for_groups"] or r["for_employees"] or r["for_categories"]:
                     # targeted holiday: employees given by number or exact name
                     if emp_lookup is None:
                         emp_lookup, by_name = {}, {}
@@ -343,31 +359,35 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                         else:
                             warnings.append(f"{r['date']:%d-%b-%Y} {r['name'] or 'holiday'}: employee '{x}' not found")
                     locs, grps, emps = TH.join([r["for_locations"]]), TH.join([r["for_groups"]]), TH.join(emps)
-                    if not (locs or grps or emps):
+                    cats = TH.join([r["for_categories"]])
+                    if not (locs or grps or emps or cats):
                         continue
                     same = db.scalar(select(TargetedHoliday).where(
                         TargetedHoliday.day == r["date"], TargetedHoliday.locations == locs,
-                        TargetedHoliday.groups == grps, TargetedHoliday.emp_nos == emps))
+                        TargetedHoliday.groups == grps, TargetedHoliday.emp_nos == emps,
+                        TargetedHoliday.categories == cats))
                     if same is None:
                         db.add(TargetedHoliday(day=r["date"], name=r["name"] or "Holiday", locations=locs, groups=grps,
-                                               emp_nos=emps, created_by=user.username if user else ""))
+                                               emp_nos=emps, categories=cats, created_by=user.username if user else ""))
                     else:
                         same.name = r["name"] or same.name
                     n += 1
                     continue
-                cname = r["calendar"] or "Standard"
-                cal = db.scalar(select(HolidayCalendar).where(HolidayCalendar.name == cname))
-                if cal is None:
-                    first = db.scalar(select(HolidayCalendar.id).limit(1)) is None
-                    cal = HolidayCalendar(name=cname, is_default=first)
-                    db.add(cal)
-                    db.flush()
-                h = db.scalar(select(Holiday).where(Holiday.calendar_id == cal.id, Holiday.day == r["date"]))
-                if h is None:
-                    db.add(Holiday(calendar_id=cal.id, day=r["date"], name=r["name"]))
+                # which list: the row's Category (each category has its own list) → Calendar → the category in
+                # the file name ("… HSCO (Carlyle) 2026.xlsx") → Location (older lists) → "Standard"
+                if r["category"]:
+                    target = ("category", r["category"])
+                elif r["calendar"]:
+                    target = ("calendar", r["calendar"])
+                elif "category" not in ds.map and "calendar" not in ds.map and CAT_NAME_FROM_FILE(filename):
+                    target = ("category", CAT_NAME_FROM_FILE(filename))
+                elif r["location"]:
+                    target = ("calendar", r["location"])
                 else:
-                    h.name = r["name"]
+                    target = ("calendar", "Standard")
+                hol_plan.append({**r, "target": target, "sheet": ds.sheet})
                 n += 1
+            hol_sheets.append(len(results))
             touched.update(p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT")))
         if period is not None:
             touched.add(period.id)
@@ -377,12 +397,145 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
         results.append({"kind": kind, "label": P.KIND_LABELS[kind], "sheet": ds.sheet, "rows": n,
                         "period": period.label if period else "", "warnings": warnings[:20],
                         "mapping": ds.describe(), "source": ds.source, "confidence": ds.confidence})
+    if hol_plan:
+        lines = _apply_holiday_lists(db, hol_plan, emp_cache)
+        if hol_sheets:
+            results[hol_sheets[0]]["notes"] = lines
+            audit(db, user, "holidays.list", "holiday", filename, {"summary": lines[:20]}, ip)
     db.flush()
     if touched_out is not None:
         touched_out.update(touched)
     if recompute:
         recompute_from(db, touched)
     return results
+
+
+def CAT_NAME_FROM_FILE(filename: str) -> str:  # noqa: N802 — small alias, reads like a constant lookup
+    from app.services.categories import name_from_filename
+    return name_from_filename(filename)
+
+
+def _category_from_report(db: Session, cache: dict, emp_cache: dict, name: str):
+    """The category for a name in an employee report (loosely matched). A category first created from a holiday
+    list with a slightly different spelling and no employees yet takes the report's spelling (master data)."""
+    from app.services import categories as CAT
+    c = CAT.find(db, name, cache)
+    if c is None:
+        return CAT.ensure(db, name, cache)
+    clean = " ".join(name.split())[:64]
+    if c.name != clean and not any(e.category == c.name or e.additional_category == c.name for e in emp_cache.values()):
+        if db.scalar(select(Category).where(Category.name == clean)) is None:
+            c.name = clean
+    return c
+
+
+def _check_weekdays(recs: list, warnings: list) -> None:
+    """Lists with a Day column: the weekday must match the date. A wrong year (a 2025 date in a 2026 list) is corrected
+    when the same day and month in the list's year falls on the stated weekday; anything else is reported."""
+    from collections import Counter
+    years = Counter(r["date"].year for r in recs if r.get("date"))
+    main = years.most_common(1)[0][0] if years else None
+    names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    for r in recs:
+        wd = r.get("weekday")
+        if wd is None or not r.get("date") or r["date"].weekday() == wd:
+            continue
+        d = r["date"]
+        alt = None
+        if main and d.year != main:
+            try:
+                alt = d.replace(year=main)
+            except ValueError:
+                alt = None
+        if alt and alt.weekday() == wd:
+            warnings.append(f"{r['name'] or 'Holiday'}: {d:%d-%b-%Y} is a {names[d.weekday()]}, but the list says "
+                            f"{names[wd]} — taken as {alt:%d-%b-%Y} ({names[wd]}), the list's year.")
+            r["date"] = alt
+        else:
+            warnings.append(f"{r['name'] or 'Holiday'}: {d:%d-%b-%Y} is a {names[d.weekday()]}, but the list says "
+                            f"{names[wd]} — please check this date.")
+
+
+FULL_LIST_MIN = 5    # a sheet with at least this many holidays in a year is a full list for that year
+
+
+def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
+    """Write the holiday-list rows of one file. Each category's rows go to that category's own calendar (created
+    and linked on first use, never made the default). For every calendar and year with a full list (≥ 5 holidays) the
+    file *replaces* that year — dates that moved are removed — so next year's or a revised list is just uploaded
+    again. Returns plain-language summary lines (added / removed / changed per calendar and year)."""
+    from collections import defaultdict
+    from app.services import categories as CAT
+    cache = CAT.by_key(db)
+    cal_by_name = {c.name.lower(): c for c in db.scalars(select(HolidayCalendar))}
+    lines: list[str] = []
+    wanted: dict = defaultdict(dict)          # calendar id -> {date: row}
+    cal_objs: dict = {}
+    for r in plan:
+        how, name = r["target"]
+        if how == "category":
+            cat = CAT.find(db, name, cache)
+            if cat is None:
+                cat = CAT.ensure(db, name, cache)
+                if not any(CAT.key(e.category) == CAT.key(cat.name) or CAT.key(e.additional_category) == CAT.key(cat.name)
+                           for e in emp_cache.values()):
+                    lines.append(f"New category “{cat.name}” (from the holiday list) — no employees in it yet; import the "
+                                 "employee category report or set it on the employee's page.")
+            cal = db.get(HolidayCalendar, cat.holiday_calendar_id) if cat.holiday_calendar_id else None
+            if cal is None:
+                cal = cal_by_name.get(cat.name.lower())
+                if cal is None:
+                    cal = HolidayCalendar(name=cat.name, is_default=False)
+                    db.add(cal)
+                    db.flush()
+                    cal_by_name[cal.name.lower()] = cal
+                cat.holiday_calendar_id = cal.id
+        else:
+            cal = cal_by_name.get(name.lower())
+            if cal is None:
+                first = db.scalar(select(HolidayCalendar.id).limit(1)) is None and not cache
+                cal = HolidayCalendar(name=name, is_default=first)
+                db.add(cal)
+                db.flush()
+                cal_by_name[cal.name.lower()] = cal
+        cal_objs[cal.id] = cal
+        wanted[cal.id].setdefault(r["date"], r)
+    for cid, rows in wanted.items():
+        cal = cal_objs[cid]
+        by_year = defaultdict(dict)
+        for d, r in rows.items():
+            by_year[d.year][d] = r
+        for year, new in sorted(by_year.items()):
+            old = {h.day: h for h in db.scalars(select(Holiday).where(Holiday.calendar_id == cid,
+                                                                     Holiday.day >= date(year, 1, 1),
+                                                                     Holiday.day <= date(year, 12, 31)))}
+            full = len(new) >= FULL_LIST_MIN
+            removed = [h for d, h in old.items() if d not in new] if full else []
+            for h in removed:
+                db.delete(h)
+            db.flush()
+            added, changed = 0, 0
+            for d, r in sorted(new.items()):
+                nm = (r["name"] or "Holiday").strip()[:128]
+                h = old.get(d)
+                if h is None:
+                    db.add(Holiday(calendar_id=cid, day=d, name=nm, optional=bool(r.get("optional"))))
+                    added += 1
+                elif h.name != nm or bool(h.optional) != bool(r.get("optional")):
+                    h.name, h.optional = nm, bool(r.get("optional"))
+                    changed += 1
+            n_opt = sum(1 for r in new.values() if r.get("optional"))
+            what = f"{len(new)} holidays" + (f" ({n_opt} optional)" if n_opt else "")
+            if not old:
+                lines.append(f"{cal.name} {year}: {what} loaded.")
+            else:
+                bits = [f"{added} new" if added else "", f"{changed} changed" if changed else "",
+                        ("removed " + ", ".join(f"{h.name} {h.day:%d-%b}" for h in removed)) if removed else ""]
+                bits = [b for b in bits if b]
+                lines.append(f"{cal.name} {year}: {what} — " + ("; ".join(bits) if bits else "no changes") + "."
+                             + ("" if full else " (Short list: added to the year, nothing removed.)"))
+    db.flush()
+    return lines
 
 
 FULL_FILE_SHARE = 0.8

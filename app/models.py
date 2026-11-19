@@ -122,7 +122,27 @@ class Holiday(Base):
     calendar_id: Mapped[int] = mapped_column(ForeignKey("holiday_calendars.id", ondelete="CASCADE"))
     day: Mapped[date] = mapped_column(Date)
     name: Mapped[str] = mapped_column(String(128), default="")
+    # optional (restricted) holiday: a working day unless greytHR marks the person's day as a holiday (v1.7)
+    optional: Mapped[bool] = mapped_column(Boolean, default=False)
     calendar: Mapped[HolidayCalendar] = relationship(back_populates="holidays")
+
+
+class Category(Base):
+    """Employee category (greytHR "Category", e.g. HSCO (Mum), HSCO (Carlyle)) — v1.7. Each category can carry its
+    holiday list (calendar), weekly-off pattern and hours per day; employees follow their category unless their own
+    settings say otherwise. Blank pattern / hours = not set (next: additional category, then greytHR / policy)."""
+    __tablename__ = "categories"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    holiday_calendar_id: Mapped[int | None] = mapped_column(ForeignKey("holiday_calendars.id", ondelete="SET NULL"),
+                                                            nullable=True)
+    weekly_off: Mapped[str] = mapped_column(String(16), default="")
+    off_weekdays: Mapped[str] = mapped_column(String(32), default="5,6")
+    working_saturdays: Mapped[str] = mapped_column(String(16), default="")
+    hours_per_day: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+    holiday_calendar: Mapped[HolidayCalendar | None] = relationship()
 
 
 class Employee(Base):
@@ -131,12 +151,14 @@ class Employee(Base):
     name: Mapped[str] = mapped_column(String(128), default="")
     group: Mapped[str] = mapped_column(String(32), default="")
     location: Mapped[str] = mapped_column(String(64), default="")
+    category: Mapped[str] = mapped_column(String(64), default="")              # v1.7 (Category.name)
+    additional_category: Mapped[str] = mapped_column(String(64), default="")   # e.g. Article + HSCO (Mum)
     department: Mapped[str] = mapped_column(String(64), default="")
     designation: Mapped[str] = mapped_column(String(64), default="")
     email: Mapped[str] = mapped_column(String(256), default="")
     doj: Mapped[date | None] = mapped_column(Date, nullable=True)
     dol: Mapped[date | None] = mapped_column(Date, nullable=True)
-    weekly_off: Mapped[str] = mapped_column(String(16), default="MUSTER")
+    weekly_off: Mapped[str] = mapped_column(String(16), default="CATEGORY")   # CATEGORY = follow the category
     off_weekdays: Mapped[str] = mapped_column(String(32), default="5,6")      # CUSTOM pattern
     working_saturdays: Mapped[str] = mapped_column(String(16), default="")   # CUSTOM pattern e.g. "1,3"
     hours_per_day: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -159,6 +181,7 @@ class TargetedHoliday(Base):
     locations: Mapped[str] = mapped_column(String(512), default="")   # comma-separated, blank = any
     groups: Mapped[str] = mapped_column(String(512), default="")      # comma-separated, blank = any
     emp_nos: Mapped[str] = mapped_column(Text, default="")            # comma-separated employee numbers
+    categories: Mapped[str] = mapped_column(String(512), default="")  # comma-separated, blank = any (v1.7)
     created_by: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
@@ -331,6 +354,7 @@ class MonthResult(Base):
     name: Mapped[str] = mapped_column(String(128), default="")
     group: Mapped[str] = mapped_column(String(32), default="")
     location: Mapped[str] = mapped_column(String(64), default="")
+    category: Mapped[str] = mapped_column(String(64), default="")      # snapshot at calculation time (v1.7)
     deduction_days: Mapped[float] = mapped_column(Float, default=0)
     balance_hours: Mapped[float] = mapped_column(Float, default=0)
     flag_count: Mapped[int] = mapped_column(Integer, default=0)

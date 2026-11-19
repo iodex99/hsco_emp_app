@@ -165,6 +165,13 @@ def emp_id(v: Any) -> str:
     return str(v).strip().upper()
 
 
+def _row_emp(r, ds) -> str:
+    """The row's employee number, or "" for footer / note rows ("Total number of records : 101") that sit in the
+    employee-number column: a number is at most 20 characters, has no spaces and contains a digit."""
+    e = emp_id(_g(r, ds, "emp_no"))
+    return e if e and len(e) <= 20 and not re.search(r"\s", e) and re.search(r"\d", e) else ""
+
+
 _STATUS_WORDS = {   # words only — short codes (P, A, PL, WO, PH, AB…) are kept as written; see status_codes()
     "present": "P", "work from home": "WFH", "on duty": "OD",
     "absent": "A", "unpaid leave": "LOP", "leave without pay": "LOP", "loss of pay": "LOP",
@@ -253,7 +260,10 @@ F = {
     "doj": (["joined on", "date of joining", "doj", "joining date", "join date", "date joined", "hire date", "start date"], "date"),
     "dol": (["date of leaving", "dol", "leaving date", "exit date", "last working day", "relieving date", "lwd",
              "date of exit"], "date"),
-    "group": (["group", "category", "employee group", "cadre", "staff category", "grade group"], "text"),
+    "group": (["group", "employee group", "cadre", "grade group", "staff group"], "text"),
+    "category": (["category", "curr category", "current category", "employee category", "category name"], "text"),
+    "additional_category": (["additional category", "addl category", "secondary category", "other category",
+                             "additional categories"], "text"),
     "location": (["location", "branch", "office", "work location", "city", "base location"], "text"),
     "department": (["department", "dept", "division", "team"], "text"),
     "designation": (["designation", "title", "job title", "role", "position"], "text"),
@@ -269,7 +279,12 @@ F = {
     "compoff_balance": (["comp off balance", "compoff balance", "comp off", "co balance", "compensatory off balance"], "number"),
     "as_of": (["as of", "as on", "as at", "balance date", "date"], "date"),
     "holiday_name": (["holiday", "holiday name", "occasion", "festival", "description"], "text"),
-    "calendar": (["calendar", "holiday calendar", "location"], "text"),
+    "calendar": (["calendar", "holiday calendar", "calendar name"], "text"),
+    "optional": (["is optional", "optional", "optional holiday", "restricted", "restricted holiday", "holiday type"],
+                 "optional"),
+    "weekday": (["day", "weekday", "week day", "day of week", "day name"], "weekday"),
+    "for_categories": (["for categories", "for category", "applies to categories", "applies to category",
+                        "target categories", "target category", "only for categories", "only for category"], "text"),
     # targeted holidays (v1.6.4): who a holiday-list row is for; any of these makes the row a targeted holiday
     "for_locations": (["for locations", "for location", "applies to locations", "applies to location",
                        "target locations", "target location", "only for locations", "only for location"], "text"),
@@ -320,9 +335,13 @@ SCHEMAS = {
     "doj": (["emp_no", "doj"], ["name", "dol", "department", "designation", "location"], 0.8),
     "employee_master": (["emp_no", ("group", "weekly_off", "hours_per_day", "exempt")],
                         ["name", "location", "weekly_off", "working_saturdays", "hours_per_day", "exempt", "exempt_reason",
-                         "holiday_calendar", "doj", "dol", "email", "department", "designation", "group"], 0.9),
+                         "holiday_calendar", "doj", "dol", "email", "department", "designation", "group",
+                         "category", "additional_category"], 0.9),
     "leave_opening": (["emp_no", "leave_balance"], ["name", "compoff_balance", "as_of"], 1.1),
-    "holidays": (["date", "holiday_name"], ["calendar", "for_locations", "for_groups", "for_employees"], 0.7),
+    "holidays": (["date", "holiday_name"], ["calendar", "category", "location", "optional", "weekday", "for_locations",
+                                            "for_groups", "for_categories", "for_employees"], 0.7),
+    # greytHR "Employee Category Report": Employee Number, Name, Curr.Location, Curr.Category, Additional Category
+    "employee_category": (["emp_no", "category"], ["name", "location", "additional_category", "group"], 0.95),
 }
 KIND_LABELS = {
     "muster": "Attendance Muster Report (day-wise status)",
@@ -332,6 +351,7 @@ KIND_LABELS = {
     "mis_manual": "Manual MIS working (for reconciliation / employee master)",
     "leave_opening": "Leave / comp-off opening balances",
     "holidays": "Holiday list",
+    "employee_category": "Employee category report",
     "employee_master": "Employee master",
 }
 FIELD_LABELS = {k: v[0][0].title() for k, v in F.items()}
@@ -392,6 +412,26 @@ def _values(rows, header_row, col, n=40):
     return out
 
 
+_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+_OPT_TRUE = {"yes", "y", "true", "optional", "restricted", "rh", "oh", "1"}
+_OPT_WORDS = _OPT_TRUE | {"no", "n", "false", "0", "", "fixed", "mandatory", "public", "gazetted", "national", "regular"}
+
+
+def weekday_of(v: Any) -> Optional[int]:
+    """'Thursday' / 'Thu' / 'thu.' → 3 (Mon=0); None when the value is not a weekday name."""
+    s = re.sub(r"[^a-z]", "", str(v or "").lower())
+    if len(s) < 3:
+        return None
+    for i, w in enumerate(_WEEKDAYS):
+        if w.startswith(s) or s == w:
+            return i
+    return None
+
+
+def is_optional(v: Any) -> bool:
+    return str(v or "").strip().lower() in _OPT_TRUE
+
+
 def _fits(vtype: str, vals: list) -> float:
     """Share of sample values that look like the field's type (1.0 when there are no values to judge)."""
     if not vals:
@@ -421,6 +461,10 @@ def _fits(vtype: str, vals: list) -> float:
             return -180 <= num(v, 999) <= 180
         if vtype == "coords":
             return bool(_COORD_RE.search(str(v)))
+        if vtype == "weekday":
+            return weekday_of(v) is not None
+        if vtype == "optional":
+            return str(v or "").strip().lower() in _OPT_WORDS
         return True
     return sum(1 for v in vals if ok(v)) / len(vals)
 
@@ -738,7 +782,7 @@ def _combine(day: date, v: Any) -> Optional[datetime]:
 def parse_muster(rows, ds) -> tuple[list[MusterDay], list[str]]:
     out, warn = [], []
     for n, r in _numbered_rows(rows, ds):
-        e = emp_id(_g(r, ds, "emp_no"))
+        e = _row_emp(r, ds)
         d = parse_date(_g(r, ds, "date"))
         if not e or not d:
             if any(v not in (None, "") for v in r):
@@ -765,7 +809,7 @@ def parse_swipes(rows, ds) -> tuple[list[Swipe], dict, list[str]]:
     out, names, warn = [], {}, []
     swapped = 0
     for n, r in _numbered_rows(rows, ds):
-        e = emp_id(_g(r, ds, "emp_no"))
+        e = _row_emp(r, ds)
         ts = None
         if "timestamp" in ds.map:
             ts = parse_dt(_g(r, ds, "timestamp"))
@@ -820,7 +864,7 @@ def parse_summary(rows, ds) -> list[dict]:
             "short_fall": "short_fall", "excess": "excess"}
     out = []
     for r in _data_rows(rows, ds):
-        e = emp_id(_g(r, ds, "emp_no"))
+        e = _row_emp(r, ds)
         if not e:
             continue
         rec = {k: (str(_g(r, ds, f)).strip() if _g(r, ds, f) is not None else "") for k, f in keys.items()}
@@ -832,7 +876,7 @@ def parse_summary(rows, ds) -> list[dict]:
 def parse_doj(rows, ds) -> list[dict]:
     out = []
     for r in _data_rows(rows, ds):
-        e = emp_id(_g(r, ds, "emp_no"))
+        e = _row_emp(r, ds)
         if not e or e.lower().startswith("total"):
             continue
         out.append({"emp_no": e, "name": str(_g(r, ds, "name") or "").strip(), "doj": parse_date(_g(r, ds, "doj")),
@@ -849,7 +893,7 @@ def parse_mis_manual(rows, ds) -> list[dict]:
           "actual_hours": "actual_hours", "balance_hours": "balance_hours", "remark": "remark"}
     out = []
     for r in _data_rows(rows, ds):
-        e = emp_id(_g(r, ds, "emp_no"))
+        e = _row_emp(r, ds)
         if not e or not re.match(r"^[A-Z0-9]+$", e):
             continue
         rec = {"emp_no": e}
@@ -871,12 +915,13 @@ _BOOL_T = {"y", "yes", "true", "1", "exempt"}
 def parse_employee_master(rows, ds) -> list[dict]:
     out = []
     for r in _data_rows(rows, ds):
-        e = emp_id(_g(r, ds, "emp_no"))
+        e = _row_emp(r, ds)
         if not e:
             continue
         rec = {"emp_no": e}
         for k in ("name", "group", "location", "weekly_off", "working_saturdays", "hours_per_day", "exempt",
-                  "exempt_reason", "holiday_calendar", "doj", "dol", "email", "department", "designation"):
+                  "exempt_reason", "holiday_calendar", "doj", "dol", "email", "department", "designation",
+                  "category", "additional_category"):
             if k not in ds.map:
                 continue
             v = _g(r, ds, k)
@@ -895,7 +940,7 @@ def parse_employee_master(rows, ds) -> list[dict]:
 def parse_leave_opening(rows, ds) -> list[dict]:
     out = []
     for r in _data_rows(rows, ds):
-        e = emp_id(_g(r, ds, "emp_no"))
+        e = _row_emp(r, ds)
         if e:
             out.append({"emp_no": e, "leave_balance": num(_g(r, ds, "leave_balance"), None),
                         "compoff_balance": num(_g(r, ds, "compoff_balance"), None) if "compoff_balance" in ds.map else None,
@@ -910,8 +955,11 @@ def parse_holidays(rows, ds) -> list[dict]:
         if d:
             out.append({"date": d, "name": str(_g(r, ds, "holiday_name") or "").strip(),
                         "calendar": str(_g(r, ds, "calendar") or "").strip() if "calendar" in ds.map else "",
+                        "optional": is_optional(_g(r, ds, "optional")) if "optional" in ds.map else False,
+                        "weekday": weekday_of(_g(r, ds, "weekday")) if "weekday" in ds.map else None,
                         **{k: str(_g(r, ds, k) or "").strip() if k in ds.map else ""
-                           for k in ("for_locations", "for_groups", "for_employees")}})
+                           for k in ("category", "location", "for_locations", "for_groups", "for_categories",
+                                     "for_employees")}})
     return out
 
 

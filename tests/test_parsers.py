@@ -343,3 +343,86 @@ def test_real_logo_passes_sanitiser():
     from app.services import branding
     out = branding.sanitize_svg((REF / "logo.svg").read_bytes())
     assert out.startswith("<svg") and "<script" not in out
+
+
+def test_category_names_effective_settings_and_pasted_lists():
+    """v1.7: loose category matching, category from a file name, what applies to an employee, pasted holiday lists."""
+    from datetime import date
+    from types import SimpleNamespace as NS
+    from app.services import categories as CAT
+    from app.services.holidays import parse_pasted
+    assert CAT.key("HSCO (CDTIPL) Boutique") == CAT.key("HSCO (CDTIPL Boutique)") == "cdtiplboutique"
+    assert CAT.key("MDS") == CAT.key("HSCO (MDS)") and CAT.key("Hsco (Mum)") == CAT.key("HSCO (Mum)") == "mum"
+    assert CAT.key("HSCO") == "hsco"                                     # the prefix alone is a name, not empty
+    assert CAT.name_from_filename("Holiday List Importer HSCO (Carlyle) 2026.xlsx") == "HSCO (Carlyle)"
+    assert CAT.name_from_filename("Holiday List Importer HSCO (CDTIPL Boutique).xlsx") == "HSCO (CDTIPL Boutique)"
+    assert CAT.name_from_filename("holidays.xlsx") == ""
+    mum = NS(name="HSCO (Mum)", weekly_off="ALL_SAT_OFF", off_weekdays="5,6", working_saturdays="", hours_per_day=8.0,
+             holiday_calendar_id=11)
+    art = NS(name="Article", weekly_off="", off_weekdays="5,6", working_saturdays="", hours_per_day=None,
+             holiday_calendar_id=None)
+    cats = {CAT.key(x.name): x for x in (mum, art)}
+    emp = lambda **k: NS(**{"category": "", "additional_category": "", "weekly_off": "CATEGORY", "off_weekdays": "5,6",  # noqa: E731
+                            "working_saturdays": "", "hours_per_day": None, "holiday_calendar_id": None, **k})
+    x = CAT.effective(emp(category="Article", additional_category="Hsco (Mum)"), cats, 5)
+    assert (x.weekly_off, x.pattern_from, x.hours_per_day, x.calendar_id, x.calendar_from) == \
+        ("ALL_SAT_OFF", "HSCO (Mum)", 8.0, 11, "HSCO (Mum)")              # Article has none → additional category
+    x = CAT.effective(emp(category="HSCO (Mum)", weekly_off="SUN_ONLY", hours_per_day=7.5, holiday_calendar_id=3), cats, 5)
+    assert (x.weekly_off, x.pattern_from, x.hours_per_day, x.calendar_id) == ("SUN_ONLY", "employee", 7.5, 3)
+    x = CAT.effective(emp(), cats, 5)
+    assert (x.weekly_off, x.pattern_from, x.calendar_id, x.calendar_from) == ("MUSTER", "greytHR", 5, "default")
+    assert CAT.effective(emp(), cats, None).calendar_from == "greytHR"
+    rows, skipped = parse_pasted("India List of Holidays 2026\nS.No Holiday Date\n1 Republic Day 26 January 2026\n"
+                                 "26-01-2026 Republic Day (Monday)\nGood Friday, Apr 3, 2026 (optional)\n"
+                                 "1 01-01-2026 Thursday CHRISTIAN NEW YEAR\n2026-11-08\tDiwali\n3rd March 2026 Holi")
+    got = [(r["date"], r["name"], r["optional"], r["weekday"]) for r in rows]
+    assert got == [(date(2026, 1, 26), "Republic Day", False, None), (date(2026, 1, 26), "Republic Day", False, 0),
+                   (date(2026, 4, 3), "Good Friday", True, None), (date(2026, 1, 1), "CHRISTIAN NEW YEAR", False, 3),
+                   (date(2026, 11, 8), "Diwali", False, None), (date(2026, 3, 3), "Holi", False, None)]
+    assert skipped == ["India List of Holidays 2026"]
+
+
+def test_migration_moves_default_pattern_to_follow_category(data_dir):
+    from app.db import init_db, migrate_data, session_scope
+    from app.models import Employee
+    init_db()
+    with session_scope() as db:
+        db.add(Employee(emp_no="M1", name="a", weekly_off="MUSTER"))
+        db.add(Employee(emp_no="M2", name="b", weekly_off="ALL_SAT_OFF"))
+    with session_scope() as db:                       # pretend the migration hasn't run on this (older) database
+        from app.models import Setting
+        db.get(Setting, "migrations").value = {"done": []}
+    migrate_data()
+    migrate_data()                                    # once only
+    with session_scope() as db:
+        assert db.get(Employee, "M1").weekly_off == "CATEGORY" and db.get(Employee, "M2").weekly_off == "ALL_SAT_OFF"
+
+
+@pytest.mark.skipif(not (REF / "employeecategoryreportandholidaylists").exists(), reason="category files not present")
+def test_real_category_report_and_holiday_lists_detected():
+    from app.importers.readers import read_workbook
+    D = REF / "employeecategoryreportandholidaylists"
+    found = {}
+    for f in sorted(D.glob("*.xlsx")):
+        for name, rows in read_workbook(f.read_bytes(), f.name).items():
+            ds = P.detect_sheet(name, rows)
+            found[(f.name, name)] = ds
+            assert ds is not None and not P.needs_review(ds), (f.name, name)
+    rep = found[("EmployeeCategoryReport.xlsx", "Sheet0")]
+    assert rep.kind == "employee_category" and {"emp_no", "category", "additional_category", "location"} <= set(rep.map)
+    assert "group" not in rep.map                                        # never mistaken for the group any more
+    for (fn, sh), ds in found.items():
+        if fn.startswith("Holiday"):
+            assert ds.kind == "holidays" and "calendar" not in ds.map, fn        # Location is not the calendar
+    mum0 = found[("Holiday List Importer  HSCO (Mum).xlsx", "Sheet0")]
+    assert {"category", "optional", "date", "holiday_name"} <= set(mum0.map)
+    assert "weekday" in found[("Holiday List Importer  HSCO (Mum).xlsx", "Sheet1")].map
+
+
+def test_footer_rows_are_not_employees():
+    rows = [["Employee Category Report"], ["Employee Number", "Employee Name", "Curr.Location", "Curr.Category"],
+            ["HS001", "A", "Mumbai", "HSCO (Mum)"], ["HS002", "B", "Mumbai", "HSCO (Mum)"], ["HS003", "C", "Delhi", "HSCO (Delhi)"],
+            ["Total number of records : 3"], ["Generated by greytHR", None, None, None]]
+    ds = P.detect_sheet("Sheet0", rows)
+    assert ds.kind == "employee_category"
+    assert [r["emp_no"] for r in P.parse_employee_master(rows, ds)] == ["HS001", "HS002", "HS003"]

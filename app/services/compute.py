@@ -23,23 +23,33 @@ def _ints(s: str) -> tuple:
     return tuple(int(x) for x in (s or "").replace(" ", "").split(",") if x.strip().lstrip("-").isdigit())
 
 
-def engine_employee(e: Employee, holidays: Optional[dict], targeted: Optional[dict] = None) -> M.Employee:
+def engine_employee(e: Employee, holidays: Optional[dict], targeted: Optional[dict] = None,
+                    eff=None, optional: Optional[dict] = None) -> M.Employee:
+    """eff = categories.Effective (what applies after the category rules); without it the employee's own settings."""
+    pat = eff.weekly_off if eff else (e.weekly_off if e.weekly_off in M.PATTERNS else M.P_MUSTER)
+    offs = eff.off_weekdays if eff else e.off_weekdays
+    sats = eff.working_saturdays if eff else e.working_saturdays
+    hpd = eff.hours_per_day if eff else e.hours_per_day
     return M.Employee(
         emp_no=e.emp_no, name=e.name, group=e.group or "", location=e.location or "", doj=e.doj, dol=e.dol,
-        weekly_off=e.weekly_off or M.P_MUSTER, off_weekdays=_ints(e.off_weekdays) or (5, 6),
-        working_saturdays=_ints(e.working_saturdays), hours_per_day=e.hours_per_day, exempt=bool(e.exempt),
+        weekly_off=pat or M.P_MUSTER, off_weekdays=_ints(offs) or (5, 6),
+        working_saturdays=_ints(sats), hours_per_day=hpd, exempt=bool(e.exempt),
         exempt_reason=e.exempt_reason or "", holidays=holidays, targeted_holidays=targeted or {},
+        optional_holidays=optional or {}, category=e.category or "",
     )
 
 
-def calendars_for_month(db: Session, year: int, month: int) -> tuple[dict, Optional[int]]:
+def calendars_for_month(db: Session, year: int, month: int) -> tuple[dict, Optional[int], dict]:
+    """({calendar id: {date: name}} of regular holidays, default calendar id, {calendar id: {date: name}} optional)."""
     cals = db.scalars(select(HolidayCalendar)).all()
-    out, default_id = {}, None
+    out, opt, default_id = {}, {}, None
     for c in cals:
-        out[c.id] = {h.day: h.name for h in c.holidays if h.day.year == year and h.day.month == month}
+        hs = [h for h in c.holidays if h.day.year == year and h.day.month == month]
+        out[c.id] = {h.day: h.name for h in hs if not h.optional}
+        opt[c.id] = {h.day: h.name for h in hs if h.optional}
         if c.is_default:
             default_id = c.id
-    return out, default_id
+    return out, default_id, opt
 
 
 def get_period(db: Session, year: int, month: int, create: bool = False) -> Optional[Period]:
@@ -94,13 +104,17 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
     policy = get_policy(db)
     y, m = period.year, period.month
     emps_db = {e.emp_no: e for e in db.scalars(select(Employee)).all()}
-    cal_days, default_cal = calendars_for_month(db, y, m)
+    cal_days, default_cal, cal_opt = calendars_for_month(db, y, m)
+    from app.services import categories as CAT
     from app.services import holidays as TH
     targeted = TH.by_employee(TH.for_month(db, y, m), emps_db.values())
+    cats = CAT.by_key(db)
     employees = {}
     for k, e in emps_db.items():
-        cal_id = e.holiday_calendar_id or default_cal
-        employees[k] = engine_employee(e, cal_days.get(cal_id) if cal_id else None, targeted.get(k))
+        eff = CAT.effective(e, cats, default_cal)
+        cal_id = eff.calendar_id
+        employees[k] = engine_employee(e, cal_days.get(cal_id) if cal_id else None, targeted.get(k), eff,
+                                       cal_opt.get(cal_id) if cal_id else None)
 
     # plain rows, not ORM objects (thousands per month)
     muster = [M.MusterDay(*r) for r in db.execute(
@@ -137,6 +151,8 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
     db.execute(delete(MonthResult).where(MonthResult.period_id == period.id))
     for emp_no, r in results.items():
         data = {k: getattr(r, k) for k in SCALARS}
+        data["category"] = (emps_db[emp_no].category or "") if emp_no in emps_db else ""
+        data["additional_category"] = (emps_db[emp_no].additional_category or "") if emp_no in emps_db else ""
         for k, v in list(data.items()):
             if isinstance(v, float):
                 data[k] = round(v, 4)
@@ -158,6 +174,7 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
                           "message": f"Comp-off availed beyond balance by {ledger['compoff_overdraft']:g} day(s)"})
         flags.extend(loc_flags.get(emp_no, []))
         db.add(MonthResult(period_id=period.id, emp_no=emp_no, name=r.name, group=r.group, location=r.location,
+                           category=(emps_db[emp_no].category or "") if emp_no in emps_db else "",
                            deduction_days=r.deduction_days, balance_hours=round(r.balance_hours, 4),
                            flag_count=sum(1 for f in flags if f["severity"] in ("critical", "high", "medium")),
                            data=data, flags=flags, days=days))

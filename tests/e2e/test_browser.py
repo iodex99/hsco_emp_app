@@ -211,6 +211,13 @@ def test_full_browser_journey(server):
                      f"/employees/{emp}"):
             page.goto(base + path)
             page.wait_for_load_state("networkidle")
+        # ... and every tab of the pages with charts (a chart script error only shows when its tab is drawn)
+        for path in ("/", "/insights", "/settings", "/exceptions", "/locations"):
+            page.goto(base + path)
+            page.wait_for_load_state("load")
+            for i in range(page.locator(".tabs [data-tab]").count()):
+                page.locator(".tabs [data-tab]").nth(i).click()
+                page.wait_for_timeout(150)
         for name, path in (("10_reconciliation", "/reconciliation"), ("11_employees", "/employees"), ("12_settings", "/settings"),
                            ("13_users", "/users"), ("14_flags", "/flags"), ("15_exports", "/exports")):
             page.goto(base + path)

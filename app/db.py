@@ -43,6 +43,26 @@ def init_db() -> None:
 
     with session_scope() as db:
         ensure_defaults(db)
+    migrate_data()
+
+
+def migrate_data() -> None:
+    """One-time data migrations, each recorded in the settings table so it runs once. Results never change by them
+    alone (draft months are recalculated by the rules-version step at start-up)."""
+    from sqlalchemy import update
+    from app.models import Employee, Setting
+    with session_scope() as db:
+        st = db.get(Setting, "migrations")
+        done = set((st.value or {}).get("done", [])) if st else set()
+        if "categories_v1" not in done:
+            # v1.7: weekly-off "MUSTER" was simply the default — employees now follow their category (whose pattern
+            # defaults to greytHR's muster, so figures stay the same until a category pattern is set)
+            db.execute(update(Employee).where(Employee.weekly_off.in_(("MUSTER", "", None))).values(weekly_off="CATEGORY"))
+            done.add("categories_v1")
+        if st is None:
+            db.add(Setting(key="migrations", value={"done": sorted(done)}))
+        else:
+            st.value = {"done": sorted(done)}
 
 
 def add_missing_columns(engine) -> list[str]:

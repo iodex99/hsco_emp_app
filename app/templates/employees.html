@@ -5,7 +5,7 @@
 {% set active = emps|rejectattr('dol')|selectattr('is_active')|list %}
 <div class="ph"><div><h1>Employees</h1><div class="sub">{{ active|length }} active · {{ emps|length - active|length }} left{% if latest %} · figures from {{ latest.label }}{% endif %}</div></div>
   <div class="actions">{% if can_hr %}<a class="btn sec" href="/exports/templates/employee_master.xlsx">{{ ui.icon('download','sm') }} Export master</a><a class="btn" href="/employees/new">{{ ui.icon('user-plus','sm') }} Add employee</a>{% endif %}</div></div>
-{% set nogroup = emps|rejectattr('group')|list %}
+{% set nogroup = emps|rejectattr('group')|list %}{% set nocat = emps|rejectattr('dol')|rejectattr('category')|list %}
 {% if nogroup and can_hr %}<div class="alert warn">{{ ui.icon('triangle-alert') }}<span><b>{{ nogroup|length }} employee{{ 's' if nogroup|length > 1 }} without a group</b> — exemptions can't apply to them. Use the “No group” filter below.</span></div>{% endif %}
 <div class="card flush">
   <div class="hd" style="flex-wrap:wrap;gap:10px">
@@ -16,25 +16,29 @@
       <button class="chip" data-chip="custom" type="button">Special working pattern</button>
       <button class="chip" data-chip="exempt" type="button">Exempt</button>
       {% if nogroup %}<button class="chip" data-chip="nogroup" type="button">No group <span class="n">{{ nogroup|length }}</span></button>{% endif %}
+      {% if nocat %}<button class="chip" data-chip="nocat" type="button">No category <span class="n">{{ nocat|length }}</span></button>{% endif %}
     </div>
     <span class="small muted" style="margin-left:auto">Quick filters</span>
   </div>
   <div data-table-for="#emps"></div>
   <div class="bd"><div class="tw"><table id="emps" data-table data-csv="employees" class="compact">
-  <thead><tr><th class="sticky" data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="loc" data-type="enum">Location</th><th data-key="doj" data-type="date">Joined</th><th data-key="pattern" data-type="text">Working pattern</th><th data-key="exempt" data-type="enum">Exemption</th><th class="num" data-key="balance" data-type="num">Last month +/− h</th><th class="num" data-key="flags" data-type="num">Flags</th></tr></thead><tbody>
+  <thead><tr><th class="sticky" data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="cat" data-type="enum">Category</th><th data-key="loc" data-type="enum">Location</th><th data-key="doj" data-type="date">Joined</th><th data-key="pattern" data-type="text">Working pattern</th><th data-key="exempt" data-type="enum">Exemption</th><th class="num" data-key="balance" data-type="num">Last month +/− h</th><th class="num" data-key="flags" data-type="num">Flags</th></tr></thead><tbody>
   {% for e in emps %}{% set r = last.get(e.emp_no) %}{% set left = e.dol or not e.is_active %}
   <tr class="click" data-href="{{ '/periods/' ~ latest.key ~ '/employee/' ~ e.emp_no if r and latest else '/employees/' ~ e.emp_no }}"
-      data-tags="{{ 'left' if left else 'active' }} {{ 'custom' if e.weekly_off != 'MUSTER' or e.hours_per_day or e.holiday_calendar_id }} {{ 'exempt' if e.exempt }} {{ 'nogroup' if not e.group }}">
+      data-tags="{{ 'left' if left else 'active' }} {{ 'custom' if e.weekly_off not in ('CATEGORY', 'MUSTER') or e.hours_per_day or e.holiday_calendar_id }} {{ 'exempt' if e.exempt }} {{ 'nogroup' if not e.group }} {{ 'nocat' if not e.category and not e.dol }}">
     <td class="sticky" data-v="{{ e.name }}" data-csv="{{ e.name }} ({{ e.emp_no }})">{{ ui.person(e.name, e.emp_no ~ (' · left ' ~ (e.dol|dmy) if e.dol else '')) }}</td>
-    <td>{% if e.group %}{{ e.group }}{% else %}<span class="badge b-warn">not set</span>{% endif %}</td><td>{{ e.location }}</td>
+    <td>{% if e.group %}{{ e.group }}{% else %}<span class="badge b-warn">not set</span>{% endif %}</td>
+    <td class="small" data-v="{{ e.category }}" data-csv="{{ e.category }}{{ ' + ' ~ e.additional_category if e.additional_category }}">{{ e.category or '—' }}{% if e.additional_category %} <span class="muted">+ {{ e.additional_category }}</span>{% endif %}</td><td>{{ e.location }}</td>
     <td data-v="{{ e.doj or '' }}" class="small">{{ e.doj|dmy }}</td>
-    <td class="small">{% if e.weekly_off == 'MUSTER' and not e.hours_per_day and not e.holiday_calendar_id %}<span class="muted">Standard</span>{% else %}
-      {% if e.weekly_off != 'MUSTER' %}<span class="tag">{{ {'STD_FIRST_SAT':'1st Sat working','ALL_SAT_OFF':'All Sat off','SUN_ONLY':'6-day week','CUSTOM':'Custom off-days'}.get(e.weekly_off, e.weekly_off) }}</span>{% endif %}
-      {% if e.hours_per_day %}<span class="tag">{{ e.hours_per_day|n }} h/day</span>{% endif %}{% if e.holiday_calendar_id %}<span class="tag">{{ cals.get(e.holiday_calendar_id) }}</span>{% endif %}{% endif %}</td>
+    {% set x = eff[e.emp_no] %}{% set short = {'MUSTER':'greytHR offs','STD_FIRST_SAT':'1st Sat working','ALL_SAT_OFF':'All Sat off','SUN_ONLY':'6-day week','CUSTOM':'Custom off-days'} %}
+    <td class="small" data-v="{{ short.get(x.weekly_off, x.weekly_off) }} {{ cals.get(x.calendar_id, '') }}">
+      <span class="tag" title="Weekly offs — from {{ 'the employee page' if x.pattern_from == 'employee' else x.pattern_from }}">{{ short.get(x.weekly_off, x.weekly_off) }}{% if x.pattern_from == 'employee' %} ✎{% endif %}</span>
+      {% if x.hours_per_day %}<span class="tag" title="from {{ 'the employee page' if x.hours_from == 'employee' else x.hours_from }}">{{ x.hours_per_day|n }} h/day{% if x.hours_from == 'employee' %} ✎{% endif %}</span>{% endif %}
+      {% if x.calendar_id %}<span class="tag" title="Holiday list — from {{ 'the employee page' if x.calendar_from == 'employee' else x.calendar_from }}">{{ cals.get(x.calendar_id) }}{% if x.calendar_from == 'employee' %} ✎{% endif %}</span>{% endif %}</td>
     <td class="small">{% if e.exempt %}<span class="badge b-grey">{{ e.exempt_reason or 'Exempt' }}</span>{% endif %}</td>
     <td class="num {{ 'neg' if r and r.balance_hours < 0 }}" data-v="{{ r.balance_hours if r else '' }}">{{ r.balance_hours|n(1) if r else '' }}</td>
     <td class="num">{% if r and r.flag_count %}<span class="badge b-warn">{{ r.flag_count }}</span>{% endif %}</td>
   </tr>{% endfor %}</tbody></table></div></div>
 </div>
-<p class="help">Click a row to open the employee's latest month. Settings (group, working pattern, exemption) are on the employee page.</p>
+<p class="help">Click a row to open the employee's latest month. Working pattern shows what applies (from the category unless marked ✎ = set on the employee page). Settings are on the employee page; category settings in Rules &amp; calendars → Categories.</p>
 {% endblock %}

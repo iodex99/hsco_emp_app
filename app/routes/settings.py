@@ -10,7 +10,9 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from app.engine.model import BUCKETS
-from app.models import Employee, Holiday, HolidayCalendar, Period, SwipeRow, TargetedHoliday
+from app.engine.model import PATTERNS, WEEKDAY_NAMES
+from app.models import Category, Employee, Holiday, HolidayCalendar, MonthResult, Period, SwipeRow, TargetedHoliday
+from app.services import categories as CAT
 from app.services import holidays as TH
 from app.services import branding
 from app.services.audit import audit
@@ -63,17 +65,32 @@ def settings_page(c: Ctx = Depends(hr)):
     names = {e.emp_no: e.name for e in emps}
     targeted = []
     for h in c.db.scalars(select(TargetedHoliday).order_by(TargetedHoliday.day.desc())):
-        who = [e for e in emps if TH.applies(h, e.emp_no, e.location or "", e.group or "") and _active_on(e, h.day)]
+        who = [e for e in emps if TH.applies(h, e.emp_no, e.location or "", e.group or "",
+                                             (e.category, e.additional_category)) and _active_on(e, h.day)]
         targeted.append({"h": h, "who": TH.describe(h, names), "count": len(who),
                          "people": ", ".join(e.name for e in who[:40]) + (" …" if len(who) > 40 else ""),
                          "unknown": [x for x in TH.split(h.emp_nos) if x not in names]})
+    # categories: settings, people, gaps, and days where a category's list and greytHR disagree
+    cat_rows = CAT.overview(c.db)
+    cal_use = {}
+    for r in cat_rows:
+        if r["c"].holiday_calendar_id:
+            cal_use.setdefault(r["c"].holiday_calendar_id, []).append(r["c"].name)
+    latest = c.db.scalar(select(Period).where(Period.computed_at.is_not(None), Period.status == "DRAFT")
+                         .order_by(Period.year.desc(), Period.month.desc()))
+    conflicts = CAT.calendar_conflicts(c.db, c.db.scalars(select(MonthResult).where(MonthResult.period_id == latest.id))
+                                       ) if latest else []
+    this_year = date.today().year
     return render(c, "settings.html", backups=BK.list_backups()[:12], bk=BK.summary(),
                   pol=get_policy_json(c.db), g=get_general(c.db), numbers=POLICY_NUMBERS,
                   buckets=BUCKETS, cals=cals, shift_names=shift_names, targeted=targeted,
+                  cat_rows=cat_rows, cal_use=cal_use, conflicts=conflicts, conflict_period=latest,
+                  uncategorised=CAT.uncategorised(c.db), patterns=PATTERNS, weekday_names=WEEKDAY_NAMES,
+                  this_year=this_year, th_categories=[r["c"].name for r in cat_rows],
                   th_locations=sorted({e.location for e in emps if e.location}),
                   th_groups=sorted({e.group for e in emps if e.group}),
-                  th_people=[(e.emp_no, e.name, e.location or "", e.group or "") for e in emps
-                             if not e.dol or e.dol >= date.today()])
+                  th_people=[(e.emp_no, e.name, e.location or "", e.group or "", e.category or "",
+                              e.additional_category or "") for e in emps if not e.dol or e.dol >= date.today()])
 
 
 @router.post("/settings/policy")
@@ -201,17 +218,114 @@ def delete_calendar(cid: int, c: Ctx = Depends(hr)):
 
 
 @router.post("/settings/calendars/{cid}/holiday")
-def add_holiday(cid: int, day: str = Form(...), name: str = Form(""), c: Ctx = Depends(hr)):
+def add_holiday(cid: int, day: str = Form(...), name: str = Form(""), optional: str = Form(""),
+                c: Ctx = Depends(hr)):
     cal = c.db.get(HolidayCalendar, cid)
     if not cal:
         return redirect("/settings#holidays", "Calendar not found.")
     d = date.fromisoformat(day)
-    if c.db.scalar(select(Holiday).where(Holiday.calendar_id == cid, Holiday.day == d)) is None:
-        c.db.add(Holiday(calendar_id=cid, day=d, name=name.strip()))
-    audit(c.db, c.user, "holiday.add", "calendar", cal.name, {"day": day, "name": name}, c.ip)
+    h = c.db.scalar(select(Holiday).where(Holiday.calendar_id == cid, Holiday.day == d))
+    if h is None:
+        c.db.add(Holiday(calendar_id=cid, day=d, name=name.strip(), optional=bool(optional)))
+    else:
+        h.name, h.optional = name.strip() or h.name, bool(optional)
+    audit(c.db, c.user, "holiday.add", "calendar", cal.name, {"day": day, "name": name, "optional": bool(optional)}, c.ip)
     c.db.flush()
     _recompute_drafts(c)
     return redirect("/settings#holidays", f"Holiday {d:%d-%b-%Y} added to {cal.name}.")
+
+
+@router.post("/settings/calendars/{cid}/paste")
+def paste_holidays(cid: int, text: str = Form(""), c: Ctx = Depends(hr)):
+    """Holidays pasted as text (e.g. copied from a PDF). A full year (≥ 5 holidays) replaces that year of the calendar,
+    a shorter paste is added — same rule as a holiday-list upload."""
+    cal = c.db.get(HolidayCalendar, cid)
+    if not cal:
+        return redirect("/settings#holidays", "Calendar not found.")
+    from app.services.imports import _apply_holiday_lists, _check_weekdays
+    rows, skipped = TH.parse_pasted(text)
+    if not rows:
+        return redirect("/settings#holidays", "No dates found in the pasted text — one holiday per line, with its date.")
+    warnings: list = []
+    _check_weekdays(rows, warnings)
+    plan = [{**r, "target": ("calendar", cal.name), "sheet": "pasted"} for r in rows]
+    lines = _apply_holiday_lists(c.db, plan, {})
+    audit(c.db, c.user, "holiday.paste", "calendar", cal.name, {"rows": len(rows), "summary": lines,
+                                                                "skipped": skipped[:10]}, c.ip)
+    c.db.flush()
+    _recompute_drafts(c)
+    msg = " ".join(lines + warnings)
+    if skipped:
+        msg += f" Lines without a date were skipped: {'; '.join(skipped[:3])}{' …' if len(skipped) > 3 else ''}"
+    return redirect("/settings#holidays", msg)
+
+
+# ---------------------------------------------------------------- categories (v1.7)
+@router.post("/settings/categories/save")
+def save_category(cid: str = Form(""), name: str = Form(...), holiday_calendar_id: str = Form(""),
+                  weekly_off: str = Form(""), off_weekdays: list[str] = Form([]), working_saturdays: str = Form(""),
+                  hours_per_day: str = Form(""), notes: str = Form(""), c: Ctx = Depends(hr)):
+    name = " ".join(name.split())[:64]
+    if not CAT.key(name):
+        return redirect("/settings#categories", "Enter a category name.")
+    cat = c.db.get(Category, int(cid)) if cid.strip().isdigit() else None
+    clash = CAT.find(c.db, name)
+    if clash is not None and (cat is None or clash.id != cat.id):
+        return redirect("/settings#categories", f"A category like “{name}” already exists: {clash.name}.")
+    try:
+        hpd = float(hours_per_day) if hours_per_day.strip() else None
+    except ValueError:
+        return redirect("/settings#categories", "Hours per day must be a number.")
+    new = cat is None
+    if new:
+        cat = Category(name=name)
+        c.db.add(cat)
+        c.db.flush()
+    before = {k: str(getattr(cat, k)) for k in ("name", "holiday_calendar_id", "weekly_off", "off_weekdays",
+                                                "working_saturdays", "hours_per_day")}
+    old_name = cat.name
+    if holiday_calendar_id == "new":
+        cal = c.db.scalar(select(HolidayCalendar).where(HolidayCalendar.name == name))
+        if cal is None:
+            cal = HolidayCalendar(name=name, is_default=False)
+            c.db.add(cal)
+            c.db.flush()
+        cat.holiday_calendar_id = cal.id
+    else:
+        cat.holiday_calendar_id = int(holiday_calendar_id) if holiday_calendar_id.strip().isdigit() else None
+    cat.name = name
+    cat.weekly_off = weekly_off if weekly_off in PATTERNS else ""
+    cat.off_weekdays = ",".join(sorted({x for x in off_weekdays if x.isdigit() and 0 <= int(x) <= 6})) or "5,6"
+    cat.working_saturdays = ",".join(x for x in working_saturdays.replace(" ", "").split(",") if x and x in "12345")
+    cat.hours_per_day = hpd
+    cat.notes = notes.strip()
+    if old_name != name:              # rename: employees keep their category
+        for e in c.db.scalars(select(Employee).where((Employee.category == old_name) |
+                                                     (Employee.additional_category == old_name))):
+            if e.category == old_name:
+                e.category = name
+            if e.additional_category == old_name:
+                e.additional_category = name
+    after = {k: str(getattr(cat, k)) for k in before}
+    audit(c.db, c.user, "category.create" if new else "category.update", "category", name,
+          {k: [before[k], after[k]] for k in before if before[k] != after[k]}, c.ip)
+    c.db.flush()
+    _recompute_drafts(c)
+    return redirect("/settings#categories", f"Category “{name}” saved; draft months recalculated.")
+
+
+@router.post("/settings/categories/{cid}/delete")
+def delete_category(cid: int, c: Ctx = Depends(hr)):
+    cat = c.db.get(Category, cid)
+    if cat is None:
+        return redirect("/settings#categories", "Category not found.")
+    used = c.db.scalar(select(Employee.emp_no).where((Employee.category == cat.name) |
+                                                    (Employee.additional_category == cat.name)).limit(1))
+    if used:
+        return redirect("/settings#categories", f"“{cat.name}” still has employees — move them to another category first.")
+    audit(c.db, c.user, "category.delete", "category", cat.name, {}, c.ip)
+    c.db.delete(cat)
+    return redirect("/settings#categories", f"Category “{cat.name}” deleted (its holiday calendar is kept).")
 
 
 @router.post("/settings/holidays/{hid}/delete")
@@ -242,24 +356,25 @@ def _recompute_month_of(c: Ctx, d: date) -> str:
 
 @router.post("/settings/targeted-holidays")
 def add_targeted_holiday(day: str = Form(...), name: str = Form(""), locations: list[str] = Form([]),
-                         groups: list[str] = Form([]), emp_nos: list[str] = Form([]), c: Ctx = Depends(hr)):
+                         groups: list[str] = Form([]), emp_nos: list[str] = Form([]), categories: list[str] = Form([]),
+                         c: Ctx = Depends(hr)):
     try:
         d = date.fromisoformat(day)
     except ValueError:
         return redirect("/settings#holidays", "Enter a valid date.")
-    locs, grps, emps = TH.join(locations), TH.join(groups), TH.join(emp_nos)
-    if not (locs or grps or emps):
-        return redirect("/settings#holidays", "Choose who the holiday is for: a location, a group or employees. "
-                                              "A holiday for everyone belongs in a holiday calendar.")
+    locs, grps, emps, cats = TH.join(locations), TH.join(groups), TH.join(emp_nos), TH.join(categories)
+    if not (locs or grps or emps or cats):
+        return redirect("/settings#holidays", "Choose who the holiday is for: a category, a location, a group or "
+                                              "employees. A holiday for everyone belongs in a holiday calendar.")
     known = set(c.db.scalars(select(Employee.emp_no)))
     bad = [x for x in TH.split(emps) if x not in known]
     if bad:
         return redirect("/settings#holidays", f"Unknown employee number(s): {', '.join(bad)}.")
     h = TargetedHoliday(day=d, name=name.strip() or "Holiday", locations=locs, groups=grps, emp_nos=emps,
-                        created_by=c.user.username)
+                        categories=cats, created_by=c.user.username)
     c.db.add(h)
     audit(c.db, c.user, "holiday.targeted.add", "holiday", d.isoformat(),
-          {"name": h.name, "locations": locs, "groups": grps, "employees": emps}, c.ip)
+          {"name": h.name, "locations": locs, "groups": grps, "categories": cats, "employees": emps}, c.ip)
     c.db.flush()
     note = _recompute_month_of(c, d)
     return redirect("/settings#holidays", f"Targeted holiday {d:%d-%b-%Y} added ({TH.describe(h)}).{note}")

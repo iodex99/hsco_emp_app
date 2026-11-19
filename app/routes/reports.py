@@ -77,23 +77,31 @@ def _wb(headers: list[str], rows: list[list], note: str) -> bytes:
 def template(name: str, c: Ctx = Depends(hr)):
     if name == "employee_master":
         cals = {x.id: x.name for x in c.db.scalars(select(HolidayCalendar))}
-        rows = [[e.emp_no, e.name, e.group, e.location, e.weekly_off, e.working_saturdays, e.hours_per_day,
-                 "Yes" if e.exempt else "", e.exempt_reason, cals.get(e.holiday_calendar_id, ""), e.doj, e.dol,
-                 e.email, e.department, e.designation]
+        rows = [[e.emp_no, e.name, e.group, e.category, e.additional_category, e.location, e.weekly_off,
+                 e.working_saturdays, e.hours_per_day, "Yes" if e.exempt else "", e.exempt_reason,
+                 cals.get(e.holiday_calendar_id, ""), e.doj, e.dol, e.email, e.department, e.designation]
                 for e in c.db.scalars(select(Employee).order_by(Employee.emp_no))]
-        data = _wb(["Employee No", "Name", "Group", "Location", "Weekly Off Pattern", "Working Saturdays", "Hours Per Day",
-                    "Exempt From Deduction", "Exempt Reason", "Holiday Calendar", "Date of Joining", "Date of Leaving",
-                    "Email", "Department", "Designation"], rows,
-                   "Employee master import.\nWeekly Off Pattern: MUSTER (follow greytHR), STD_FIRST_SAT, ALL_SAT_OFF, "
-                   "SUN_ONLY or CUSTOM (set off weekdays in the app).\nWorking Saturdays: e.g. 1 or 1,3 (CUSTOM only).\n"
+        data = _wb(["Employee No", "Name", "Group", "Category", "Additional Category", "Location", "Weekly Off Pattern",
+                    "Working Saturdays", "Hours Per Day", "Exempt From Deduction", "Exempt Reason", "Holiday Calendar",
+                    "Date of Joining", "Date of Leaving", "Email", "Department", "Designation"], rows,
+                   "Employee master import.\nCategory: greytHR employee category (decides holiday list, weekly offs and "
+                   "hours per day unless set on the employee).\n"
+                   "Weekly Off Pattern: CATEGORY (follow the category), MUSTER (follow greytHR), STD_FIRST_SAT, "
+                   "ALL_SAT_OFF, SUN_ONLY or CUSTOM (set off weekdays in the app).\nWorking Saturdays: e.g. 1 or 1,3 "
+                   "(CUSTOM only).\n"
                    "Hours Per Day: blank = policy default (8.5).\nExempt From Deduction: Yes/No — the hours-shortfall "
                    "deduction only (WFH over the limit is still deducted).\n"
                    "Holiday Calendar: name of a calendar created in Rules & calendars.\nBlank cells leave existing values unchanged.")
     elif name == "holidays":
-        data = _wb(["Date", "Holiday", "Calendar", "For Locations", "For Groups", "For Employees"], [],
-                   "Holiday list import. Date as dd-mm-yyyy or an Excel date.\n"
-                   "Calendar = calendar name (created automatically; blank = 'Standard') — the holiday is for everyone "
-                   "on that calendar.\n"
+        data = _wb(["Date", "Day", "Holiday", "Category", "Is Optional", "Calendar", "For Categories", "For Locations",
+                    "For Groups", "For Employees"], [],
+                   "Holiday list import (greytHR's Holiday List Importer files work as they are). Date as dd-mm-yyyy or "
+                   "an Excel date; Day (optional) is checked against the date.\n"
+                   "Category = the employee category whose list this is (e.g. HSCO (Mum)) — each category keeps its own "
+                   "list; a full year (5+ holidays) replaces that year, so next year's list is simply uploaded again.\n"
+                   "Is Optional: Yes / Optional = an optional holiday (a working day unless greytHR marks it H).\n"
+                   "Calendar = a named calendar instead of a category (blank both = 'Standard').\n"
+                   "For Categories: a one-off holiday only for these categories (targeted).\n"
                    "Targeted holiday: fill For Locations and/or For Groups (comma-separated; both = people matching "
                    "both) and/or For Employees (employee numbers or exact names; always included). Calendar is then "
                    "ignored for that row.")

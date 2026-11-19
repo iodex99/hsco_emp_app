@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.7.0 — 2026-11-19 — employee categories: holiday lists and working patterns per category
+Owner: "as every employee is assigned a group, in the same manner they have a category as well … in the app throughout
+(also manually editable) … the targeted holidays are targeted to those categories, the calendar and working pattern will
+also change as per their category … the holiday list is going to change every where (dates and days both)".
+- **Category for every employee** (+ an *additional category*, e.g. Article + HSCO (Mum)): greytHR's *Employee Category
+  Report* is recognised on the Import page (96 employees, 8 categories), or set on the employee's page.
+- **Per category: holiday list, weekly offs, hours per day** (Rules & calendars → *Categories*). An employee follows
+  their category, then their additional category, unless their own page says otherwise ("Follow category" choices
+  show what the category gives). Existing employees with the old default pattern now follow their category (one-time
+  migration; categories start "not set", so figures only change once a category list / pattern applies).
+- **Holiday lists per category:** greytHR's *Holiday List Importer* files (Holiday Date, Description, Is Optional,
+  Location, Category) go to that category's own list; a list without a Category column takes it from the file name
+  ("… HSCO (Carlyle) 2026.xlsx"); names are matched loosely ("HSCO (CDTIPL Boutique)" = "HSCO (CDTIPL) Boutique",
+  "MDS" = "HSCO (MDS)"). **Lists change every year:** a full year (5+ holidays) replaces that year of the list — moved
+  dates are removed — with a summary (added / changed / removed). A **Day column is checked** against the date; a wrong
+  year is corrected when the weekday fits the list's year (the printed Mum list had 1-May, 15-Aug, 25-Dec as 2025).
+  **Paste a list** into any calendar (e.g. copied from the New Delhi PDF). Category lists are never the default.
+- **Optional holidays** ("Is Optional: Optional"): a working day unless greytHR marks the person's day H (taken).
+- **Targeted holidays by category** (one-off holidays; also the *For Categories* column in a holiday list).
+- **Check these dates** (Categories tab): days where a category's list and greytHR disagree for most of its people —
+  October: 2-Oct for HSCO (Carlyle) (their list has Gandhi Jayanti; greytHR shows a working day for 12 of 14).
+- **Everywhere:** Employees (column, filter "No category", pattern with its source ✎), employee page and month header,
+  payroll sheet column, Overview *By group & category*, Insights scorecard / heatmap columns and *Categories
+  compared* (+ chart), Punch exceptions, Excel (payroll column *Category*, Board Summary by category, Scorecard,
+  *Categories Compared* sheet, templates with Category / Is Optional / Day / For Categories).
+- **Fixes found on the way:** a report's footer row ("Total number of records : 101") was created as an employee by
+  the employee-list imports — employee numbers must now look like one (≤ 20 characters, no spaces, a digit); the
+  category report's "Additional Category" column would have overwritten every employee's *group* ("category" is no
+  longer a group synonym); holiday lists were filed by Location (all Mumbai lists merged) and the first imported
+  list became everyone's default calendar.
+- Calculation rules version 6: draft months recalculate once after the update.
+
 ## 1.6.8 — 2026-11-18 — documentation
 BUSINESS_RULES and USER_GUIDE: "exempt from deduction" now says it covers the hours-shortfall deduction only (WFH over
 the limit is deducted unless the group is in *Groups not deducted for WFH*). No code change.

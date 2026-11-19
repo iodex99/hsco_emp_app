@@ -135,3 +135,9 @@ One row per employee-day with ≥ 1 issue; all from the stored day detail.
 | Absent / LOP / Worked on a day off | unauthorised absence or LOP half; work on a weekly off / holiday (not WFH) |
 Partners on automatic attendance are not checked for punch issues. "Punch issues" KPI = days with missing punch, no
 punch, changed times or a rejected sign-in; "Regularisations" = requests + changed times.
+
+## Categories (v1.7)
+Overview *By group & category* and Insights *Groups & categories* show the same measures per **category** (the
+category stored with each month's result; "(not set)" for people without one) as per group; Excel: Board Summary *By
+category*, *Categories Compared*, Scorecard column. Payroll sheet, Punch exceptions, heatmap and scorecard have a
+Category column (hidden by default where space is tight).

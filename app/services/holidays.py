@@ -1,8 +1,9 @@
 """Targeted holidays (docs/BUSINESS_RULES.md §2a): a holiday that applies only to some people — chosen locations,
 groups and/or named employees — on top of whatever holiday calendar each person follows.
 
-Who gets it: every employee listed by number, plus everyone matching the location and group filters (a filter left
-empty matches any value; at least one of locations / groups / employees must be given). Matching ignores case and
+Who gets it: every employee listed by number, plus everyone matching the location, group and category filters (a
+filter left empty matches any value; at least one of locations / groups / categories / employees must be given). A
+category matches the employee's category or additional category, loosely ("HSCO (Mum)" = "Hsco (Mum)"). Matching ignores case and
 surrounding spaces. Pure helpers + one month query; no web code.
 """
 from __future__ import annotations
@@ -35,23 +36,29 @@ def join(values: Iterable[str]) -> str:
     return ", ".join(split(list(values)))
 
 
-def applies(h, emp_no: str, location: str, group: str) -> bool:
-    """Does targeted holiday h (anything with .locations/.groups/.emp_nos strings) apply to this employee?"""
+def applies(h, emp_no: str, location: str, group: str, categories: tuple = ()) -> bool:
+    """Does targeted holiday h (.locations/.groups/.categories/.emp_nos strings) apply to this employee?
+    categories = the employee's (category, additional category)."""
+    from app.services.categories import key
     emps = {x.lower() for x in split(h.emp_nos)}
     if emp_no and emp_no.lower() in emps:
         return True
     locs = {x.lower() for x in split(h.locations)}
     grps = {x.lower() for x in split(h.groups)}
-    if not locs and not grps:
+    cats = {key(x) for x in split(getattr(h, "categories", "") or "")}
+    if not locs and not grps and not cats:
         return False
-    return (not locs or (location or "").strip().lower() in locs) and (not grps or (group or "").strip().lower() in grps)
+    return ((not locs or (location or "").strip().lower() in locs)
+            and (not grps or (group or "").strip().lower() in grps)
+            and (not cats or bool(cats & {key(c) for c in categories if c})))
 
 
 def describe(h, names: dict | None = None) -> str:
     """'Delhi & Article · plus Asha Rao (HS001)' style summary of who a targeted holiday is for."""
     parts = []
-    if split(h.locations) or split(h.groups):
-        a = " & ".join(x for x in (" / ".join(split(h.locations)), " / ".join(split(h.groups))) if x)
+    cats = split(getattr(h, "categories", "") or "")
+    if split(h.locations) or split(h.groups) or cats:
+        a = " & ".join(x for x in (" / ".join(split(h.locations)), " / ".join(split(h.groups)), " / ".join(cats)) if x)
         parts.append(a)
     if split(h.emp_nos):
         names = names or {}
@@ -72,6 +79,80 @@ def by_employee(holidays: list, employees: Iterable) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for e in employees:
         for h in holidays:
-            if applies(h, e.emp_no, e.location or "", e.group or ""):
+            if applies(h, e.emp_no, e.location or "", e.group or "",
+                       (getattr(e, "category", "") or "", getattr(e, "additional_category", "") or "")):
                 out.setdefault(e.emp_no, {})[h.day] = h.name or "Holiday"
     return out
+
+
+_MONTHS = "jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|" \
+          "september|october|november|december"
+_DATE_RES = [
+    re.compile(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?[\s\-/.]+({_MONTHS})[a-z]*[\s\-/.,]+(\d{{4}}|\d{{2}})\b", re.I),
+    re.compile(rf"\b({_MONTHS})[a-z]*[\s\-/.]+(\d{{1,2}})(?:st|nd|rd|th)?,?[\s\-/.]+(\d{{4}})\b", re.I),
+    re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b"),
+    re.compile(r"\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4}|\d{2})\b"),
+]
+_WD_RE = re.compile(r"\b(mon|tues|tue|wednes|wed|thurs|thu|fri|satur|sat|sun)(day)?\b\.?", re.I)
+_OPT_RE = re.compile(r"\(?\b(optional|restricted|rh)\b\)?", re.I)
+
+
+def _ymd(i: int, g: tuple):
+    """Date from the groups of _DATE_RES[i] (day-first for dd/mm/yyyy, as in India)."""
+    from datetime import date as _d
+    mon = {m[:3]: n for n, m in enumerate(("january", "february", "march", "april", "may", "june", "july", "august",
+                                           "september", "october", "november", "december"), start=1)}
+    try:
+        if i == 0:
+            dd, mm, yy = int(g[0]), mon[g[1][:3].lower()], int(g[2])
+        elif i == 1:
+            mm, dd, yy = mon[g[0][:3].lower()], int(g[1]), int(g[2])
+        elif i == 2:
+            yy, mm, dd = int(g[0]), int(g[1]), int(g[2])
+        else:
+            dd, mm, yy = int(g[0]), int(g[1]), int(g[2])
+        yy = yy + 2000 if yy < 100 else yy
+        return _d(yy, mm, dd) if 1990 <= yy <= 2100 else None
+    except (KeyError, ValueError):
+        return None
+
+
+def parse_pasted(text: str, default_year: int | None = None) -> tuple[list[dict], list[str]]:
+    """Holidays from pasted text — one per line, the date anywhere in it ("1  Republic Day  26 January 2026",
+    "26-01-2026 Republic Day", "Republic Day, Jan 26, 2026"); serial numbers, weekday names and the words
+    optional / restricted are understood. Returns (rows {date, name, optional, weekday}, lines that had no date)."""
+    from app.importers.parsers import weekday_of
+    rows, skipped = [], []
+    for raw in (text or "").splitlines():
+        line = " ".join(raw.replace("\t", " ").split())
+        if not line:
+            continue
+        d, span = None, None
+        for i, rx in enumerate(_DATE_RES):
+            m = rx.search(line)
+            if m:
+                d = _ymd(i, m.groups())
+                if d:
+                    span = m.span()
+                    break
+        if d is None:
+            if any(ch.isalpha() for ch in line) and not re.match(r"(?i)^(s\.?\s*no|sr|holiday|date|day|occasion)\b", line):
+                skipped.append(line)
+            continue
+        rest = (line[:span[0]] + " " + line[span[1]:]).strip()
+        optional = bool(_OPT_RE.search(rest))
+        rest = _OPT_RE.sub(" ", rest)
+        wd = None
+        for m in _WD_RE.finditer(rest):
+            before = rest[:m.start()].rstrip()
+            boxed = before.endswith("(")
+            # a weekday column / "(Monday)" — not part of a name such as "Good Friday"
+            if boxed or not before or not before[-1].isalpha():
+                wd = weekday_of(m.group(0))
+                rest = rest[:m.start()] + " " + rest[m.end():]
+                break
+        rest = re.sub(r"\(\s*\)", " ", rest)
+        rest = re.sub(r"^\s*\d{1,3}[.)]?\s+", "", rest)              # serial number
+        name = " ".join(rest.strip(" -–—|,;:.").split())
+        rows.append({"date": d, "name": name or "Holiday", "optional": optional, "weekday": wd})
+    return rows, skipped

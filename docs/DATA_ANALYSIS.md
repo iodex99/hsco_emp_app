@@ -175,3 +175,24 @@ and time, IN/OUT direction, latitude/longitude columns) are recognised — see A
 Measured on the October-2026 exports: all five recognised with confidence 1.0 (DOJ 0.996); detection ≈ 0.1–0.3 s each.
 Synonyms for the greytHR headers above are in `parsers.F`. October's swipe export has **no GPS coordinates**
 (only Location Type), so place names apply when the mobile-app export includes them.
+
+## 7. Employee categories & holiday lists (folder `employeecategoryreportandholidaylists`, 2026-11-19)
+**`EmployeeCategoryReport.xlsx`** (`Sheet0`, title row 1, header row 2, footer "Total number of records : 101"):
+Employee Number · Employee Name · Curr.Location · Curr.Category · Additional Category. 96 employees (6 people in the
+muster are not in it). Curr.Category: HSCO (Mum) 66, HSCO (Carlyle) 14, HSCO (CDTIPL) 6, HSCO (CDTIPL) Boutique 3,
+Article 4, HSCO (Delhi) 2, HSCO (MDS) 1. Additional Category: "Hsco (Mum)" for the 4 Articles; "Article" for 9 HSCO (Mum)
+people — 8 of them as VLOOKUP formulas into an external workbook whose cached value is "Article".
+**Holiday List Importer files** (greytHR import format: Holiday Date · Description · Is Optional · Location · Category):
+HSCO (CBV) 12 (no employees in that category), HSCO (Mum) 14, HSCO (CDTIPL Boutique) 13 (Delhi; Holi 4-Mar), two MDS
+files (Category "MDS" and "HSCO (MDS)", same 12 dates, 2 optional: Gudi Padwa, Good Friday); some dates are text with a
+leading space (" 01-May-26"). `… (Mum).xlsx` also has `Sheet1`, the printed office list (header row 5: SR.NO. · Holiday
+Date · Day · Occasion) with **three wrong years** (MAHARASHTRA DAY 01-May-2025, INDEPENDENCE DAY 15-Aug-2025, CHRISTMAS
+25-Dec-2025 — the Day column matches 2026) and the note "office closes after 3 PM on Ganesh Visarjan 19-09-2026".
+`… (Carlyle) 2026.xlsx` is a different layout (Sr. No. · "Holiday Day" = the name · Date), 16 holidays, no Category.
+**`2026 India_Public Holidays_New Delhi.pdf`**: 12 public holidays (New Delhi) — no category named; probably for
+HSCO (Delhi); paste it into a calendar to use it.
+**Gaps / differences:** no list for HSCO (CDTIPL) (Mumbai + Delhi people) or HSCO (Delhi); Articles use HSCO (Mum) via
+their additional category. Mahatma Gandhi Jayanti (2-Oct) is in the Carlyle, MDS, CBV and CDTIPL Boutique lists but not
+in the HSCO (Mum) list; greytHR's October muster has 2-Oct as a working day for almost everyone, while HR's October
+sheet treated it as a holiday. With the lists applied, 12 of 14 Carlyle people get 2-Oct as a holiday (greytHR: working)
+— listed under *Check these dates*.

@@ -87,7 +87,7 @@ start child → /healthz == new build within 90 s ? done : restore previous code
 | users, mfa_methods, recovery_codes, email_otps, sessions | identity, 2FA, server-side sessions |
 | audit_log | every login, import, override, setting, user change |
 | settings | `policy` and `general` JSON |
-| employees, holiday_calendars, holidays, targeted_holidays, geofences, geo_cache | master data |
+| employees, categories, holiday_calendars, holidays, targeted_holidays, geofences, geo_cache | master data |
 | periods | month + status DRAFT/FINALISED |
 | flag_reviews | review-queue state per period/employee/flag (note, who, when); survives recomputation |
 | imports | file name, sha256, sheet, rows, warnings, who/when |
@@ -216,3 +216,17 @@ per-employee counts, KPIs (from `MonthResult.days`, no extra queries). Route `GE
 `routes/pages.py`, template `exceptions.html` (table toolkit + chips). Employee page opens a day from `?day=YYYY-MM-DD`.
 Excel: sheets *Punch Exceptions*, *Exceptions by Employee* in `build_workbook`. Real October: 1,227 rows, service
 0.05 s, page 0.33 s server / 1.7 s total, 1.1 MB.
+
+## Employee categories (v1.7)
+`models.Category`; `Employee.category` / `additional_category` (names), `Employee.weekly_off` "CATEGORY" = follow;
+`Holiday.optional`; `TargetedHoliday.categories`; `MonthResult.category` (+ `data["category"]`). New columns by
+`add_missing_columns`; `db.migrate_data()` runs one-time data migrations recorded in setting `migrations`
+(`categories_v1`: weekly_off MUSTER → CATEGORY). `services/categories.py`: `key`, `find`, `ensure`, `by_key`,
+`name_from_filename`, `effective()` → `Effective` (pattern / hours / calendar + their sources), `overview`,
+`uncategorised`, `calendar_conflicts`. `compute_period` builds each engine employee from `effective()`; the engine gets
+`optional_holidays`. Importer: kind `employee_category` (same handler as `employee_master`), holiday fields `category`,
+`optional`, `weekday`, `location`, `for_categories`; `imports._apply_holiday_lists` (per file, per calendar and year),
+`_check_weekdays`, `_category_from_report`; `parsers._row_emp`. Routes: `POST /settings/categories/save`,
+`/settings/categories/{id}/delete`, `/settings/calendars/{id}/paste` (`holidays.parse_pasted`). Templates: Settings
+*Categories* tab, calendar year groups / optional / paste; employees list + form; category tables on dashboard and
+insights (`metrics._breakdown`, `insights._compare`). RULES_VERSION 6.

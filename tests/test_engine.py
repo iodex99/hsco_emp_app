@@ -383,3 +383,17 @@ def test_no_attendance_flag():
     r = compute_employee_month(Employee("E1", group="ATA"), 2026, 10, rows, [], POL)
     assert r.days_present == 0 and r.required_hours == 0 and r.deduction_days == 0
     assert any(f[0] == "NO_ATTENDANCE" for f in r.flags)
+
+
+def test_optional_holiday_taken_or_not():
+    """v1.7: an optional holiday is a holiday only when greytHR marks the person's day H (they took it)."""
+    rows = month()
+    e = Employee("E1", group="BSS", holidays={}, optional_holidays={date(2026, 10, 7): "Gudi Padwa"})
+    r = compute_employee_month(e, 2026, 10, rows, [], POL)
+    d7 = next(d for d in r.days if d.day.day == 7)
+    assert d7.day_type == WORKDAY and any("Optional holiday (Gudi Padwa) — not taken" in n for n in d7.notes)
+    rows_h = [MusterDay("E1", m.day, "H", "H") if m.day.day == 7 else m for m in rows]
+    r = compute_employee_month(e, 2026, 10, rows_h, [], POL)
+    d7 = next(d for d in r.days if d.day.day == 7)
+    assert d7.day_type == HOLIDAY and d7.holiday_name == "Gudi Padwa (optional)"
+    assert not any("differs from greytHR" in n for n in d7.notes)

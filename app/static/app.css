@@ -469,3 +469,9 @@ code{background:var(--surface-3);padding:1px 6px;border-radius:5px}
 .th-picked span{display:inline-flex;align-items:center;gap:4px;background:var(--surface-3);border-radius:999px;padding:3px 4px 3px 10px;font-size:12.5px}
 .th-picked button{border:0;background:none;cursor:pointer;color:var(--text-3);padding:0 4px;font-size:14px;line-height:1}
 #th-pick{width:100%;max-width:420px}
+/* ---- categories & calendars (v1.7) */
+details.cal-year{border-bottom:1px solid var(--border);padding:6px 0}
+details.cal-year:last-of-type{border-bottom:0}
+details.cal-year summary{cursor:pointer;padding:4px 0}
+#cats td{vertical-align:top}
+#cats select{max-width:260px}

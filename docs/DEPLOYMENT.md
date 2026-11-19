@@ -26,7 +26,7 @@ Then:
    double-click → Install). Without this browsers warn, and passkeys/security keys will not work.
 2. Add a DNS record (or hosts entry) for `hsco-app` → server IP.
 3. Open `https://hsco-app:8443`, sign in as admin, set up 2FA, then create users (Users page).
-4. Rules & calendars: confirm policy defaults, add the 2026/2027 holiday calendar(s). (Place names need no setup.)
+4. Rules & calendars: confirm policy defaults; import greytHR's Employee Category Report and each category's Holiday List Importer file, then set each category's weekly offs / hours (Categories tab). (Place names need no setup.)
 5. Import the employee master (or last month's manual MIS to seed groups) and opening leave balances.
 
 ## Updates (automatic)

@@ -19,6 +19,7 @@
     {% if s.source == 'layout' %}<span class="badge b-info">remembered layout</span>{% elif s.source == 'manual' %}<span class="badge b-info">your mapping</span>{% endif %}
     {% if s.mapping %}<details class="small mt-s"><summary style="cursor:pointer" class="muted">Columns used ({{ s.mapping|length }})</summary><div class="map-sum">
       {% for m in s.mapping %}<span><b>{{ m.label }}</b> ← “{{ m.column }}”{% if m.inferred %} <i class="muted">(inferred from values)</i>{% endif %}</span>{% endfor %}</div></details>{% endif %}
+    {% for w in s.notes or [] %}<div class="small" style="margin-top:3px">{{ ui.icon('calendar','sm') }} {{ w }}</div>{% endfor %}
     {% for w in s.warnings %}<div class="small" style="color:var(--warn);margin-top:3px">{{ ui.icon('triangle-alert','sm') }} {{ w }}</div>{% endfor %}</div></div>
   {% endif %}
 {% endfor %}{% endfor %}

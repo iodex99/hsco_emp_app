@@ -26,16 +26,16 @@
 <div class="tabs" data-tabs id="ins-tabs">
   <button class="on" data-tab="score">Scorecard</button><button data-tab="heat">Attendance heatmap</button>
   <button data-tab="arrive">Arrivals &amp; hours</button><button data-tab="absence">Absence</button>
-  <button data-tab="groups">Groups compared</button>{% if I.trend|length > 1 %}<button data-tab="trend">Trend</button>{% endif %}
+  <button data-tab="groups">Groups &amp; categories</button>{% if I.trend|length > 1 %}<button data-tab="trend">Trend</button>{% endif %}
 </div>
 
 <section class="pane on" data-pane="score" id="scorecard">
   <div class="card flush"><div class="hd"><h2>Employee scorecard</h2><span class="sub">click a column to sort · filter, group and choose columns from the toolbar</span></div>
   <div data-table-for="#sc"></div>
   <div class="bd"><div class="tw" style="max-height:640px"><table id="sc" data-table data-csv="scorecard-{{ key }}" class="compact"
-      data-default-hidden="location,tenure,avg_out,long,latesit,missing,leave,leave_fy,co_bal,ded,flags">
+      data-default-hidden="location,category,tenure,avg_out,long,latesit,missing,leave,leave_fy,co_bal,ded,flags">
   <thead><tr>
-    <th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="location" data-type="enum">Location</th>
+    <th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="category" data-type="enum">Category</th><th data-key="location" data-type="enum">Location</th>
     <th data-key="tenure" data-type="num" class="num">Tenure</th>
     <th data-key="att" data-type="num" class="num" title="0–100, higher = more to talk about. Unplanned absence (12 months) 25 · punctuality 20 · hours 20 · regularisation 15 · WFH 10 · missing punches 10">Attention</th>
     <th data-key="why" data-type="enum">Main reasons</th>
@@ -55,7 +55,7 @@
   {% for r in I.rows|sort(attribute='attention', reverse=True) %}
   <tr data-href="/periods/{{ key }}/employee/{{ r.emp_no }}">
     <td data-v="{{ r.name }}" data-csv="{{ r.emp_no }} {{ r.name }}">{{ ui.person(r.name, r.emp_no, '/periods/' ~ key ~ '/employee/' ~ r.emp_no) }}</td>
-    <td>{{ r.group }}</td><td>{{ r.location }}</td>
+    <td>{{ r.group }}</td><td class="small">{{ r.category }}</td><td>{{ r.location }}</td>
     <td class="num" data-v="{{ r.tenure_m if r.tenure_m is not none else '' }}">{% if r.tenure_m is not none %}{{ (r.tenure_m // 12) ~ 'y ' if r.tenure_m >= 12 }}{{ r.tenure_m % 12 }}m{% endif %}</td>
     <td class="num" data-v="{{ r.attention }}"><span class="score {{ 'bad' if r.attention >= 50 else 'warn' if r.attention >= 25 else 'ok' }}"><i style="width:{{ r.attention }}%"></i><b>{{ r.attention }}</b></span></td>
     <td data-v="{{ r.attention_why|join(', ') }}" class="small" style="white-space:nowrap">{% for w in r.attention_why %}<span class="tag">{{ {'absence':'absence','punctuality':'late arrivals','utilisation':'short hours','regularisation':'regularisations','wfh':'WFH','missing':'missing punches'}[w] }}</span> {% endfor %}</td>
@@ -87,8 +87,8 @@
     {% for code, label, cls in I.matrix.legend %}<button type="button" class="lg" data-lg="{{ cls }}" aria-pressed="false"><i class="hm-sw s-{{ cls }}"></i>{{ label }}</button>{% endfor %}
     <span class="lg-info muted hidden" id="hm-info"><button type="button" class="tt-clear" id="hm-clear">Clear highlight</button></span></div></div>
   <div data-table-for="#hm"></div>
-  <div class="bd"><div class="tw" style="max-height:640px"><table id="hm" class="hm compact" data-table data-csv="attendance-matrix-{{ key }}">
-    <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th>
+  <div class="bd"><div class="tw" style="max-height:640px"><table id="hm" class="hm compact" data-table data-csv="attendance-matrix-{{ key }}" data-default-hidden="category">
+    <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="category" data-type="enum">Category</th>
       <th data-key="p" data-type="num" class="num" title="Present days (incl. late and WFH)">Pres.</th><th data-key="t" data-type="num" class="num">Late</th>
       <th data-key="a" data-type="num" class="num">Abs.</th><th data-key="l" data-type="num" class="num">Leave</th>
       <th data-key="tot" data-type="num" data-label="Total" class="num hm-tot" id="hm-tot-h" title="Days in the states highlighted in the legend (all marked days when nothing is highlighted)">Total<small id="hm-tot-sub">all days</small></th>
@@ -96,7 +96,7 @@
     </tr></thead><tbody>
     {% set cmap = {'P':'p','T':'t','W':'w','½':'h','L':'l','C':'c','A':'a','X':'x','O':'o','H':'y','E':'e','.':'n'} %}
     {% for r in I.matrix.rows %}<tr data-href="/periods/{{ key }}/employee/{{ r.emp_no }}">
-      <td data-v="{{ r.name }}" class="hm-name"><a href="/periods/{{ key }}/employee/{{ r.emp_no }}">{{ r.name }}</a></td><td class="small">{{ r.group }}</td>
+      <td data-v="{{ r.name }}" class="hm-name"><a href="/periods/{{ key }}/employee/{{ r.emp_no }}">{{ r.name }}</a></td><td class="small">{{ r.group }}</td><td class="small">{{ r.category }}</td>
       {% set np = r.s.count('P') + r.s.count('T') + r.s.count('W') %}
       <td class="num" data-v="{{ np }}">{{ np }}</td><td class="num" data-v="{{ r.s.count('T') }}">{{ r.s.count('T') or '' }}</td>
       <td class="num" data-v="{{ r.s.count('A') + r.s.count('X') }}">{{ (r.s.count('A') + r.s.count('X')) or '' }}</td>
@@ -105,7 +105,7 @@
       {% for ch in r.s %}<td class="hm-c s-{{ cmap.get(ch, 'n') }}"></td>{% endfor %}
     </tr>{% endfor %}
   </tbody>
-  <tfoot><tr class="tfoot"><td>Total · <span data-count="#hm">{{ I.matrix.rows|length }}</span> people</td><td></td>
+  <tfoot><tr class="tfoot"><td>Total · <span data-count="#hm">{{ I.matrix.rows|length }}</span> people</td><td></td><td></td>
     <td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num hm-tot" data-sum></td>
     {% for d in I.matrix.dates %}<td class="hm-fd"></td>{% endfor %}</tr></tfoot></table></div></div></div>
 </section>
@@ -166,7 +166,20 @@
     <td class="num" data-v="{{ g.absence_12m_days }}">{{ g.absence_12m_days|n }}</td><td class="num" data-v="{{ g.attention_avg }}">{{ g.attention_avg|n(1) }}</td>
     <td class="num" data-v="{{ g.deduction_days }}">{{ g.deduction_days|n }}</td></tr>{% endfor %}
   </tbody></table></div></div></div>
-  <div class="card"><div class="hd"><h2>Groups side by side</h2></div><div class="bd"><div class="chartbox" style="height:300px"><canvas id="cGroups"></canvas></div></div></div>
+  <div class="card flush mb"><div class="hd"><h2>Categories compared</h2><span class="sub">greytHR employee categories</span></div><div data-table-for="#cc"></div><div class="bd"><div class="tw"><table id="cc" data-table data-csv="categories-compared-{{ key }}" class="compact">
+  <thead><tr><th data-key="g" data-type="text">Category</th><th data-key="hc" data-type="num" class="num" data-sum>People</th><th data-key="att" data-type="num" class="num">Attendance</th>
+    <th data-key="abs" data-type="num" class="num">Unplanned absence</th><th data-key="pun" data-type="num" class="num">On time</th><th data-key="util" data-type="num" class="num">Hours vs req.</th>
+    <th data-key="avgh" data-type="num" class="num">Avg day (h)</th><th data-key="wfh" data-type="num" class="num">WFH share</th><th data-key="reg" data-type="num" class="num">Regularised</th>
+    <th data-key="abs12" data-type="num" class="num">Absence days (12 m)</th><th data-key="attn" data-type="num" class="num">Avg attention</th><th data-key="ded" data-type="num" class="num" data-sum>Deduction days</th></tr></thead><tbody>
+  {% for g in I.categories %}<tr><td class="strong">{{ g.group }}</td><td class="num" data-v="{{ g.headcount }}">{{ g.headcount }}</td>
+    <td class="num" data-v="{{ g.attendance_pct }}">{{ pct(g.attendance_pct) }}</td><td class="num" data-v="{{ g.absenteeism_pct }}">{{ pct(g.absenteeism_pct) }}</td>
+    <td class="num" data-v="{{ g.punctuality_pct }}">{{ pct(g.punctuality_pct) }}</td><td class="num" data-v="{{ g.utilisation_pct }}"><span class="{{ 'neg' if (100 if g.utilisation_pct is none else g.utilisation_pct) < 100 else 'pos' }}">{{ pct(g.utilisation_pct) }}</span></td>
+    <td class="num" data-v="{{ g.avg_hours }}">{{ g.avg_hours|n(2) }}</td><td class="num" data-v="{{ g.wfh_pct }}">{{ pct(g.wfh_pct) }}</td><td class="num" data-v="{{ g.regularisation_pct }}">{{ pct(g.regularisation_pct) }}</td>
+    <td class="num" data-v="{{ g.absence_12m_days }}">{{ g.absence_12m_days|n }}</td><td class="num" data-v="{{ g.attention_avg }}">{{ g.attention_avg|n(1) }}</td>
+    <td class="num" data-v="{{ g.deduction_days }}">{{ g.deduction_days|n }}</td></tr>{% endfor %}
+  </tbody></table></div></div></div>
+  <div class="grid g2"><div class="card"><div class="hd"><h2>Groups side by side</h2></div><div class="bd"><div class="chartbox" style="height:300px"><canvas id="cGroups"></canvas></div></div></div>
+  <div class="card"><div class="hd"><h2>Categories side by side</h2></div><div class="bd"><div class="chartbox" style="height:300px"><canvas id="cCats"></canvas></div></div></div></div>
 </section>
 
 {% if I.trend|length > 1 %}
@@ -179,6 +192,11 @@
 const I = {{ chart|tojson_safe }}; const C = HSCO.colors;
 HSCO.chart('cHours',{type:'bar',data:{labels:I.hours_hist.map(x=>x.bucket),datasets:[{label:'Days',data:I.hours_hist.map(x=>x.count),
   backgroundColor:I.hours_hist.map((x,i)=>i<4?C.warn:i>6?C.violet:C.brand)}]},options:{plugins:{legend:{display:false}}}});
+HSCO.chart('cCats',{type:'bar',data:{labels:I.categories.map(x=>x.group),datasets:[
+  {label:'Attendance %',data:I.categories.map(x=>x.attendance_pct),backgroundColor:C.brand},
+  {label:'On time %',data:I.categories.map(x=>x.punctuality_pct),backgroundColor:C.teal},
+  {label:'Hours vs required %',data:I.categories.map(x=>x.utilisation_pct),backgroundColor:C.violet},
+  {label:'Unplanned absence %',data:I.categories.map(x=>x.absenteeism_pct),backgroundColor:C.bad}]}});
 HSCO.chart('cGroups',{type:'bar',data:{labels:I.groups.map(x=>x.group),datasets:[
   {label:'Attendance %',data:I.groups.map(x=>x.attendance_pct),backgroundColor:C.brand},
   {label:'On time %',data:I.groups.map(x=>x.punctuality_pct),backgroundColor:C.teal},

@@ -58,11 +58,19 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 7. ~~Office/client geofences~~ Closed 2026-11-18: the owner removed named places — names come from the built-in
    map only.
 8. Is "late" for the board > 1 hour (default) or another threshold?
+9. Holiday lists for **HSCO (CDTIPL)** (6 people, Mumbai + Delhi) and **HSCO (Delhi)** (2) — is the New Delhi PDF the
+   Delhi list? Until then they use the default calendar / greytHR.
+10. **2-Oct (Gandhi Jayanti):** in the Carlyle / MDS / CBV / Boutique lists but not in the HSCO (Mum) list, while
+   greytHR's October muster shows a working day and HR's October sheet a holiday — which is right for October?
+11. What are the weekly offs / hours per category (e.g. Carlyle's "9 am to 6pm" shift)? Categories start "not set"
+   (greytHR's weekly offs, policy hours).
 
 ## Decisions 2026-11-18
 - **Board pack removed** (owner): "the app does it in a much better way". Board members use the app (viewer role).
 - **Bradford factor removed** (owner); absence shown as plain unplanned days and spells.
 - Punch locations must also be available in Excel → punches & locations workbook + Places column in Daily Detail.
+- **Employee categories** (owner, v1.7): every employee has a category (+ additional); holiday list, weekly offs and
+  hours per day per category; holiday lists change yearly (upload / paste replaces the year); targeted by category.
 - **Punch exceptions view** (owner, v1.6.7): missing / incorrect punches, regularisations, WFH and other day
   exceptions, day by day and per employee, in the app and the payroll Excel.
 - **WFH above 2 a month: ½ day of leave per extra day** (owner, v1.6.5) — also for Article, SS and Trainee (owner,

@@ -135,3 +135,14 @@ limit, on a day off), was more than an hour late, left early, had a short day, w
 row per person and day with all issues, punches and reasons. Click a chip (e.g. *Missing punch*) to see only those;
 click a row to open that person's day and correct it. *By employee* gives the counts per person. The same lists are
 in the payroll Excel (*Punch Exceptions*, *Exceptions by Employee*).
+
+## Categories & holiday lists (v1.7)
+1. Import greytHR's **Employee Category Report** and each category's **Holiday List Importer** file (drop them all on
+   the Import page together). Each category gets its own holiday list; the result lists what was loaded, added,
+   changed or removed, and any date whose weekday didn't match.
+2. **Rules & calendars → Categories:** pick each category's holiday list, weekly offs and hours per day. Employees
+   follow their category (and, for articles, their additional category) unless their own page says otherwise.
+   *Check these dates* lists days where a category's list and greytHR disagree — review them before payroll.
+3. **Next year / revised list:** upload it again — the whole year is replaced. No Excel file? Open the calendar and
+   use **Paste a list** (copy the table from a PDF or email). Tick *Optional* for optional holidays.
+4. A one-off holiday for a category: *Targeted holidays* → Categories.
