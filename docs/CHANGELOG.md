@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.2 — 2026-11-19 — release of the 1.7.1 fixes; CI names failing tests
+The GitHub build of 1.7.1 (run 21) failed in the test step although the same commit passes in a clean checkout here
+(136 passed, 13 real-data tests skipped) — as once before (build-17). The build log needs a login, so the workflow now
+writes a JUnit report and, on failure, turns each failed test into a GitHub annotation (`scripts/ci_annotate.py`,
+stdlib only) — readable on the run page and through the public API. No change to the app beyond 1.7.1.
+
 ## 1.7.1 — 2026-11-19 — categories: fixes from an independent review
 - **A holiday list not loaded for a year is skipped** (next list in the chain, finally greytHR's own holiday marks).
   Before, e.g. January 2027 before the 2027 lists were uploaded would have made 1-Jan and 26-Jan working days —

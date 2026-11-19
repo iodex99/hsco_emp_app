@@ -176,3 +176,9 @@ files keep 12 holidays, an optional-only file keeps the fixed ones; "(1)" file n
 additional category clears; Delhi list vs Mumbai people noted; rename updates and delete drops targeted holidays; an
 employee's category can be cleared; "=SUM(1,1)" category stays text in Excel. Unit: optional wording, letter-only
 employee numbers, file names, `effective(loaded)`, pasted weekday-after-date and year-less lines. Full suite 149 passed.
+
+## CI diagnostics (v1.7.2)
+`.github/workflows/release.yml` runs `pytest -rfE --junitxml=test-results/junit.xml`; on failure
+`scripts/ci_annotate.py` prints a `::error` annotation per failed test (message + last traceback lines), visible via
+`GET /repos/<owner>/<repo>/check-runs/<job id>/annotations` without authentication.
+
