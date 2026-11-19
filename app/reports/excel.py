@@ -150,12 +150,14 @@ def _wfh_term(d: dict, i: int, pol) -> str:
     if "wfh_deduction_days" not in d or d.get("wfh_deduction_exempt"):
         return ""
     excess, ded = d.get("wfh_excess_days") or 0, d.get("wfh_deduction_days") or 0
-    if excess and not ded:
+    ok = d.get("wfh_approved_days") or 0                    # extra days approved by manager / partner (v1.7.5)
+    charged = max(0, excess - ok)
+    if excess and charged and not ded:
         return ""
-    rate = round(ded / excess, 4) if excess else pol.wfh_excess_deduction_days
+    rate = round(ded / charged, 4) if charged else pol.wfh_excess_deduction_days
     if not rate:
         return ""
-    return f"+CEILING(MAX(0,J{i}-{pol.wfh_limit_days:g}),1)*{rate:g}"
+    return f"+CEILING(MAX(0,J{i}-{pol.wfh_limit_days:g}" + (f"-{ok:g}" if ok else "") + f"),1)*{rate:g}"
 
 
 def build_workbook(db: Session, period: Period) -> bytes:

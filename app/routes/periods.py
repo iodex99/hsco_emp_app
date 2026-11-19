@@ -26,7 +26,7 @@ OVERRIDE_LABELS = {
     "absent_days": "Absent days (H)", "wfh_days": "WFH days (J)", "total_hours": "Total hours present (K/O)",
     "extra_days": "Extra working days (L)", "extra_hours": "Holiday/off-day hours to exclude (P)",
     "required_hours": "Hours required (N)", "deduction_days": "Deduction days", "exempt": "Exempt this month (yes/no)",
-    "remark": "Remark",
+    "remark": "Remark", "wfh_approved_days": "Extra WFH approved (days)",
 }
 
 

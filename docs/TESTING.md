@@ -25,7 +25,7 @@ greytHR-format files from `tests/fixtures/make_fixtures.py` cover the same paths
 | `e2e/test_browser.py` (1) | Chromium: sign-in + TOTP enrolment, drag-drop import with file preview, `/` quick search, filter chips, calendar-day correction drawer, review-queue drawer, tab switching, user-menu sign-out, upload, dashboard charts render, sheet filtering, drill-down, day correction form, Excel & board-pack downloads, new board pack offline (file://): toolkit search → drill-down → day-table sort, every tab, **passkey registration and passkey sign-in** (virtual authenticator), no JS errors on any page |
 
 ## Latest result — 2026-11-17
-`150 passed` (v1.7.4; v1.7.1: 149; v1.7.0: 147; v1.6.7: 140; v1.6.6 and v1.6.5: 137; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
+`152 passed` (v1.7.5; v1.7.4: 150; v1.7.1: 149; v1.7.0: 147; v1.6.7: 140; v1.6.6 and v1.6.5: 137; v1.6.4: 136; v1.6.3: 131; v1.6.2 and v1.6.1: 130; v1.6.0: 125, board-pack tests replaced by locations-export tests; v1.5.2: 125; v1.5.1: 123; v1.5.0: 119; 111 unit/integration + 8 browser; Windows 11, Python 3.13.15, Chromium via Playwright 1.65), real
 reference data present (v1.4.1). Previous: 90 (v1.4.0). Board pack additionally exercised offline from file:// with all network blocked: no requests, no JS
 errors, chips/sort/drill-down/legend filter/←→/Esc/needs-attention jump all working, at 1440 px and 390 px.
 Screenshots of the e2e run: `test-results/*.png` (git-ignored).
@@ -188,3 +188,10 @@ Engine: 6-day-week employee, WFH on Sat 3 (open) and 10 / 17 / 24 (closed) + two
 WFH, not counted (3 WFH days, ½ day deduction), also with `swipes_half`; every Saturday open → all count; open 1st and
 3rd → only 10 and 24 closed. Real October: HS016 4 closed-Saturday WFH days (6 → 2, no deduction); over the limit
 HS179 and HS195. Web: setting saved ("1, 3, 9" → 1, 3) and shown. Full suite 150 passed.
+
+## v1.7.5 — approved extra WFH
+Engine: 5 WFH days (3 over) → 1.5 days; 2 approved → 0.5 (flag, day notes, remark say so); all approved → none. Web:
+review queue shows *Approve WFH* for T004; a reason is required; approving 1 of 2 → 0.5 day, flag reviewed with the
+note, audit entry; the Excel downloaded next has the new deduction, a formula with "−1" that equals the app, and the
+approval in *Corrections*; 2 → no deduction; 0 → removed (1 day again); the correction is offered on the employee
+page. Browser on real data: approved HS195's extra day from the review queue (drawer, chips, recalculated, reviewed).

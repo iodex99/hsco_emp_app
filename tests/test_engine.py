@@ -421,3 +421,25 @@ def test_wfh_on_a_closed_saturday_is_listed_not_counted():
     assert r.office_closed_wfh_days == 0 and r.wfh_days == 6                        # every Saturday open: all count
     r = compute_employee_month(e, 2026, 10, rows, sw, Policy(office_open_saturdays=(1, 3)))
     assert [d.day.day for d in r.days if d.wfh_office_closed] == [10, 24]
+
+
+def test_extra_wfh_approved_by_manager_is_not_deducted():
+    """v1.7.5 (owner): more than 2 WFH days can be allowed at a manager's / partner's discretion (not in any export):
+    HR records the approved extra days as a month correction — only the rest is deducted."""
+    def wfh(d):
+        return [Swipe("E1", datetime(2026, 10, d, 11, 0), "Mobile Sign In", "Work from Home", "Mobile Sign In"),
+                Swipe("E1", datetime(2026, 10, d, 19, 30), "Mobile Sign In", "Work from Home", "Mobile Sign In")]
+    sw = [s for d in (5, 6, 7, 8, 9) for s in wfh(d)]                   # 5 WFH days → 3 over the limit
+    e = Employee("E1", group="BSS")
+    r = compute_employee_month(e, 2026, 10, month(), sw, POL)
+    assert (r.wfh_excess_days, r.wfh_deduction_days) == (3, 1.5)
+    r = compute_employee_month(e, 2026, 10, month(), sw, POL, month_overrides={"wfh_approved_days": "2"})
+    assert (r.wfh_approved_days, r.wfh_deduction_days, r.deduction_days) == (2, 0.5, 0.5)
+    f = next(x for x in r.flags if x[0] == "WFH_OVER_LIMIT")[2]
+    assert "2 extra approved by manager / partner" in f and "→ 0.5 day(s) deducted" in f
+    notes = {d.day.day: " ".join(d.notes) for d in r.days}
+    assert "approved by manager" in notes[7] and "approved by manager" in notes[8] and "deducted" in notes[9]
+    assert "(2 more approved)" in r.remark
+    r = compute_employee_month(e, 2026, 10, month(), sw, POL, month_overrides={"wfh_approved_days": "5"})
+    assert r.wfh_deduction_days == 0 and r.deduction_days == 0
+    assert "→ no deduction" in next(x for x in r.flags if x[0] == "WFH_OVER_LIMIT")[2]

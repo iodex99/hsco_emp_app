@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7.5 — 2026-11-19 — approve extra WFH from the review queue
+Owner: "in some instances more than 2 days WFH is also allowed, on manager / partner discretion, but we won't get that
+data from the records … by default it will be deducted in the system but make provision that the user can override it
+… the generated Excel is produced as per the updated data in the app".
+- **Review queue → WFH above monthly limit → Approve WFH:** enter the extra WFH days approved (pre-filled with the
+  days over the limit) and who approved it (required). Only extra days beyond the approved ones are deducted (½ day
+  each); the month is recalculated, the flag is marked reviewed with the note ("Extra WFH approved: 1 day(s) —
+  Approved by partner"), the change is audit-logged. *Edit WFH approval* changes it; 0 removes it (deduction back).
+- Stored as the month correction **Extra WFH approved (days)** — also on the employee page (Corrections); the day
+  notes say which WFH days were approved, the flag and remark show the approval.
+- **Excel** (always built from the app at the moment of download): the deduction column shows the new figure, its
+  formula allows for the approved days (`CEILING(MAX(0, WFH − 2 − approved), 1) × 0.5`), the *Corrections* sheet lists
+  the approval with the reason, who and when.
+- Calculation rules version 8 (draft months recalculate once after the update).
+
 ## 1.7.4 — 2026-11-19 — WFH on a Saturday the office is closed: listed, not counted
 Owner: "all the branches are open only on the 1st Saturday of every month, so if someone has all Saturdays working,
 they are by default gonna have to work from home, so such instances shall be counted as exceptions".

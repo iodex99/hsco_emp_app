@@ -97,6 +97,9 @@ separately). Method `swipes_half` reproduces HR's legacy count ÷ 2 (working-day
 1st). WFH on a working Saturday that is not one of them is forced: still a WFH day (`wfh_office_closed`, note), but
 not counted in `wfh_days` (nor in `swipes_half`), so not towards the limit or the deduction; the month stores
 `office_closed_wfh_days`. `()` = every Saturday open.
+**Approved extra WFH (v1.7.5, owner):** month correction `wfh_approved_days` (from the review queue or the employee
+page, with a reason): `wfh_deduction_days = max(0, wfh_excess_days − wfh_approved_days) × wfh_excess_deduction_days`.
+By default nothing is approved (the system deducts).
 Flag `WFH_OVER_LIMIT` when > **2**. HR's manual sheet counted off-day WFH too (DATA_ANALYSIS §2).
 **Deduction (v1.6.5, owner):** `wfh_excess_days = ceil(max(0, wfh_days − wfh_limit_days))`;
 `wfh_deduction_days = wfh_excess_days × wfh_excess_deduction_days` (default **0.5**; 0 = flag only), 0 only when the

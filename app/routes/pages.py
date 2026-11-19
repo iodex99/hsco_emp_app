@@ -277,6 +277,13 @@ def flags_page(period: Optional[str] = None, code: str = "", show: str = "open",
     all_rows = WF.actionable_flags(c.db, p)
     emp = emp.strip().upper()
     rows = [f for f in all_rows if f["emp_no"] == emp] if emp else all_rows
+    # WFH over the limit: what was deducted / approved (for the "Approve extra WFH" action)
+    wfh_info = {}
+    for r in p and c.db.scalars(select(MonthResult).where(MonthResult.period_id == p.id)) or []:
+        d = r.data or {}
+        if d.get("wfh_excess_days"):
+            wfh_info[r.emp_no] = {"excess": d.get("wfh_excess_days") or 0, "approved": d.get("wfh_approved_days") or 0,
+                                  "deduction": d.get("wfh_deduction_days") or 0}
     emp_name = next((f["name"] for f in rows), "") if emp else ""
     if emp and not emp_name:
         e = c.db.get(Employee, emp)
@@ -292,7 +299,7 @@ def flags_page(period: Optional[str] = None, code: str = "", show: str = "open",
     act = [f for f in all_rows if f["actionable"]]
     return render(c, "flags.html", period=p, rows=rows, summary=summary, code=code, show=show, emp=emp,
                   emp_name=emp_name, total=len(act), reviewed=sum(1 for f in act if f["reviewed"]),
-                  labels=MX.FLAG_LABELS)
+                  labels=MX.FLAG_LABELS, wfh_info=wfh_info)
 
 
 @router.get("/exceptions", response_class=HTMLResponse)
@@ -305,6 +312,55 @@ def exceptions_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     if p.computed_at is None:
         return pending_month(c, p)
     return render(c, "exceptions.html", period=p, X=month_exceptions(c.db, p))
+
+
+@router.post("/flags/wfh-approve")
+def approve_extra_wfh(period: str = Form(...), emp_no: str = Form(...), days: str = Form(...), reason: str = Form(""),
+                      c: Ctx = Depends(hr)):
+    """Manager / partner allowed more WFH than the limit (not in any export): record the approved extra days as a
+    month correction (audited, with the reason) and mark the WFH flag reviewed. Only unapproved extra days are
+    deducted; the Excel follows (built from the app at download)."""
+    from datetime import datetime
+    from app.models import FlagReview, MonthOverrideRow
+    from app.services.compute import compute_period
+    p = pick_period(c, period)
+    back = f"/flags?period={p.key}&code=WFH_OVER_LIMIT" if p else "/flags"
+    if p is None or p.status != "DRAFT":
+        return redirect(back, "This month is finalised — re-open it to change a deduction.")
+    if not reason.strip():
+        return redirect(back, "Say who approved it (a reason is required for every manual change).")
+    try:
+        n = float(days)
+    except ValueError:
+        return redirect(back, "Days must be a number.")
+    if n < 0 or n > 31:
+        return redirect(back, "Days must be between 0 and 31.")
+    emp_no = emp_no.strip().upper()
+    o = c.db.scalar(select(MonthOverrideRow).where(MonthOverrideRow.period_id == p.id, MonthOverrideRow.emp_no == emp_no,
+                                                   MonthOverrideRow.field == "wfh_approved_days"))
+    if n == 0:
+        if o is not None:
+            c.db.delete(o)
+    else:
+        if o is None:
+            o = MonthOverrideRow(period_id=p.id, emp_no=emp_no, field="wfh_approved_days", value="0", reason="")
+            c.db.add(o)
+        o.value, o.reason, o.created_by, o.created_at = f"{n:g}", reason.strip(), c.user.username, datetime.now()
+    audit(c.db, c.user, "override.month", "employee", emp_no, {"period": p.key, "field": "wfh_approved_days",
+                                                               "value": f"{n:g}", "reason": reason.strip()}, c.ip)
+    rv = c.db.scalar(select(FlagReview).where(FlagReview.period_id == p.id, FlagReview.emp_no == emp_no,
+                                              FlagReview.code == "WFH_OVER_LIMIT"))
+    note = f"Extra WFH approved: {n:g} day(s) — {reason.strip()}" if n else ""
+    if n and rv is None:
+        c.db.add(FlagReview(period_id=p.id, emp_no=emp_no, code="WFH_OVER_LIMIT", reviewed_by=c.user.username,
+                            note=note[:500]))
+    elif n and rv is not None:
+        rv.note, rv.reviewed_by = note[:500], c.user.username
+    c.db.flush()
+    compute_period(c.db, p)
+    name = c.db.scalar(select(Employee.name).where(Employee.emp_no == emp_no)) or emp_no
+    return redirect(back, f"{name}: {n:g} extra WFH day(s) approved — deduction recalculated." if n else
+                    f"{name}: approval removed — the WFH deduction applies again.")
 
 
 @router.post("/flags/review")

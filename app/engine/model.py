@@ -230,6 +230,7 @@ class EmployeeMonth:
     leaveday_wfh_days: int = 0    # WFH sign-ins on a working day of full leave / absence: not WFH (v1.6.7)
     wfh_excess_days: float = 0    # WFH days above the monthly limit
     office_closed_wfh_days: int = 0   # WFH on a Saturday the office is closed (not counted towards the limit)
+    wfh_approved_days: float = 0      # extra WFH days approved by a manager / partner (month correction, v1.7.5)
     shortfall_deduction_days: float = 0   # part of deduction_days for hours shortfall
     wfh_deduction_days: float = 0         # part of deduction_days for WFH above the limit
     wfh_deduction_exempt: bool = False    # not deducted for WFH (Partner-type group or month exception)

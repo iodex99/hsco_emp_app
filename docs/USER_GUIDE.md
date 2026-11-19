@@ -92,6 +92,11 @@ WFH is counted only on a person's own working days. If someone signs in "Work fr
 holiday, the day is shown as off-day work (and can earn a comp-off) with a note — it does not count towards the WFH
 limit.
 
+## Extra WFH allowed by a manager / partner
+Review queue → *WFH above monthly limit* → **Approve WFH**: enter how many extra days were approved and by whom.
+Only the remaining extra days are deducted; the payroll Excel you download afterwards shows the new deduction and the
+approval (Corrections sheet). *Edit WFH approval* changes it; 0 removes it.
+
 ## WFH on a closed Saturday
 The branches open only on the 1st Saturday (Rules & calendars → Work from home → *Saturdays the office is open*).
 Someone whose Saturday is a working day and who works from home on another Saturday has no choice: the day shows as

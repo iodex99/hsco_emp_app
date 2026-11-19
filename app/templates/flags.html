@@ -56,6 +56,10 @@
         <td data-f="{{ 'Reviewed' if f.reviewed else 'Open' }}"><span class="badge {{ 'b-ok' if f.reviewed else 'b-grey' }}">{{ 'Reviewed' if f.reviewed else 'Open' }}</span></td>
         <td style="white-space:nowrap" class="right">
           <a class="btn sm ghost icon" title="Open employee" href="/periods/{{ period.key }}/employee/{{ f.emp_no }}">{{ ui.icon('arrow-up-right','sm') }}</a>
+          {% if can_hr and f.code == 'WFH_OVER_LIMIT' and wfh_info.get(f.emp_no) %}{% set w = wfh_info[f.emp_no] %}
+            <button class="btn sm sec" type="button" data-wfh="{{ f.emp_no }}" data-name="{{ f.name }}" data-excess="{{ w.excess|n }}"
+              data-approved="{{ w.approved|n }}" data-ded="{{ w.deduction|n }}" title="A manager / partner allowed more WFH: don't deduct">{{ ui.icon('badge-check','sm') }} {{ 'Edit WFH approval' if w.approved else 'Approve WFH' }}</button>
+          {% endif %}
           {% if can_hr and f.actionable %}
             {% if f.reviewed %}<button class="btn sm ghost" type="button" data-act="reopen">{{ ui.icon('undo-2','sm') }} Re-open</button>
             {% else %}<button class="btn sm sec" type="button" data-act="review">{{ ui.icon('check','sm') }} Mark reviewed</button>{% endif %}
@@ -81,7 +85,16 @@
 <style>.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--text-2);font-size:13.5px;font-weight:500}
 .nav-item:hover{background:var(--surface-3);color:var(--text)}.nav-item.on{background:var(--brand-50);color:var(--brand-700)}.nav-item .r{margin-left:auto;font-weight:600;font-size:12.5px}
 tr.is-rev td{opacity:.7}</style>
-{% if can_hr %}<aside class="drawer" id="rev" aria-label="Mark reviewed"><div class="dh"><div><div class="small muted" id="rv-sub"></div><h2 id="rv-title">Mark reviewed</h2></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+{% if can_hr %}<aside class="drawer" id="wfh-ok" aria-label="Approve extra WFH"><form method="post" action="/flags/wfh-approve" style="display:contents">{{ ui.csrf_field() }}
+<input type="hidden" name="period" value="{{ period.key }}"><input type="hidden" name="emp_no" id="wo-emp">
+<div class="dh"><div><div class="small muted">WFH above monthly limit</div><h2 id="wo-title">Approve extra WFH</h2></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
+<div class="db"><p class="small" id="wo-msg" style="margin-top:0;color:var(--text-2)"></p>
+  <div class="field"><label>Extra WFH days approved</label><input name="days" id="wo-days" type="number" min="0" max="31" step="0.5" required>
+    <div class="help">Only extra days beyond this are deducted. 0 removes the approval.</div></div>
+  <div class="field"><label>Approved by / reason <span class="muted">(required — saved in the audit log)</span></label><textarea name="reason" id="wo-reason" rows="2" maxlength="300" required></textarea></div>
+  <div class="chips">{% for t in ['Approved by partner','Approved by manager','Client assignment — approved','Medical — approved'] %}<button class="chip" type="button" data-wo-note="{{ t }}">{{ t }}</button>{% endfor %}</div>
+</div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn">{{ ui.icon('check','sm') }} Save — recalculate</button></div></form></aside>
+<aside class="drawer" id="rev" aria-label="Mark reviewed"><div class="dh"><div><div class="small muted" id="rv-sub"></div><h2 id="rv-title">Mark reviewed</h2></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()">{{ ui.icon('x') }}</button></div>
 <div class="db"><p class="small" id="rv-msg" style="margin-top:0;color:var(--text-2)"></p>
   <div class="field"><label>What was done? <span class="muted">(optional)</span></label><textarea id="rv-note" rows="3" maxlength="500"></textarea></div>
   <div class="chips">{% for t in ['Approved by partner','Regularised in greytHR','Discussed with employee','Leave applied late — accepted','No action needed'] %}<button class="chip" type="button" data-note="{{ t }}">{{ t }}</button>{% endfor %}</div>
@@ -96,6 +109,15 @@ function progress(j){const pct=j.total?Math.round(j.reviewed/j.total*100):100;$(
  const b=document.querySelector('.nav .count'); if(b){const n=j.total-j.reviewed; if(n>0)b.textContent=n; else b.remove();}}
 function fade(tr){tr.style.transition='opacity .3s';tr.style.opacity='0';setTimeout(()=>{tr.remove();updBulk();},300);}
 $$('#rev [data-note]').forEach(c=>c.onclick=()=>{$('#rv-note').value=c.dataset.note;});
+// ---------------- approve extra WFH (manager / partner discretion)
+$$('#fl [data-wfh]').forEach(b=>b.addEventListener('click',(e)=>{
+  e.stopPropagation();
+  $('#wo-emp').value=b.dataset.wfh; $('#wo-title').textContent=b.dataset.name;
+  const ex=b.dataset.excess, ap=b.dataset.approved;
+  $('#wo-msg').textContent=`${ex} WFH day(s) over the limit — ${b.dataset.ded} day(s) of leave deducted now`+(+ap?` (${ap} approved so far)`:'')+'.';
+  $('#wo-days').value= +ap ? ap : ex; $('#wo-reason').value='';
+  HSCO.openDrawer('wfh-ok'); setTimeout(()=>$('#wo-reason').focus(),50);}));
+$$('#wfh-ok [data-wo-note]').forEach(c=>c.onclick=()=>{$('#wo-reason').value=c.dataset.woNote;});
 
 // ---------------- single-row actions
 $$('#fl [data-act]').forEach(b=>b.addEventListener('click',async(e)=>{

@@ -969,6 +969,56 @@ def test_category_review_fixes(loaded):
         assert db.scalar(select(TargetedHoliday).where(TargetedHoliday.name == "Old offsite")) is None
 
 
+def test_approve_extra_wfh_from_review_queue_and_excel_follows(loaded):
+    """v1.7.5: Review queue → Approve extra WFH (manager / partner discretion) → only unapproved extra days are
+    deducted; the flag is marked reviewed; the downloaded Excel (built from the app at that moment) shows the new
+    deduction, a formula that allows for the approved days, and the correction; 0 removes the approval."""
+    import math
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import AuditLog, FlagReview
+    c = loaded
+    d4, _ = _result("T004")                                     # Article: 4 WFH days → 2 over the limit → 1 day
+    assert d4["wfh_excess_days"] == 2 and d4["wfh_deduction_days"] == 1.0
+    page = c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT").text
+    assert 'data-wfh="T004"' in page and "Approve WFH" in page and 'action="/flags/wfh-approve"' in page
+    csrf = csrf_of(c, "/flags?period=2026-10")
+    r = c.post("/flags/wfh-approve", data={"csrf": csrf, "period": "2026-10", "emp_no": "T004", "days": "1"},
+               follow_redirects=True)
+    assert "reason is required" in r.text                       # who approved it is mandatory
+    r = c.post("/flags/wfh-approve", data={"csrf": csrf, "period": "2026-10", "emp_no": "T004", "days": "1",
+                                           "reason": "Approved by partner"}, follow_redirects=True)
+    assert "1 extra WFH day(s) approved" in r.text
+    assert "Edit WFH approval" in c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT&show=all").text   # now reviewed
+    d4, f4 = _result("T004")
+    assert d4["wfh_approved_days"] == 1 and d4["wfh_deduction_days"] == 0.5
+    assert any("1 extra approved by manager / partner" in f["message"] for f in f4 if f["code"] == "WFH_OVER_LIMIT")
+    with session_scope() as db:
+        rv = db.scalar(select(FlagReview).where(FlagReview.emp_no == "T004", FlagReview.code == "WFH_OVER_LIMIT"))
+        assert rv and "Extra WFH approved: 1 day(s) — Approved by partner" in rv.note
+        assert any(a.action == "override.month" and "wfh_approved_days" in str(a.details) for a in db.scalars(select(AuditLog)))
+    # the Excel is generated from the app's current figures
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    ws = wb["Payroll Leave Sheet"]
+    rows = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
+    i = rows["T004"]
+    f = ws.cell(row=i, column=22).value
+    assert f.endswith(f"+CEILING(MAX(0,J{i}-2-1),1)*0.5")
+    j = ws.cell(row=i, column=10).value
+    assert math.ceil(max(0, j - 2 - 1)) * 0.5 == d4["deduction_days"] == 0.5     # T004 is hours-exempt: WFH part only
+    corr = [[x.value for x in row] for row in wb["Corrections"].iter_rows(min_row=6) if row[0].value]
+    assert any("Extra WFH approved" in str(r_) and "Approved by partner" in str(r_) for r_ in corr), corr
+    # approve all → no deduction; 0 → approval removed, deduction back
+    c.post("/flags/wfh-approve", data={"csrf": csrf, "period": "2026-10", "emp_no": "T004", "days": "2",
+                                       "reason": "Approved by manager"})
+    assert _result("T004")[0]["wfh_deduction_days"] == 0
+    c.post("/flags/wfh-approve", data={"csrf": csrf, "period": "2026-10", "emp_no": "T004", "days": "0",
+                                       "reason": "Withdrawn"})
+    assert _result("T004")[0]["wfh_deduction_days"] == 1.0 and not _result("T004")[0].get("wfh_approved_days")
+    # also available as a month correction on the employee page
+    assert "Extra WFH approved (days)" in c.get("/periods/2026-10/employee/T004").text
+
+
 def _result_days(emp):
     from sqlalchemy import select
     from app.db import session_scope

@@ -233,3 +233,7 @@ insights (`metrics._breakdown`, `insights._compare`). RULES_VERSION 6.
 
 v1.7.1: `calendars_for_month` also returns the calendars loaded for the year; `effective(…, loaded)` skips the others.
 `imports._shared_calendar`; `categories.category_in_filename`; employee form posts `cat_fields=1` so a blank clears.
+
+v1.7.5: `POST /flags/wfh-approve` (HR; period, emp_no, days, reason) → `MonthOverrideRow(field="wfh_approved_days")` +
+`FlagReview` note + audit + `compute_period`; `MONTH_OVERRIDABLE` includes `wfh_approved_days`;
+`excel._wfh_term` subtracts the approved days in the formula.
