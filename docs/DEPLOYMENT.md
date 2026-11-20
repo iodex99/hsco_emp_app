@@ -1,33 +1,49 @@
 # Deployment — Windows Server
 
-## Requirements
-Windows Server 2016+ (or Windows 10/11), Python 3.11+ installed **for all users** with "Add to PATH",
-~1 GB disk, port 8443 reachable on the LAN. Internet is only needed for automatic updates (HTTPS to GitHub; optional).
+## Install in three steps (v1.9.1)
+**Server PC** = the one office PC (or Windows Server) that stays on and holds the data. Windows 10/11 or Server
+2016+, about 1 GB free, on the office network, internet during installation (and for automatic updates).
 
-## Get the software
-Download the latest **release zip** from GitHub → Releases (`hsco_emp_app-v<version>-build<n>.zip`) and extract it,
-e.g. to `C:\HSCO\app`. Installs made from a release zip update themselves (below). A `git clone` also works but
-never self-updates (use `git pull` there).
+1. On the server PC, download the latest release zip from GitHub → Releases
+   (`hsco_emp_app-v<version>-build<n>.zip`). Right-click it → *Properties* → tick **Unblock** → OK, then
+   right-click → *Extract All*.
+2. In the extracted folder, double-click **`Install.cmd`** → *Yes* when Windows asks for administrator rights.
+   (If Windows says "Windows protected your PC": *More info* → *Run anyway*.) It installs everything by itself and
+   asks only for the first administrator's user name and password (typed twice). When it says **installed and
+   running**, the app opens in the browser and there is an **HSCO Attendance** icon on the desktop.
+3. For each office PC that will use the app: copy the folder **`C:\HSCO\Office PC setup`** to it (USB stick or a
+   shared drive) and double-click **`Set up this PC.cmd`** → *Yes* to the certificate question. It puts an
+   **HSCO Attendance** icon on the desktop. Nothing is installed on office PCs — the app runs in Chrome or Edge.
 
-## Install (first time)
-```powershell
-# as Administrator, in the app folder (git clone or copied zip)
-powershell -ExecutionPolicy Bypass -File deploy\install_windows.ps1 -HostName hsco-app -DataDir D:\HSCOData
-#   -HostName : the name users will type (must match the certificate and WebAuthn RP ID)
-#   -ExtraNames 192.168.1.10 other-alias : extra names/IPs on the certificate
-#   -SkipCert : you will place your own data\certs\server.crt + server.key (e.g. from the firm's CA)
-```
-The script installs dependencies, sets machine env vars (`HSCO_DATA_DIR`, `HSCO_RP_ID`, `HSCO_ORIGIN`, `HSCO_PORT`),
-creates a self-signed certificate, prompts for the first admin, and registers two Scheduled Tasks:
-**HSCO Attendance App** (at boot, as SYSTEM, auto-restart) and **HSCO Attendance Backup** (02:00 daily).
+Then sign in as the administrator, set up two-step verification (phone authenticator app), create the users (Users
+page) and do the first imports (below).
 
-Then:
-1. Distribute `D:\HSCOData\certs\server.crt` to client PCs → *Trusted Root Certification Authorities* (Group Policy or
-   double-click → Install). Without this browsers warn, and passkeys/security keys will not work.
-2. Add a DNS record (or hosts entry) for `hsco-app` → server IP.
-3. Open `https://hsco-app:8443`, sign in as admin, set up 2FA, then create users (Users page).
-4. Rules & calendars: confirm policy defaults; import greytHR's Employee Category Report and each category's Holiday List Importer file, then set each category's weekly offs / hours (Categories tab). (Place names need no setup.)
-5. Import the employee master (or last month's manual MIS to seed groups). (No leave balances: greytHR keeps them.)
+**What Install.cmd does** (`deploy\install_windows.ps1`, safe to run again — repair / upgrade keep everything):
+copies the app to `C:\HSCO\app`; finds Python 3.11+ or installs Python 3.13 for all users (winget, else python.org);
+creates the app's own Python environment and installs its packages; data folder `C:\HSCOData` (administrators and
+SYSTEM only) and machine settings; a security certificate for this PC's name, full name and IP addresses (trusted on
+this PC); the first administrator; Scheduled Tasks **HSCO Attendance App** (at boot, as SYSTEM, restarts on failure)
+and **HSCO Attendance Backup** (02:00); a firewall rule for the office network only (port 8443); starts the app and
+checks it answers; the desktop icon; the **Office PC setup** folder (certificate, *Set up this PC.cmd*, *READ ME.txt*).
+Address: `https://<server PC name>:8443` (also by IP address; passkeys / security keys need the name).
+
+Options (elevated PowerShell in the extracted folder): `powershell -ExecutionPolicy Bypass -File
+deploy\install_windows.ps1 -HostName hsco-app -DataDir D:\HSCOData -AppDir D:\HSCO\app -Port 8443 -ExtraNames
+alias,10.0.0.5 -SkipCert` (`-SkipCert`: you place the firm's own `server.crt` / `server.key` in `DataDir\certs`);
+`-DryRun` shows the plan and changes nothing; `-AdminUser x -AdminPassword y` for an unattended install (used by the
+automated install test). An existing install keeps its folders, name and data by default.
+
+**For IT, instead of step 3:** deploy `C:\HSCOData\certs\server.crt` to *Trusted Root Certification Authorities* by
+Group Policy and push `https://<server>:8443/` as a browser favourite. If the server's name doesn't resolve on the
+network, add a DNS record (or use the IP address).
+
+**Every release is install-tested:** before a release is published, GitHub Actions unpacks the release zip on a clean
+Windows machine, runs `Install.cmd`, checks HTTPS with certificate checking, the scheduled task, shortcuts and the
+office-PC kit, runs it again (repair) and checks again.
+
+**First imports** (Import page): greytHR's Employee Category Report and each category's Holiday List Importer file;
+then Rules & calendars → Categories (weekly offs / hours per category); the employee master (or last month's manual
+MIS to seed groups); then the month's Attendance Muster and Swipe Details. (No leave balances: greytHR keeps them.)
 
 ## Updates (automatic)
 **Publishing (developer):** bump `__version__` in `app/__init__.py`, add a CHANGELOG entry, push to `main`.

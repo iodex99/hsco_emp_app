@@ -79,7 +79,8 @@ class Releases:
 def test_release_package_contents(tmp_path):
     z, digest = build_release.build(42, tmp_path, commit="abc123")
     names = zipfile.ZipFile(z).namelist()
-    assert {"app/main.py", "run_server.py", "requirements.txt", "BUILD.json", "app/static/icons.svg"} <= set(names)
+    assert {"app/main.py", "run_server.py", "requirements.txt", "BUILD.json", "app/static/icons.svg",
+            "Install.cmd", "deploy/install_windows.ps1"} <= set(names)                # one-click install (v1.9.1)
     assert not any(n.startswith(("data/", "reference/", "tests/", ".git", ".venv")) for n in names)
     assert not any(n.endswith(".pyc") or "__pycache__" in n for n in names)
     meta = json.loads(zipfile.ZipFile(z).read("BUILD.json"))

@@ -278,3 +278,11 @@ v1.7.5: `POST /flags/wfh-approve` (HR; period, emp_no, days, reason) → `MonthO
   F = hours part (same formula as column V's hours term, referencing the payroll sheet), G = `V − F`, H = `V`, I =
   `_deduction_remark(d, pol, manual)`; a hand-set deduction (month correction) uses the app's stored split.
   *Comp-off Ledger* (was *Leave & Comp-off Ledger*): A–D + earned + taken. RULES_VERSION 10.
+
+## Installer (v1.9.1)
+`Install.cmd` (zip root; elevates via `Start-Process -Verb RunAs`; returns the installer's exit code) →
+`deploy/install_windows.ps1` (Windows PowerShell 5.1 compatible; defaults from an existing install: task working
+directory, `HSCO_DATA_DIR`, `HSCO_RP_ID`). Python: `py -3.13` → Program Files Python 3.13/3.12/3.11 → `python` on PATH
+(not the Store stub) → winget → python.org 3.13.1 silent all-users. Writes the office-PC kit next to the app folder.
+`scripts/build_release.py` ships `Install.cmd`; `.gitattributes` keeps `*.cmd` / `*.ps1` CRLF. CI job `install` in
+`.github/workflows/release.yml`.

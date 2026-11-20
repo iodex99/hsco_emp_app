@@ -45,8 +45,62 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
 
+  # The real one-click install on a clean Windows machine (admin), from the release zip exactly as a user gets it:
+  # Python found, packages, data folder, certificate (trusted), first admin, start-at-boot task as SYSTEM, firewall,
+  # shortcuts and the office-PC kit; then HTTPS with certificate checking; then a second run (repair / upgrade).
+  install:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build and unpack the release zip
+        shell: pwsh
+        run: |
+          python scripts/build_release.py --build 0 --out dist
+          Expand-Archive (Get-ChildItem dist/*.zip).FullName -DestinationPath C:/Users/Public/Downloads/hsco-release
+      - name: Install (double-click equivalent, unattended admin)
+        shell: pwsh
+        run: |
+          cmd /c 'echo.| C:\Users\Public\Downloads\hsco-release\Install.cmd -AdminUser ciadmin -AdminPassword Ci#Install2026x > C:\install1.log 2>&1'
+          $rc = $LASTEXITCODE
+          Get-Content C:\install1.log
+          if ($rc -ne 0) { Get-Content C:\install1.log -Tail 12 | ForEach-Object { "::error title=Install.cmd failed::$_" }; exit $rc }
+      - name: Check the installed app
+        shell: pwsh
+        run: |
+          function Check($name, [scriptblock]$ok) { try { $r = @(& $ok); if (-not $r[-1]) { throw "check failed" }; "ok: $name" } catch { "::error title=Install check::$name ($_)"; $script:bad = $true } }
+          $h = $env:COMPUTERNAME.ToLower()
+          Check "HTTPS /healthz with a trusted certificate" { curl.exe --fail --silent --show-error --ssl-no-revoke "https://${h}:8443/healthz"; $LASTEXITCODE -eq 0 }
+          Check "sign-in page" { curl.exe --fail --silent --ssl-no-revoke -o NUL "https://${h}:8443/login"; $LASTEXITCODE -eq 0 }
+          Check "app copied to C:\HSCO\app" { Test-Path "C:/HSCO/app/run_server.py" }
+          Check "database in C:\HSCOData" { Test-Path "C:/HSCOData/hsco.db" }
+          foreach ($f in "Set up this PC.cmd", "hsco-server.crt", "READ ME.txt") { Check "office PC kit: $f" { Test-Path "C:/HSCO/Office PC setup/$f" } }
+          Check "desktop icon" { Test-Path "$env:PUBLIC/Desktop/HSCO Attendance.url" }
+          Check "start-at-boot task runs as SYSTEM" { (Get-ScheduledTask -TaskName "HSCO Attendance App").Principal.UserId -eq "SYSTEM" }
+          if ($bad) { exit 1 }
+      - name: Run the installer again (repair / upgrade keeps everything)
+        shell: pwsh
+        run: |
+          cmd /c 'echo.| C:\HSCO\app\Install.cmd > C:\install2.log 2>&1'
+          $rc = $LASTEXITCODE
+          Get-Content C:\install2.log
+          if ($rc -ne 0) { Get-Content C:\install2.log -Tail 12 | ForEach-Object { "::error title=Install.cmd (2nd run) failed::$_" }; exit $rc }
+      - name: Check again
+        shell: pwsh
+        run: |
+          $h = $env:COMPUTERNAME.ToLower()
+          curl.exe --fail --silent --show-error --ssl-no-revoke "https://${h}:8443/healthz"
+          if ($LASTEXITCODE -ne 0) { "::error title=Install check::not answering after the second run"; exit 1 }
+          $env:HSCO_DATA_DIR = "C:/HSCOData"
+          Set-Location C:/HSCO/app
+          .venv/Scripts/python.exe -c "from app.db import session_scope; from app.models import User; from sqlalchemy import select; s=session_scope().__enter__(); assert s.scalar(select(User.username)) == 'ciadmin'"
+          if ($LASTEXITCODE -ne 0) { "::error title=Install check::the administrator was not kept"; exit 1 }
+
   release:
-    needs: test
+    needs: [test, install]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

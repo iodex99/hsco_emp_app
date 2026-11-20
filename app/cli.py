@@ -31,6 +31,9 @@ def create_admin(argv):
     if probs:
         print("Password needs: " + ", ".join(probs))
         sys.exit(2)
+    if len(argv) < 2 and getpass.getpass("Type the password again: ") != pw:      # typed (hidden): confirm it
+        print("The two passwords are different.")
+        sys.exit(3)
     with session_scope() as db:
         if db.scalar(select(User).where(User.username == username)):
             print("User exists")

@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-INCLUDE = ["app", "deploy", "docs", "run_server.py", "requirements.txt", "requirements-dev.txt", "README.md",
+INCLUDE = ["app", "deploy", "docs", "run_server.py", "Install.cmd", "requirements.txt", "requirements-dev.txt", "README.md",
            "CLAUDE.md"]
 SKIP_PARTS = {"__pycache__", ".pytest_cache"}
 SKIP_SUFFIX = {".pyc", ".pyo", ".db", ".log"}

@@ -32,7 +32,7 @@ python -m venv .venv
 .venv\Scripts\python run_server.py --dev          # http://localhost:8443
 .venv\Scripts\python -m pytest -q                 # tests (e2e needs: python -m playwright install chromium)
 ```
-Production install on Windows Server: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Production install: download the release zip, extract it, double-click **Install.cmd** — details in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Documentation
 | | |

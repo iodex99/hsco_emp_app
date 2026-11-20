@@ -219,3 +219,12 @@ shortfall deduction, V − hours = WFH part, every deducted person) and remarks;
 columns; holiday template pre-filled and re-import = "no changes". Real data copy (browser): migration log, HS207
 unchanged (0.5 day), firm totals unchanged (6 people, 4 days), Payroll Input 6 rows with remarks, holiday template 69
 rows, pages render with no console errors. Full suite: **158 passed** (incl. e2e and real data).
+
+## v1.9.1 — one-click install
+`tests/test_deploy.py`: Install.cmd elevates and runs the installer; the installer parses (PowerShell parser); a dry
+run prints the address / folders / Python and creates nothing; `create-admin` refuses two different passwords.
+`test_release_package_contents`: Install.cmd and the installer are in the zip. Checked by hand here: the office-PC
+script as generated (desktop path incl. a OneDrive desktop, shortcut file). **CI job `install`** (blocks the release):
+the real installer on a clean Windows runner from the unpacked release zip — HTTPS `/healthz` and `/login` with the
+certificate verified, database, scheduled task as SYSTEM, desktop icon, office-PC kit — then a second run and the same
+checks.

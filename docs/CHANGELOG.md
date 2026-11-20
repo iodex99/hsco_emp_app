@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.1 — 2026-11-20 — one-click installation
+Owner: "now I have to deploy it on the client side … I need the installation to be very very simple".
+- **`Install.cmd`** in the release zip: double-click → asks for administrator rights → installs everything (copies
+  the app to `C:\HSCO\app`, installs Python 3.13 if missing, packages, data folder, certificate, start-at-boot task,
+  nightly backup, firewall) and asks only for the first administrator (password typed twice). Ends with the app open
+  in the browser and an **HSCO Attendance** desktop icon. Safe to run again (repair / upgrade).
+- **`C:\HSCO\Office PC setup`**: the certificate, *Set up this PC.cmd* (trusts the certificate for that user, adds a
+  desktop icon, opens the app) and *READ ME.txt* — copy it to each office PC; no install there.
+- The certificate covers the server's name, full name and IP addresses; it is trusted on the server itself.
+- `-DryRun` (shows the plan), `-AdminUser/-AdminPassword` (unattended); an existing install keeps its folders,
+  name and data.
+- CI: every release is first installed from its zip on a clean Windows machine and checked over HTTPS (twice — the
+  second run is a repair); releases are only published when that passes.
+- `create-admin` asks for the password twice when typed.
+
 ## 1.9.0 — 2026-11-20 — holidays only by category; leave balances left to greytHR; Payroll Input split by cause
 Owner: "for holidays they only need these fields: date, day, holiday, category, optional … holidays are targeted only
 on the basis of category … in the payroll input sheet we need to see a bifurcation in a column as well as in remark if
