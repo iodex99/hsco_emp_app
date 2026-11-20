@@ -11,9 +11,11 @@
    (If Windows says "Windows protected your PC": *More info* → *Run anyway*.) It installs everything by itself and
    asks only for the first administrator's user name and password (typed twice). When it says **installed and
    running**, the app opens in the browser and there is an **HSCO Attendance** icon on the desktop.
-3. For each office PC that will use the app: copy the folder **`C:\HSCO\Office PC setup`** to it (USB stick or a
-   shared drive) and double-click **`Set up this PC.cmd`** → *Yes* to the certificate question. It puts an
-   **HSCO Attendance** icon on the desktop. Nothing is installed on office PCs — the app runs in Chrome or Edge.
+3. **Remote Desktop (the usual set-up):** nothing more to do — everyone who signs in to the server sees the **HSCO
+   Attendance** icon on their desktop (the certificate is trusted for all users of the server). The app runs in the
+   background with no window and starts by itself whenever the server starts.
+   *Only if other PCs open it over the network instead:* copy **`C:\HSCO\Office PC setup`** to each of them and
+   double-click **`Set up this PC.cmd`** → *Yes* to the certificate question.
 
 Then sign in as the administrator, set up two-step verification (phone authenticator app), create the users (Users
 page) and do the first imports (below).

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.2 — 2026-11-20 — installer: Remote Desktop first
+Owner: "they use RDP, so the user will access it via RDP only … also, when I start the app on my PC it opens a command
+prompt, will that be the case on the client side as well".
+- The installer's closing message and READ ME say it plainly: with Remote Desktop nothing else is needed — every user
+  of the server has the **HSCO Attendance** desktop icon; the office-PC folder is only for PCs that open it over the
+  network. On the server the app runs as a background task (no window, starts with Windows) — the command window
+  seen on a developer PC came from that PC's manual start script, not from the server install.
+
 ## 1.9.1 — 2026-11-20 — one-click installation
 Owner: "now I have to deploy it on the client side … I need the installation to be very very simple".
 - **`Install.cmd`** in the release zip: double-click → asks for administrator rights → installs everything (copies

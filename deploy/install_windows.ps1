@@ -17,7 +17,9 @@
     5. A security certificate for this PC's name and IP addresses (trusted on this PC)
     6. The first administrator (asked once)
     7. Starts the app at every boot (Scheduled Task as SYSTEM, restarts on failure), nightly backup, firewall (LAN only)
-    8. Starts it, puts a shortcut on the desktop and makes "C:\HSCO\Office PC setup" for the other PCs
+    8. Starts it (in the background - no window, also after every restart), puts an icon on the desktop of every
+       user of this PC (Remote Desktop users included) and makes "C:\HSCO\Office PC setup" in case other PCs ever
+       open it over the network
   -DryRun shows what would happen and changes nothing.
 #>
 param(
@@ -265,7 +267,9 @@ HSCO Attendance & Leave - office PCs
 Address: $Url
 $(if ($alt) { "(if the name does not open: $alt)" })
 
-On each office PC that will use the app (once):
+Not needed when people use the app by Remote Desktop on the server - only for PCs that open it over the network.
+
+On each such PC (once):
   1. Copy this folder to the PC (or open it from a shared drive / USB stick).
   2. Double-click  "Set up this PC.cmd"  and click YES when Windows asks about the certificate.
   3. Use the "HSCO Attendance" icon it puts on the desktop.
@@ -283,8 +287,10 @@ Say " HSCO Attendance & Leave is installed and running." "Green"
 Say ""
 Say "  Open it at   $Url" "White"
 if ($alt) { Say "  (or         $alt)" }
-Say "  On this PC:  the 'HSCO Attendance' icon on the desktop"
-Say "  Office PCs:  copy the folder '$kit' and run 'Set up this PC.cmd' once on each PC"
+Say "  Users:       everyone who signs in to this PC (Remote Desktop included) has the"
+Say "               'HSCO Attendance' icon on their desktop - nothing else to set up."
+Say "  It runs in the background (no window) and starts by itself whenever this PC starts."
+Say "  (Only if other PCs ever open it over the network: '$kit')"
 Say "  Data:        $DataDir  (backed up every night; copy it off this PC now and then)"
 Say "==============================================================" "Green"
 if ($up) { try { Start-Process "$Url/" } catch {} }

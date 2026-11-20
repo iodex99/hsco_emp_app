@@ -186,3 +186,7 @@ template was removed: leave balances are kept in greytHR.)
 The app does not keep leave or comp-off balances — greytHR does. Each month it gives the **leave deduction** to apply
 (hours shortfall + WFH over the limit), and shows PL, comp-off, LOP and absence as marked in greytHR. The employee page
 → *Leave & comp-off* shows this month's leave, the deduction split and comp-off earned / taken.
+
+## Opening the app (v1.9.2)
+Sign in to the server (Remote Desktop) and double-click **HSCO Attendance** on the desktop. The app is always running
+in the background on the server — there is no window to keep open or close.
