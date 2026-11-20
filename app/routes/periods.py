@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.engine.compute import MONTH_OVERRIDABLE
 from app.engine.model import B_ABSENT, B_COMPOFF, B_LEAVE, B_LOP, B_PRESENT, HOLIDAY, WEEKLY_OFF, WORKDAY
 from app.models import (
-    DayOverrideRow, Employee, LeaveOpening, MonthOverrideRow, MonthResult, MusterRow, Period,
+    DayOverrideRow, Employee, MonthOverrideRow, MonthResult, MusterRow, Period,
 )
 from app.services import metrics as MX
 from app.services.audit import audit
@@ -79,7 +79,7 @@ def recompute(key: str, c: Ctx = Depends(hr)):
 def finalise(key: str, c: Ctx = Depends(hr)):
     p = get_p(c, key)
     _editable(p)
-    compute_period(c.db, p, cascade=False)
+    compute_period(c.db, p)
     p.status = "FINALISED"
     p.finalised_at = datetime.now()
     p.finalised_by = c.user.username
@@ -100,24 +100,18 @@ def reopen(key: str, reason: str = Form(...), c: Ctx = Depends(admin)):
 @router.post("/periods/{key}/delete")
 def delete_month(key: str, reason: str = Form(""), confirm: str = Form(""), c: Ctx = Depends(admin)):
     """Remove a month imported by mistake (e.g. a typo'd date). Draft months only; reason required; audit-logged.
-    Everything belonging to the month goes (imports, results, corrections, reviews); later draft months are
-    recalculated because leave balances carry forward."""
+    Everything belonging to the month goes (imports, results, corrections, reviews). Other months are independent
+    and are not touched."""
     from sqlalchemy import delete as sql_delete
-    from app.services.imports import recompute_from
     p = get_p(c, key)
     if p.status == "FINALISED":
         return redirect(f"/periods/{key}", "A finalised month can't be deleted. Re-open it first.")
     if not reason.strip() or confirm.strip().lower() != p.label.lower():
         return redirect(f"/periods/{key}", f"To delete, give a reason and type the month name exactly ({p.label}).")
-    label, ym = p.label, (p.year, p.month)
+    label = p.label
     audit(c.db, c.user, "period.delete", "period", key, {"reason": reason.strip()}, c.ip)
     c.db.execute(sql_delete(Period).where(Period.id == p.id))      # rows of the month go with it (ON DELETE CASCADE)
     c.db.flush()
-    later = {q.id for q in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None)))
-             if (q.year, q.month) > ym}
-    c.db.commit()
-    if later:
-        recompute_from(c.db, later, commit_each=True)
     return redirect("/", f"{label} deleted.")
 
 
@@ -132,8 +126,6 @@ def drill(key: str, emp_no: str, c: Ctx = Depends(viewer)):
                          .order_by(DayOverrideRow.day)).all()
     m_ovr = c.db.scalars(select(MonthOverrideRow).where(MonthOverrideRow.period_id == p.id,
                                                         MonthOverrideRow.emp_no == emp_no)).all()
-    opening = c.db.scalar(select(LeaveOpening).where(LeaveOpening.emp_no == emp_no, LeaveOpening.year == p.year,
-                                                     LeaveOpening.month == p.month))
     history = MX.employee_history(c.db, emp_no)
     # calendar grid (Mon-first weeks)
     first = date(p.year, p.month, 1)
@@ -150,7 +142,7 @@ def drill(key: str, emp_no: str, c: Ctx = Depends(viewer)):
     next_emp = order[i + 1] if i + 1 < len(order) else None
     return render(c, "employee_month.html", period=p, r=r, d=r.data, emp=emp, weeks=weeks, d_ovr=d_ovr, m_ovr=m_ovr,
                   prev_emp=prev_emp, next_emp=next_emp,
-                  opening=opening, history=history, override_labels=OVERRIDE_LABELS, raw_status=raw_status,
+                  history=history, override_labels=OVERRIDE_LABELS, raw_status=raw_status,
                   day_types=[WORKDAY, WEEKLY_OFF, HOLIDAY], policy=get_policy(c.db),
                   status_codes=sorted(get_policy(c.db).status_map.keys()),
                   status_meaning=get_policy(c.db).status_map,
@@ -254,24 +246,3 @@ def del_month_override(key: str, emp_no: str, oid: int, c: Ctx = Depends(hr)):
     return redirect(f"/periods/{key}/employee/{emp_no}", "Override removed.")
 
 
-@router.post("/periods/{key}/employee/{emp_no}/opening")
-def set_opening(key: str, emp_no: str, leave_balance: str = Form(""), compoff_balance: str = Form(""),
-                note: str = Form(""), c: Ctx = Depends(hr)):
-    p = get_p(c, key)
-    _editable(p)
-    lo = c.db.scalar(select(LeaveOpening).where(LeaveOpening.emp_no == emp_no, LeaveOpening.year == p.year,
-                                                LeaveOpening.month == p.month))
-    if lo is None:
-        lo = LeaveOpening(emp_no=emp_no, year=p.year, month=p.month)
-        c.db.add(lo)
-    try:
-        lo.leave_balance = float(leave_balance) if leave_balance.strip() else None
-        lo.compoff_balance = float(compoff_balance) if compoff_balance.strip() else None
-    except ValueError:
-        return redirect(f"/periods/{key}/employee/{emp_no}", "Balances must be numbers.")
-    lo.note, lo.created_by = note, c.user.username
-    c.db.flush()
-    audit(c.db, c.user, "leave.opening", "employee", emp_no, {"period": p.key, "leave": leave_balance,
-                                                              "compoff": compoff_balance, "note": note}, c.ip)
-    compute_period(c.db, p)
-    return redirect(f"/periods/{key}/employee/{emp_no}", "Opening balances saved.")

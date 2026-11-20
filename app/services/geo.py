@@ -130,7 +130,7 @@ def upgrade_place_names() -> int:
         with session_scope() as db:
             per = db.get(Period, pid)
             if per is not None and per.status == "DRAFT" and per.computed_at:
-                compute_period(db, per, cascade=False)
+                compute_period(db, per)
     with session_scope() as db:
         st = db.get(Setting, "geo_names_version")
         if st is None:

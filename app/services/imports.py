@@ -17,7 +17,7 @@ from app.importers import parsers as P
 from app.importers.readers import read_workbook
 from app.config import get_config
 from app.models import (
-    Category, Employee, Holiday, HolidayCalendar, ImportBatch, LeaveOpening, ManualMisRow, MusterRow, Period, Setting, SummaryRow,
+    Category, Employee, Holiday, HolidayCalendar, ImportBatch, ManualMisRow, MusterRow, Period, Setting, SummaryRow,
     SwipeRow, User,
 )
 from app.services.audit import audit
@@ -271,7 +271,6 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                 n += 1
         elif kind in ("employee_master", "employee_category"):
             recs = P.parse_employee_master(rows, ds)
-            cals = {c.name.lower(): c for c in db.scalars(select(HolidayCalendar))}
             from app.services import categories as CAT
             from app.services.settings import get_general
             cat_cache = CAT.by_key(db)
@@ -313,12 +312,6 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                                         f"{e.weekly_off}")
                 if r.get("working_saturdays"):
                     e.working_saturdays = r["working_saturdays"]
-                if r.get("holiday_calendar"):
-                    c = cals.get(r["holiday_calendar"].lower())
-                    if c:
-                        e.holiday_calendar_id = c.id
-                    else:
-                        warnings.append(f"{r['emp_no']}: holiday calendar '{r['holiday_calendar']}' not found")
                 if e.dol:
                     e.is_active = False
                 n += 1
@@ -327,86 +320,17 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                                 "to greytHR's). To pin someone to greytHR's weekly offs whatever the category says, "
                                 "choose it on their page.")
             touched.update(p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT")))
-        elif kind == "leave_opening":
-            recs = P.parse_leave_opening(rows, ds)
-            for r in recs:
-                if r["leave_balance"] is None and r.get("compoff_balance") is None:
-                    continue                      # nothing filled in (template rows) — never clears a stored balance
-                d: Optional[date] = r.get("as_of")
-                ym = (d.year, d.month) if d else period_hint
-                if not ym:
-                    warnings.append(f"{r['emp_no']}: no 'As of' date and no period selected — skipped")
-                    continue
-                lo = db.scalar(select(LeaveOpening).where(LeaveOpening.emp_no == r["emp_no"], LeaveOpening.year == ym[0],
-                                                          LeaveOpening.month == ym[1]))
-                if lo is None:
-                    lo = LeaveOpening(emp_no=r["emp_no"], year=ym[0], month=ym[1])
-                    db.add(lo)
-                if r["leave_balance"] is not None:
-                    lo.leave_balance = r["leave_balance"]
-                if r.get("compoff_balance") is not None:
-                    lo.compoff_balance = r["compoff_balance"]
-                lo.created_by = user.username if user else ""
-                lo.note = f"Imported from {filename}"
-                p = get_period(db, ym[0], ym[1])
-                if p and p.status == "DRAFT":
-                    touched.add(p.id)
-                n += 1
         elif kind == "holidays":
+            # owner (v1.9): Date, Day, Holiday, Category, Optional — each holiday belongs to its category's list
+            # (several categories, comma-separated → each list); no category → the file name's category, else the
+            # default list
             recs = P.parse_holidays(rows, ds)
-            from app.models import TargetedHoliday
-            from app.services import holidays as TH
             _check_weekdays(recs, warnings)
-            emp_lookup = None
+            from_file = "" if "category" in ds.map else CAT_NAME_FROM_FILE(db, filename)
             for r in recs:
-                if r["for_locations"] or r["for_groups"] or r["for_employees"] or r["for_categories"]:
-                    # targeted holiday: employees given by number or exact name
-                    if emp_lookup is None:
-                        emp_lookup, by_name = {}, {}
-                        for no, nm in db.execute(select(Employee.emp_no, Employee.name)):
-                            emp_lookup[no.lower()] = no
-                            by_name.setdefault((nm or "").strip().lower(), []).append(no)
-                        for nm, nos in by_name.items():
-                            if nm and nm not in emp_lookup:
-                                emp_lookup[nm] = nos[0] if len(nos) == 1 else ("?", nos)
-                    emps = []
-                    for x in TH.split(r["for_employees"]):
-                        no = emp_lookup.get(x.lower())
-                        if isinstance(no, tuple):
-                            warnings.append(f"{r['date']:%d-%b-%Y} {r['name'] or 'holiday'}: '{x}' matches several "
-                                            f"employees ({', '.join(no[1])}) — use the employee number")
-                        elif no:
-                            emps.append(no)
-                        else:
-                            warnings.append(f"{r['date']:%d-%b-%Y} {r['name'] or 'holiday'}: employee '{x}' not found")
-                    locs, grps, emps = TH.join([r["for_locations"]]), TH.join([r["for_groups"]]), TH.join(emps)
-                    cats = TH.join([r["for_categories"]])
-                    if not (locs or grps or emps or cats):
-                        continue
-                    same = db.scalar(select(TargetedHoliday).where(
-                        TargetedHoliday.day == r["date"], TargetedHoliday.locations == locs,
-                        TargetedHoliday.groups == grps, TargetedHoliday.emp_nos == emps,
-                        TargetedHoliday.categories == cats))
-                    if same is None:
-                        db.add(TargetedHoliday(day=r["date"], name=r["name"] or "Holiday", locations=locs, groups=grps,
-                                               emp_nos=emps, categories=cats, created_by=user.username if user else ""))
-                    else:
-                        same.name = r["name"] or same.name
-                    n += 1
-                    continue
-                # which list: the row's Category (each category has its own list) → Calendar → the category in
-                # the file name ("… HSCO (Carlyle) 2026.xlsx") → Location (older lists) → "Standard"
-                if r["category"]:
-                    target = ("category", r["category"])
-                elif r["calendar"]:
-                    target = ("calendar", r["calendar"])
-                elif "category" not in ds.map and "calendar" not in ds.map and CAT_NAME_FROM_FILE(db, filename):
-                    target = ("category", CAT_NAME_FROM_FILE(db, filename))
-                elif r["location"]:
-                    target = ("calendar", r["location"])
-                else:
-                    target = ("calendar", "Standard")
-                hol_plan.append({**r, "target": target, "sheet": ds.sheet})
+                names = [x.strip() for x in (r["category"] or from_file).split(",") if x.strip()]
+                for nm in names or [None]:
+                    hol_plan.append({**r, "target": ("category", nm) if nm else ("default", ""), "sheet": ds.sheet})
                 n += 1
             hol_sheets.append(len(results))
             touched.update(p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT")))
@@ -481,8 +405,10 @@ FULL_LIST_MIN = 5    # a sheet with at least this many holidays in a year is a f
 
 
 def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
-    """Write the holiday-list rows of one file. Each category's rows go to that category's own calendar (created
-    and linked on first use, never made the default). For every calendar and year with a full list (≥ 5 holidays) the
+    """Write holiday-list rows (plan rows with target ("category", name), ("default", "") or ("calendar_id", id) —
+    the last for a list pasted into a chosen calendar). Each category's rows go
+    to that category's own calendar (created and linked on first use, never made the default); rows without a
+    category go to the default calendar ("Standard", created as the default when there is none). For every calendar and year with a full list (≥ 5 holidays) the
     file *replaces* that year — dates that moved are removed — so next year's or a revised list is just uploaded
     again. Returns plain-language summary lines (added / removed / changed per calendar and year)."""
     from collections import defaultdict
@@ -493,7 +419,6 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
     wanted: dict = defaultdict(dict)          # calendar id -> {date: row}
     cal_objs: dict = {}
     own_ok: set = set()                       # calendars already settled as a category's own list in this file
-    cat_of_cal: dict = {}                     # calendar id -> category (for the location check)
     for r in plan:
         how, name = r["target"]
         if how == "category":
@@ -523,18 +448,18 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
                     cal_by_name[cal.name.lower()] = cal
                 cat.holiday_calendar_id = cal.id
             own_ok.add(cal.id)
-            cat_of_cal[cal.id] = cat
+        elif how == "calendar_id":
+            cal = db.get(HolidayCalendar, int(name))
         else:
-            cal = cal_by_name.get(name.lower())
+            cal = next((c for c in cal_by_name.values() if c.is_default), None)
             if cal is None:
-                first = db.scalar(select(HolidayCalendar.id).limit(1)) is None and not cache
-                cal = HolidayCalendar(name=name, is_default=first)
+                cal = cal_by_name.get("standard") or HolidayCalendar(name="Standard")
+                cal.is_default = True
                 db.add(cal)
                 db.flush()
                 cal_by_name[cal.name.lower()] = cal
-                if not first:
-                    lines.append(f"New calendar “{cal.name}” — nobody uses it yet: make it the default or pick it for "
-                                 "a category (Rules & calendars).")
+                lines.append(f"Rows without a category went to the default list “{cal.name}” (for people whose "
+                             "category has no list of its own).")
         cal_objs[cal.id] = cal
         wanted[cal.id].setdefault(r["date"], r)
     for cid, rows in wanted.items():
@@ -576,29 +501,16 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
                 bits = [b for b in bits if b]
                 lines.append(f"{cal.name} {year}: {what} — " + ("; ".join(bits) if bits else "no changes") + "."
                              + ("" if full else " (Short list: added to the year, nothing removed.)"))
-    # a list for one location used by people elsewhere (e.g. a Delhi list for a category with Mumbai staff)
-    for cid, cat in cat_of_cal.items():
-        locs = {(r.get("location") or "").strip() for r in wanted[cid].values()} - {""}
-        if len(locs) != 1:
-            continue
-        loc = next(iter(locs))
-        people = [e for e in emp_cache.values() if not e.dol and CAT.key(e.category) == CAT.key(cat.name)]
-        away = [e for e in people if e.location and e.location.strip().lower() != loc.lower()]
-        if away:
-            lines.append(f"{cat.name}: the list is for {loc}, but {len(away)} of its {len(people)} people work elsewhere "
-                         f"({', '.join(sorted({e.location for e in away}))}) — they get this list too; give them their own "
-                         "calendar on their page if their holidays differ.")
     db.flush()
     return lines
 
 
 def _shared_calendar(db: Session, cal, cat) -> bool:
-    """Is this calendar the default, another category's list, or some employee's own calendar?"""
+    """Is this calendar the default or another category's list?"""
     if cal.is_default:
         return True
-    if db.scalar(select(Category.id).where(Category.holiday_calendar_id == cal.id, Category.id != cat.id).limit(1)):
-        return True
-    return bool(db.scalar(select(Employee.emp_no).where(Employee.holiday_calendar_id == cal.id).limit(1)))
+    return bool(db.scalar(select(Category.id).where(Category.holiday_calendar_id == cal.id, Category.id != cat.id)
+                          .limit(1)))
 
 
 FULL_FILE_SHARE = 0.8
@@ -619,23 +531,16 @@ def _clear(db: Session, model, period: Period, emps: set, what: str, warnings: l
 
 
 def recompute_from(db: Session, period_ids: set, commit_each: bool = False) -> int:
-    """Recalculate the affected draft months and every later draft month (leave and comp-off balances carry
-    forward), oldest first, each once. commit_each=True commits after every month so the database write lock is
-    held for one month's calculation at a time (each month only reads the committed month before it)."""
-    if not period_ids:
-        return 0
-    ps = [p for p in (db.get(Period, i) for i in period_ids) if p]
-    if not ps:
-        return 0
-    start = min((p.year, p.month) for p in ps)
+    """Recalculate the given draft months (with attendance), oldest first. Months are independent — nothing carries
+    forward (v1.9) — so later months are not touched. commit_each=True commits after every month so the database
+    write lock is held for one month's calculation at a time."""
+    ps = sorted((p for p in (db.get(Period, i) for i in period_ids or ()) if p), key=lambda p: (p.year, p.month))
     n = 0
-    for p in db.scalars(select(Period).order_by(Period.year, Period.month)):
-        if (p.year, p.month) < start or p.status != "DRAFT":
-            continue
-        if p.id not in period_ids and not p.computed_at:
+    for p in ps:
+        if p.status != "DRAFT":
             continue
         if db.scalar(select(MusterRow.id).where(MusterRow.period_id == p.id).limit(1)):
-            compute_period(db, p, cascade=False)
+            compute_period(db, p)
             n += 1
             if commit_each:
                 db.commit()

@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.engine.model import BUCKETS
 from app.engine.model import PATTERNS, WEEKDAY_NAMES
-from app.models import Category, Employee, Holiday, HolidayCalendar, MonthResult, Period, SwipeRow, TargetedHoliday
+from app.models import Category, Employee, Holiday, HolidayCalendar, MonthResult, Period, SwipeRow
 from app.services import categories as CAT
 from app.services import holidays as TH
 from app.services import branding
@@ -36,7 +36,7 @@ POLICY_NUMBERS = [
     ("persistent_late_days", "Persistent late: days per month", "10"),
     ("persistent_regularisation_days", "Persistent regularisation: days per month", "3"),
     ("min_daily_hours", "Encouraged minimum hours per day", "7"),
-    ("annual_leave_days", "Paid leave per financial year", "15"),
+    ("annual_leave_days", "Paid leave per financial year (Insights: leave used)", "15"),
     ("fy_start_month", "Financial year start month (1-12)", "4"),
 ]
 
@@ -44,12 +44,8 @@ POLICY_NUMBERS = [
 def _recompute_drafts(c: Ctx):
     for p in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))
                           .order_by(Period.year, Period.month)):
-        compute_period(c.db, p, cascade=False)
-        c.db.commit()          # one month per transaction: never hold the write lock for the whole cascade
-
-
-def _active_on(e, d: date) -> bool:
-    return (not e.doj or e.doj <= d) and (not e.dol or e.dol >= d)
+        compute_period(c.db, p)
+        c.db.commit()          # one month per transaction: never hold the write lock for all of them
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -61,15 +57,6 @@ def settings_page(c: Ctx = Depends(hr)):
     pol = get_policy(c.db)
     shift_names = [(x, *parse_shift(x, pol)) for x in sorted(c.db.scalars(select(MusterRow.shift).distinct())) if x]
     from app.services import backups as BK
-    emps = c.db.scalars(select(Employee).order_by(Employee.name)).all()
-    names = {e.emp_no: e.name for e in emps}
-    targeted = []
-    for h in c.db.scalars(select(TargetedHoliday).order_by(TargetedHoliday.day.desc())):
-        who = [e for e in emps if TH.applies(h, e.emp_no, e.location or "", e.group or "",
-                                             (e.category, e.additional_category)) and _active_on(e, h.day)]
-        targeted.append({"h": h, "who": TH.describe(h, names), "count": len(who),
-                         "people": ", ".join(e.name for e in who[:40]) + (" …" if len(who) > 40 else ""),
-                         "unknown": [x for x in TH.split(h.emp_nos) if x not in names]})
     # categories: settings, people, gaps, and days where a category's list and greytHR disagree
     cat_rows = CAT.overview(c.db)
     cal_use = {}
@@ -83,14 +70,10 @@ def settings_page(c: Ctx = Depends(hr)):
     this_year = date.today().year
     return render(c, "settings.html", backups=BK.list_backups()[:12], bk=BK.summary(),
                   pol=get_policy_json(c.db), g=get_general(c.db), numbers=POLICY_NUMBERS,
-                  buckets=BUCKETS, cals=cals, shift_names=shift_names, targeted=targeted,
+                  buckets=BUCKETS, cals=cals, shift_names=shift_names,
                   cat_rows=cat_rows, cal_use=cal_use, conflicts=conflicts, conflict_period=latest,
                   uncategorised=CAT.uncategorised(c.db), patterns=PATTERNS, weekday_names=WEEKDAY_NAMES,
-                  this_year=this_year, th_categories=[r["c"].name for r in cat_rows],
-                  th_locations=sorted({e.location for e in emps if e.location}),
-                  th_groups=sorted({e.group for e in emps if e.group}),
-                  th_people=[(e.emp_no, e.name, e.location or "", e.group or "", e.category or "",
-                              e.additional_category or "") for e in emps if not e.dol or e.dol >= date.today()])
+                  this_year=this_year, th_categories=[r["c"].name for r in cat_rows])
 
 
 @router.post("/settings/policy")
@@ -116,9 +99,6 @@ def _save_policy(c: Ctx, form):
     data["lop_bucket"] = form.get("lop_bucket", "leave")
     data["wfh_method"] = form.get("wfh_method", "distinct_days")
     data["persistent_late_basis"] = form.get("persistent_late_basis", "very_late")
-    data["leave_credit_mode"] = form.get("leave_credit_mode", "annual")
-    data["absent_debits_leave"] = bool(form.get("absent_debits_leave"))
-    data["cof_overdraft_to_leave"] = bool(form.get("cof_overdraft_to_leave"))
     data["late_sitting_after"] = form.get("late_sitting_after", "21:00")
     data["default_shift_start"] = form.get("default_shift_start", "10:00")
     data["default_shift_end"] = form.get("default_shift_end", "18:30")
@@ -250,7 +230,7 @@ def paste_holidays(cid: int, text: str = Form(""), c: Ctx = Depends(hr)):
         return redirect("/settings#holidays", "No dates found in the pasted text — one holiday per line, with its date.")
     warnings: list = []
     _check_weekdays(rows, warnings)
-    plan = [{**r, "target": ("calendar", cal.name), "sheet": "pasted"} for r in rows]
+    plan = [{**r, "target": ("calendar_id", cal.id), "sheet": "pasted"} for r in rows]
     lines = _apply_holiday_lists(c.db, plan, {})
     audit(c.db, c.user, "holiday.paste", "calendar", cal.name, {"rows": len(rows), "summary": lines,
                                                                 "skipped": skipped[:10]}, c.ip)
@@ -301,17 +281,13 @@ def save_category(cid: str = Form(""), name: str = Form(...), holiday_calendar_i
     cat.working_saturdays = ",".join(x for x in working_saturdays.replace(" ", "").split(",") if x and x in "12345")
     cat.hours_per_day = hpd
     cat.notes = notes.strip()
-    if old_name != name:              # rename: employees and targeted holidays keep their category
+    if old_name != name:              # rename: employees keep their category
         for e in c.db.scalars(select(Employee).where((Employee.category == old_name) |
                                                      (Employee.additional_category == old_name))):
             if e.category == old_name:
                 e.category = name
             if e.additional_category == old_name:
                 e.additional_category = name
-        for h in c.db.scalars(select(TargetedHoliday).where(TargetedHoliday.categories != "")):
-            vals = TH.split(h.categories)
-            if any(CAT.key(v) == CAT.key(old_name) for v in vals):
-                h.categories = TH.join([name if CAT.key(v) == CAT.key(old_name) else v for v in vals])
     after = {k: str(getattr(cat, k)) for k in before}
     audit(c.db, c.user, "category.create" if new else "category.update", "category", name,
           {k: [before[k], after[k]] for k in before if before[k] != after[k]}, c.ip)
@@ -329,22 +305,10 @@ def delete_category(cid: int, c: Ctx = Depends(hr)):
                                                     (Employee.additional_category == cat.name)).limit(1))
     if used:
         return redirect("/settings#categories", f"“{cat.name}” still has employees — move them to another category first.")
-    dropped = []
-    for h in c.db.scalars(select(TargetedHoliday).where(TargetedHoliday.categories != "")):
-        vals = TH.split(h.categories)
-        rest = [v for v in vals if CAT.key(v) != CAT.key(cat.name)]
-        if len(rest) != len(vals):
-            h.categories = TH.join(rest)
-            if not (rest or TH.split(h.locations) or TH.split(h.groups) or TH.split(h.emp_nos)):
-                dropped.append(f"{h.name} {h.day:%d-%b-%Y}")
-                c.db.delete(h)
-    audit(c.db, c.user, "category.delete", "category", cat.name, {"targeted_removed": dropped}, c.ip)
+    audit(c.db, c.user, "category.delete", "category", cat.name, {}, c.ip)
     c.db.delete(cat)
     c.db.flush()
-    if dropped:
-        _recompute_drafts(c)
-    return redirect("/settings#categories", f"Category “{cat.name}” deleted (its holiday calendar is kept)."
-                    + (f" Targeted holidays only for it were removed: {', '.join(dropped)}." if dropped else ""))
+    return redirect("/settings#categories", f"Category “{cat.name}” deleted (its holiday calendar is kept).")
 
 
 @router.post("/settings/holidays/{hid}/delete")
@@ -359,8 +323,8 @@ def delete_holiday(hid: int, c: Ctx = Depends(hr)):
 
 
 def _recompute_month_of(c: Ctx, d: date) -> str:
-    """Recalculate the month containing d and the draft months after it (balances carry forward), one month per
-    transaction. Returns a note for the flash message when that month is finalised (its figures don't change)."""
+    """Recalculate the month containing d (months are independent). Returns a note for the flash message when that
+    month is finalised (its figures don't change)."""
     from app.services.compute import get_period
     from app.services.imports import recompute_from
     p = get_period(c.db, d.year, d.month)
@@ -373,43 +337,42 @@ def _recompute_month_of(c: Ctx, d: date) -> str:
     return ""
 
 
-@router.post("/settings/targeted-holidays")
-def add_targeted_holiday(day: str = Form(...), name: str = Form(""), locations: list[str] = Form([]),
-                         groups: list[str] = Form([]), emp_nos: list[str] = Form([]), categories: list[str] = Form([]),
-                         c: Ctx = Depends(hr)):
+@router.post("/settings/holidays/categories")
+def add_category_holiday(day: str = Form(...), name: str = Form(""), optional: str = Form(""),
+                         categories: list[str] = Form([]), c: Ctx = Depends(hr)):
+    """One holiday for several categories at once (owner, v1.9: holidays are targeted only by category): it is added
+    to each chosen category's own list — the same as a holiday-list row with those categories."""
+    from app.services.imports import _apply_holiday_lists
     try:
         d = date.fromisoformat(day)
     except ValueError:
         return redirect("/settings#holidays", "Enter a valid date.")
-    locs, grps, emps, cats = TH.join(locations), TH.join(groups), TH.join(emp_nos), TH.join(categories)
-    if not (locs or grps or emps or cats):
-        return redirect("/settings#holidays", "Choose who the holiday is for: a category, a location, a group or "
-                                              "employees. A holiday for everyone belongs in a holiday calendar.")
-    known = set(c.db.scalars(select(Employee.emp_no)))
-    bad = [x for x in TH.split(emps) if x not in known]
-    if bad:
-        return redirect("/settings#holidays", f"Unknown employee number(s): {', '.join(bad)}.")
-    h = TargetedHoliday(day=d, name=name.strip() or "Holiday", locations=locs, groups=grps, emp_nos=emps,
-                        categories=cats, created_by=c.user.username)
-    c.db.add(h)
-    audit(c.db, c.user, "holiday.targeted.add", "holiday", d.isoformat(),
-          {"name": h.name, "locations": locs, "groups": grps, "categories": cats, "employees": emps}, c.ip)
+    cats = TH.split(categories)
+    if not cats:
+        return redirect("/settings#holidays", "Tick the categories that get this holiday.")
+    nm = name.strip()[:128] or "Holiday"
+    # a list with no holiday yet in that year counts as loaded once this one is in — say so (greytHR's own
+    # holiday marks stop being used for those people for that year)
+    new_year = []
+    for cn in cats:
+        cat = CAT.find(c.db, cn, CAT.by_key(c.db))
+        cal_id = cat.holiday_calendar_id if cat else None
+        if not cal_id or not c.db.scalar(select(Holiday.id).where(
+                Holiday.calendar_id == cal_id, Holiday.day >= date(d.year, 1, 1), Holiday.day <= date(d.year, 12, 31))
+                .limit(1)):
+            new_year.append(cn)
+    emp_cache = {e.emp_no: e for e in c.db.scalars(select(Employee))}
+    plan = [{"date": d, "name": nm, "optional": bool(optional), "target": ("category", cn)} for cn in cats]
+    lines = _apply_holiday_lists(c.db, plan, emp_cache)
+    audit(c.db, c.user, "holiday.add", "holiday", d.isoformat(),
+          {"name": nm, "optional": bool(optional), "categories": cats}, c.ip)
     c.db.flush()
     note = _recompute_month_of(c, d)
-    return redirect("/settings#holidays", f"Targeted holiday {d:%d-%b-%Y} added ({TH.describe(h)}).{note}")
-
-
-@router.post("/settings/targeted-holidays/{hid}/delete")
-def delete_targeted_holiday(hid: int, c: Ctx = Depends(hr)):
-    h = c.db.get(TargetedHoliday, hid)
-    if h:
-        audit(c.db, c.user, "holiday.targeted.delete", "holiday", h.day.isoformat(),
-              {"name": h.name, "for": TH.describe(h)}, c.ip)
-        day = h.day
-        c.db.delete(h)
-        c.db.flush()
-        return redirect("/settings#holidays", "Targeted holiday removed." + _recompute_month_of(c, day))
-    return redirect("/settings#holidays", "Targeted holiday removed.")
+    warn = (f" Note: {', '.join(new_year)} had no {d.year} holidays yet — upload their {d.year} list, otherwise only "
+            f"this holiday counts for them in {d.year}." if new_year else "")
+    return redirect("/settings#holidays", f"{nm} ({d:%d-%b-%Y}) added to {len(cats)} "
+                    f"{'list' if len(cats) == 1 else 'lists'}: {', '.join(cats)}.{warn}{note}"
+                    if lines else "Nothing added.")
 
 
 @router.post("/settings/updates")

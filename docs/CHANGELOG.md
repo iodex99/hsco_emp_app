@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.9.0 — 2026-11-20 — holidays only by category; leave balances left to greytHR; Payroll Input split by cause
+Owner: "for holidays they only need these fields: date, day, holiday, category, optional … holidays are targeted only
+on the basis of category … in the payroll input sheet we need to see a bifurcation in a column as well as in remark if
+there is a leave deduction because of WFH or shortfall of hours … remove Payroll LOP, Salary deduction, Leave balance
+after … they want to calculate leave balances [in greytHR], so remove it from everywhere … Leave & Comp-off Ledger:
+columns A–D and then only comp-off earned and comp-off taken".
+
+**Holidays — by category only**
+- Holiday files need only **Date, Day, Holiday, Category, Optional** (greytHR's Holiday List Importer files still
+  work; their Location column is ignored). Several categories in one Category cell (comma-separated) put the holiday
+  in each list; a blank category goes to the default list.
+- Removed: targeting by location / group / named employee, the *Calendar* and *For …* columns, and the per-employee
+  holiday calendar (employee form and employee-master template). The employee page shows which list applies.
+- Rules & calendars → **Holiday for several categories** replaces *Targeted holidays*: date, name, optional, tick
+  categories → added to each list (warns when a list had no holiday yet that year).
+- The **holiday template** has only the five columns and is pre-filled with the lists in the app from this year on
+  (re-importing it unchanged reports "no changes").
+- One-time migration: targeted holidays for categories moved into those lists; others listed in the audit log
+  (*Holidays moved to category lists*); employees' own calendars cleared. On the installed data: no targeted holidays;
+  HS207's own calendar cleared — they now follow HSCO (CDTIPL) Boutique's list (October figures unchanged).
+
+**Leave balances — removed everywhere (kept in greytHR)**
+- No opening balances (route, form, import kind and template removed), no leave / comp-off ledger, closing balance,
+  salary deduction, payroll LOP, leave liability or encashment; flags *Leave opening balance not set*, *Leave
+  exhausted*, *Comp-off overdrawn* no longer raised. Settings: leave credit mode and the two "taken from leave"
+  switches removed (paid leave per year stays for *Annual leave used* in Insights).
+- Overview tile **LOP days** (approved in greytHR); payroll page drops *Leave bal.* and *Salary ded.*; employee page
+  tile *Leave taken* and tab *Leave & comp-off* = this month's PL / comp-off / LOP / absence, the deduction split and
+  comp-off earned / taken; Insights tile *Annual leave used* instead of *Leave liability*.
+- Months are now independent: changing one month no longer recalculates the months after it (faster).
+
+**Payroll Excel**
+- **Payroll Input**: Employee No, Name, Group, Category, Location, **Hours shortfall deduction**, **WFH over-limit
+  deduction**, **Total leave deduction**, **Remark** ("Hours shortfall: 3.37 h short of 120 h required → 0.5 day";
+  "WFH over the limit: 4 WFH days, limit 2 → 2 extra × 0.5 = 1 day"). Linked to the payroll sheet; the parts add up
+  to column V. Payroll LOP, Salary deduction and Leave balance after removed; only people with a leave deduction.
+- **Comp-off Ledger** (was *Leave & Comp-off Ledger*): Employee No, Name, Group, Category, Comp-off earned, Comp-off
+  taken.
+- Payroll Leave Sheet: Leave Opening / Credit / Debit / Closing, Salary Deduction and Payroll LOP columns removed
+  (Comp-off Earned, Flags, Category are now columns AA–AC). Contents shows the deduction split and LOP days;
+  Scorecard drops the balance columns.
+- Calculation rules version 10 (draft months recalculate once after the update).
+
 ## 1.8.0 — 2026-11-19 — whole-app review: downloads, CSVs, review queue, corrections
 Owner: "go through the whole app, see what can be improved … also the excel downloads, the csv downloads, how we can
 add value / how the csv can be improved for every export … do all, check all".

@@ -97,7 +97,7 @@ class Effective:
     calendar_id: Optional[int]
     pattern_from: str          # "employee" | category name | "greytHR"
     hours_from: str            # "employee" | category name | "policy"
-    calendar_from: str         # "employee" | category name | "default" | "greytHR"
+    calendar_from: str         # category name | "default" | "greytHR" (holidays never per employee, v1.9)
 
 
 def effective(e: Employee, cats: dict, default_cal: Optional[int], loaded: Optional[set] = None) -> Effective:
@@ -117,8 +117,8 @@ def effective(e: Employee, cats: dict, default_cal: Optional[int], loaded: Optio
     else:
         src = next((c for c in chain if c.hours_per_day), None)
         hpd, hfrom = (src.hours_per_day, src.name) if src is not None else (None, "policy")
-    cands = ([(e.holiday_calendar_id, "employee")] if e.holiday_calendar_id else []) + \
-        [(c.holiday_calendar_id, c.name) for c in chain if c.holiday_calendar_id] + \
+    # holidays follow the category only (owner, v1.9): category → additional category → default → greytHR
+    cands = [(c.holiday_calendar_id, c.name) for c in chain if c.holiday_calendar_id] + \
         ([(default_cal, "default")] if default_cal else [])
     usable = [x for x in cands if loaded is None or x[0] in loaded]
     if usable:
@@ -148,7 +148,7 @@ def overview(db: Session) -> list[dict]:
         if ck.get(key(e.category)):
             primary[ck[key(e.category)].id] += 1
             if effective(e, ck, dcal).calendar_from in ("default", "greytHR"):
-                uncovered[ck[key(e.category)].id] += 1          # no list from the category chain or the employee
+                uncovered[ck[key(e.category)].id] += 1          # no list from the category chain
         if ck.get(key(e.additional_category)):
             extra[ck[key(e.additional_category)].id] += 1
     cal_names = {c.id: c.name for c in db.scalars(select(HolidayCalendar))}

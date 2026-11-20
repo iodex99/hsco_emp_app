@@ -47,8 +47,8 @@ def init_db() -> None:
 
 
 def migrate_data() -> None:
-    """One-time data migrations, each recorded in the settings table so it runs once. Results never change by them
-    alone (draft months are recalculated by the rules-version step at start-up)."""
+    """One-time data migrations, each recorded in the settings table so it runs once. Draft months are recalculated
+    afterwards by the rules-version step at start-up; finalised months never change."""
     from sqlalchemy import update
     from app.models import Employee, Setting
     with session_scope() as db:
@@ -59,10 +59,45 @@ def migrate_data() -> None:
             # defaults to greytHR's muster, so figures stay the same until a category pattern is set)
             db.execute(update(Employee).where(Employee.weekly_off.in_(("MUSTER", "", None))).values(weekly_off="CATEGORY"))
             done.add("categories_v1")
+        if "holidays_by_category_v1" not in done:
+            _holidays_by_category(db)
+            done.add("holidays_by_category_v1")
         if st is None:
             db.add(Setting(key="migrations", value={"done": sorted(done)}))
         else:
             st.value = {"done": sorted(done)}
+
+
+def _holidays_by_category(db) -> None:
+    """v1.9 (owner): holidays are targeted only by category. A targeted holiday for categories becomes a holiday in
+    each of those categories' lists; targeting by location / group / named people no longer exists (those rows are
+    listed in the audit log). Employees' own holiday calendars are cleared — holidays follow the category."""
+    from sqlalchemy import select, update
+    from app.models import Employee, TargetedHoliday
+    from app.services.audit import audit
+    from app.services.holidays import split
+    rows = list(db.scalars(select(TargetedHoliday)))
+    plan, dropped = [], []
+    for h in rows:
+        cats = split(h.categories or "")
+        for cn in cats:
+            plan.append({"date": h.day, "name": h.name or "Holiday", "optional": False, "target": ("category", cn)})
+        if not cats or split(h.locations) or split(h.groups) or split(h.emp_nos):
+            dropped.append(f"{h.day:%d-%b-%Y} {h.name}: locations={h.locations or '-'} groups={h.groups or '-'} "
+                           f"employees={h.emp_nos or '-'}" + (" (kept for its categories)" if cats else ""))
+    lines = []
+    if plan:
+        from app.services.imports import _apply_holiday_lists
+        lines = _apply_holiday_lists(db, plan, {e.emp_no: e for e in db.scalars(select(Employee))})
+    for h in rows:
+        db.delete(h)
+    own = [no for no, in db.execute(select(Employee.emp_no).where(Employee.holiday_calendar_id.is_not(None)))]
+    if own:
+        db.execute(update(Employee).where(Employee.holiday_calendar_id.is_not(None)).values(holiday_calendar_id=None))
+    if rows or own:
+        audit(db, None, "migration.holidays_by_category", "holiday", "",
+              {"moved_to_category_lists": lines, "no_longer_targeted": dropped, "own_calendar_cleared": own})
+    db.flush()
 
 
 def add_missing_columns(engine) -> list[str]:

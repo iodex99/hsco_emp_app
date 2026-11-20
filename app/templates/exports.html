@@ -17,6 +17,6 @@
 {% else %}<tr><td colspan="3">{% call ui.empty('Nothing to download yet', 'Import a month first.', 'download') %}{% endcall %}</td></tr>{% endfor %}</tbody></table></div></div>
 {% if can_hr %}<div class="card"><div class="hd"><h2>Import templates</h2></div><div class="bd row">
 <a class="btn sec" href="/exports/templates/employee_master.xlsx">Employee master (pre-filled)</a>
-<a class="btn sec" href="/exports/templates/holidays.xlsx">Holiday list</a>
-<a class="btn sec" href="/exports/templates/leave_opening.xlsx">Leave opening balances (pre-filled)</a></div></div>{% endif %}
+<a class="btn sec" href="/exports/templates/holidays.xlsx">Holiday lists (pre-filled)</a>
+</div></div>{% endif %}
 {% endblock %}

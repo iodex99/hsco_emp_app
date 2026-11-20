@@ -1,7 +1,7 @@
 # HSCO Attendance & Leave Intelligence
 
 On-premise web app for a CA firm that turns monthly **greytHR** exports into the **payroll leave calculation**
-(hours shortfall → leave deduction, leave & comp-off ledgers, LOP) and **board-level employee metrics** — with
+(hours shortfall + WFH over the limit → leave deduction, comp-off earned / taken, LOP) and **board-level employee metrics** — with
 drill-down to every employee-day, manual corrections with an audit trail, Excel reports, and
 mandatory multi-method two-factor authentication. All data stays on the firm's Windows server.
 
@@ -14,7 +14,7 @@ mandatory multi-method two-factor authentication. All data stays on the firm's W
   per-employee weekly-off patterns and holiday calendars, comp-offs, WFH limit.
 - **Flag** what needs action: deductions, unauthorised absence, WFH > 2 days, persistently > 1 h late, repeated
   regularisations, missing punches, present-without-punch, leave exhausted, new joinees, exits …
-- **Report**: board dashboard, payroll leave sheet (same columns as the old manual MIS + ledger), per-employee
+- **Report**: board dashboard, payroll leave sheet (same columns as the old manual MIS), per-employee
   drill-down (calendar, punches with location names worked out offline from GPS coordinates), Insights (attention
   score, unplanned absence, punctuality, utilisation, heatmaps, groups compared, attrition), Locations (every
   sign-in with its place), an Excel workbook with live formulas and a punches & locations workbook.

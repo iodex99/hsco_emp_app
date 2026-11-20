@@ -69,7 +69,7 @@ def recalc_on_rules_change() -> int:
         with session_scope() as db:
             per = db.get(Period, pid)
             if per is not None and per.status == "DRAFT":
-                compute_period(db, per, cascade=False)
+                compute_period(db, per)
     with session_scope() as db:
         st = db.get(Setting, "rules_version")
         if st is None:

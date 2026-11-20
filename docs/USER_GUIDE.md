@@ -2,7 +2,7 @@
 
 ## Roles
 - **Viewer** (partners/board): dashboard, payroll sheet, flags, employees, reconciliation, downloads.
-- **HR**: + import, corrections, opening balances, employee master, calendars, finalise.
+- **HR**: + import, corrections, employee master, holiday lists, finalise.
 - **Admin**: + policy rules, security settings, users, re-open a finalised month.
 
 ## Signing in
@@ -57,20 +57,20 @@ Add more methods under **My security** (several phones, keys).
    **Imported the wrong month by mistake?** An admin can delete a draft month: Payroll leave sheet → bin icon → give a
    reason and type the month name.
 3. **Review queue**: work through the exceptions (shortfall deductions, unauthorised absence, WFH over limit,
-   present-without-punch, leave exhausted). Mark each one reviewed; pick a reason or type a note.
-4. Click an employee to open the **drill-down**: calendar, every punch with place, flags, ledger. Correct if needed:
+   present-without-punch). Mark each one reviewed; pick a reason or type a note.
+4. Click an employee to open the **drill-down**: calendar, every punch with place, flags, leave this month. Correct if needed:
    - *Click the day* in the calendar: change day type, session status (P, A, PL, COF, LOP…) or hours.
    - *Corrections tab, Adjust a figure*: e.g. grant an exception (Exempt this month = yes), set required hours, override
      deduction days, or a remark. **A reason is mandatory**; everything is in the Audit log and highlighted in Excel.
-   - *Opening balances* — first month only (or bulk via the Leave opening template).
 5. **Payroll leave sheet** → *Finalise for payroll* (locks the month) → **Download Excel** for payroll.
-   Columns E–S mirror the old MIS sheet; extra columns give deduction days, leave ledger and payroll LOP days.
+   Columns E–S mirror the old MIS sheet; extra columns give deduction days, PL / comp-off / LOP taken and comp-off
+   earned. Leave balances stay in greytHR — apply the deduction days there.
 6. Partners and the board use the app itself (give them the *viewer* role): Overview, Insights, Locations and every
    drill-down, with sorting, filters and CSV on every table.
 
 ## Permanent employee settings (Employees → name)
 Group, location, DOJ/DOL, weekly-off pattern (greytHR / standard 1st-Saturday / all Saturdays off / Sunday only /
-custom weekdays + working Saturdays), required hours per day (e.g. 8 instead of 8.5), holiday calendar,
+custom weekdays + working Saturdays), required hours per day (e.g. 8 instead of 8.5) (holidays follow the category),
 exempt from the hours-shortfall deduction (+ reason; WFH over the limit is still deducted). Changes recompute all
 draft months.
 
@@ -85,11 +85,10 @@ Policy numbers (8.5 h/day, 4 h block = ½ day, WFH limit 2, comp-off ≥ 5 h, la
 greytHR status-code meanings, shift timings and holiday calendars (default + special). Changes apply to draft months
 only. Place names need no setup: they come from the built-in map of India (v1.6.2).
 
-## Targeted holidays
-Rules & calendars → *Holiday calendars* → **Targeted holidays**: pick the date and name, tick the locations and/or
-groups (ticking both means people in that location *and* group), and/or add people by name or number. The line above
-the button shows who will get it. Saving recalculates draft months. For many at once, use the holiday-list template's
-*For Locations / For Groups / For Employees* columns.
+## A holiday for some categories only
+Rules & calendars → *Holiday calendars* → **Holiday for several categories**: pick the date and name, tick the
+categories (and *Optional* if it is one). It is added to each ticked category's own list and draft months are
+recalculated. Holidays go by category only — to give someone a holiday, their category's list must have it.
 
 ## Work from home on a day off
 WFH is counted only on a person's own working days. If someone signs in "Work from Home" on their weekly off or a
@@ -108,7 +107,8 @@ WFH with a note and in Punch exceptions (*WFH — office closed*), but it does n
 
 ## WFH over the limit
 Each WFH day above 2 in a month takes ½ day of leave (Rules & calendars → Work from home; 0 = only flag it). It
-appears in the employee's *Leave deduction*, the leave ledger, the review queue and the payroll Excel. It applies to
+appears in the employee's *Leave deduction*, the review queue and the payroll Excel (*Payroll Input* shows it
+separately from the hours part). It applies to
 everyone — including Article, SS and Trainee — except the groups in *Groups not deducted for WFH* (default Partner)
 or a month exception; a month correction can change the deduction.
 
@@ -160,7 +160,8 @@ in the payroll Excel (*Punch Exceptions*, *Exceptions by Employee*).
 3. **Next year / revised list:** upload it again — the dates it covers are replaced (until a year's list is loaded,
    greytHR's own holiday marks are used for that year). No Excel file? Open the calendar and
    use **Paste a list** (copy the table from a PDF or email). Tick *Optional* for optional holidays.
-4. A one-off holiday for a category: *Targeted holidays* → Categories.
+4. A one-off holiday for some categories (e.g. a Delhi festival): Rules & calendars → *Holiday for several
+   categories* — tick the categories; or put several categories, comma-separated, in a holiday-file row.
 
 ## Waive the hours deduction (v1.8)
 Review queue → *Hours shortfall → leave deduction* → **Waive**: when a partner lets someone off the hours shortfall
@@ -169,11 +170,19 @@ still deducted), the month recalculates and the Excel shows *Waived* in the *Exe
 employee's page → *Corrections*. *Mark reviewed* on its own never changes a figure.
 
 ## The payroll Excel (v1.8)
-Opens on **Contents** (the month's key totals and what each sheet is for). Give payroll the **Payroll Input** sheet:
-only people with a leave deduction, LOP or salary deduction. *Payroll Leave Sheet* is the full MIS layout with live
-formulas. Every sheet prints on landscape pages with the month and status in the footer.
+Opens on **Contents** (the month's key totals and what each sheet is for). Give payroll the **Payroll Input** sheet
+(v1.9): only people with a leave deduction, with the deduction split into **hours shortfall** and **WFH over the
+limit**, the total, and a remark that says why in words (e.g. "WFH over the limit: 4 WFH days, limit 2 → 2 extra ×
+0.5 = 1 day"). *Comp-off Ledger*: comp-off earned and taken per person. *Payroll Leave Sheet* is the full MIS layout
+with live formulas. Every sheet prints on landscape pages with the month and status in the footer.
 
 ## Import templates (v1.8)
 Imports → templates: drop-downs list the values the app knows, dates are dd-mm-yyyy, the Instructions sheet explains
-every column. The leave opening template lists everyone in the latest month with *As Of* already filled — type only
-the balances you have; rows left blank are skipped and never clear a balance already saved.
+every column. The **holiday template** (v1.9) has only Date, Day, Holiday, Category, Optional and comes pre-filled
+with the lists in the app from this year on — change the dates for next year and upload it. (The leave-opening
+template was removed: leave balances are kept in greytHR.)
+
+## Leave balances (v1.9)
+The app does not keep leave or comp-off balances — greytHR does. Each month it gives the **leave deduction** to apply
+(hours shortfall + WFH over the limit), and shows PL, comp-off, LOP and absence as marked in greytHR. The employee page
+→ *Leave & comp-off* shows this month's leave, the deduction split and comp-off earned / taken.

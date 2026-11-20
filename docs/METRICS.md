@@ -9,8 +9,7 @@ Code: `app/engine/compute.py` (per employee), `app/services/metrics.py` (organis
 | New joinees / Exits | DOJ / DOL within the month (exits also suggested from the DOJ active list) |
 | Attendance rate | Σ days present ÷ Σ (week days − holidays) |
 | Leave deductions | employees with shortfall deduction; total deduction days |
-| Opening balances missing (v1.8) | `no_opening` = people whose month has no leave opening balance — Overview banner (HR) and Excel *Contents* "Leave balances not set" |
-| Payroll LOP days | LOP status days + days beyond leave balance (+ comp-off overdraft if configured) |
+| LOP days | loss-of-pay days approved in greytHR (LOP status). (v1.9: no "payroll LOP" / salary deduction — leave balances are kept in greytHR) |
 | Over WFH limit | employees with WFH days > limit (2); WFH counts only on the person's own working days (v1.6.4); ½ day of leave per extra day (v1.6.5) |
 | Persistently late | > 60 min late on ≥ 10 days (non-partners) |
 | Persistent regularisation | ≥ 3 regularised days |
@@ -49,7 +48,7 @@ Joiners, exits, possible exits (in last month's muster, not this month's), work 
 MIS figures E–R; splits PL / COF / unauthorised / LOP; WFH (+ partial); late days, very-late days, avg minutes late,
 avg in/out, early exits, short days (< 7 h), late sitting, missing punches, regularised days, permission swipes,
 present-without-punch days, auto attendance, client-location days, on-duty days, biometric vs mobile swipes, mobile
-"Office" swipes, comp-off earned, sandwich count, leave & comp-off ledger, payroll LOP; day-by-day status, punches with
+"Office" swipes, comp-off earned / taken, sandwich count, the deduction split (hours / WFH); day-by-day status, punches with
 place names, notes where the app calendar differs from greytHR.
 
 ## Flags (severity)
@@ -59,7 +58,7 @@ place names, notes where the app calendar differs from greytHR.
 | SHORTFALL_DEDUCTION | high | deduction > 0 |
 | UNAUTHORISED_ABSENCE | high | any `A` half-day |
 | WFH_OVER_LIMIT | high | WFH days > limit |
-| LEAVE_EXHAUSTED | high | leave closing would go negative → salary deduction |
+| LEAVE_EXHAUSTED, NO_OPENING_BALANCE, COMPOFF_OVERDRAWN | — | not raised since v1.9 (no balances); labels kept for finalised months |
 | PERSISTENT_LATE | medium | "Often more than 1 h late" (see KPI) |
 | PERSISTENT_REGULARISATION | medium | regularised days ≥ 3 |
 | MISSING_PUNCHES | medium | ≥ 2 present days with one punch / no out |
@@ -84,7 +83,6 @@ punches) exclude `metrics_exclude_groups` (default Partner).
 | WFH share % | WFH days ÷ days present |
 | Regularisation % / missing-punch % | regularised (missing-punch) days ÷ days present |
 | Leave used FY % | paid leave taken in the financial year to date ÷ annual entitlement × people |
-| Leave / comp-off liability | sum of closing balances |
 | Attrition (12 m) % | exits with Date of Leaving in the last 12 months ÷ average of headcount now and 12 months ago |
 | Average tenure | mean years since joining, active employees with a DOJ |
 | Median first punch | median of employees' average first-punch time (behaviour groups) |

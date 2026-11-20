@@ -23,13 +23,11 @@
     <div class="row">{{ num('shortfall_grace_hours', 'Shortfall up to this is ignored. Policy: none.') }}
       <div class="field"><label>Groups never deducted for hours shortfall</label><input name="exempt_groups" value="{{ pol.exempt_groups|join(', ') }}"><div class="help">Comma separated, exactly as in the employee group. WFH over the limit has its own list below.</div></div></div>
   </div></div>
-  <div class="form-sec"><div><h3>Leave &amp; comp-off</h3><p>15 paid days per financial year, pro-rata for joiners.</p></div><div>
-    <div class="row">{{ num('annual_leave_days') }}{{ num('fy_start_month', '4 = April') }}
-      <div class="field"><label>Leave credit</label><select name="leave_credit_mode"><option value="annual" {{ 'selected' if pol.leave_credit_mode=='annual' }}>Yearly on FY start (pro-rata for joiners)</option><option value="monthly" {{ 'selected' if pol.leave_credit_mode=='monthly' }}>Monthly (yearly ÷ 12)</option></select></div></div>
+  <div class="form-sec"><div><h3>Leave &amp; comp-off</h3><p>Leave balances are kept in greytHR — this app does not
+    calculate them. Paid leave per year is used only for "annual leave used" in Insights.</p></div><div>
+    <div class="row">{{ num('annual_leave_days') }}{{ num('fy_start_month', '4 = April') }}</div>
     <div class="row">{{ num('comp_off_min_hours', 'Hours on a weekly-off / holiday to earn one comp-off.') }}
       <div class="field"><label>Loss of pay (LOP) shows under</label><select name="lop_bucket"><option value="leave" {{ 'selected' if pol.lop_bucket=='leave' }}>Leaves taken (column G)</option><option value="absent" {{ 'selected' if pol.lop_bucket=='absent' }}>Days absent (column H)</option></select></div></div>
-    <label class="check mb"><input type="checkbox" name="absent_debits_leave" value="1" {{ 'checked' if pol.absent_debits_leave }}> <span>Unauthorised absence is taken from the leave balance <span class="help" style="display:block">Policy: leave without approval is adjusted against leave, then salary.</span></span></label>
-    <label class="check"><input type="checkbox" name="cof_overdraft_to_leave" value="1" {{ 'checked' if pol.cof_overdraft_to_leave }}> Comp-off taken beyond the balance is taken from leave</label>
   </div></div>
   <div class="form-sec"><div><h3>Work from home</h3><p>Counted only on each person's own working days. Each WFH day above the limit is flagged and takes the set amount of leave — for everyone except the groups listed here (or a month exception).</p></div><div>
     <div class="row">{{ num('wfh_limit_days') }}{{ num('wfh_excess_deduction_days', 'e.g. 0.5 = half a day of leave for every WFH day above the limit; 0 = flag only.') }}</div>
@@ -112,18 +110,22 @@
 
 <section class="pane" data-pane="holidays">
 {% if cals %}<div class="chips mb" aria-label="Jump to">{% for c in cals %}<a class="chip" href="#cal-{{ c.id }}">{{ c.name }} <span class="n">{{ c.holidays|selectattr('day.year', 'equalto', this_year)|list|length }}</span></a>{% endfor %}
-  <a class="chip" href="#targeted">Targeted holidays <span class="n">{{ targeted|length }}</span></a></div>{% endif %}
+  {% if th_categories %}<a class="chip" href="#multi">Holiday for several categories</a>{% endif %}</div>{% endif %}
 <div class="grid g-1-2" style="align-items:start">
   <div class="card"><div class="hd"><h2>How holidays work</h2></div><div class="bd small" style="color:var(--text-2)">
-    <p style="margin-top:0">Each <b>category</b> uses its own holiday list (Categories tab). Without one: the additional
-      category's list, then the <b>default calendar</b>, then greytHR's own holiday marks. An employee's page can override.</p>
+    <p style="margin-top:0">Holidays go by <b>category</b> only: each category has its own holiday list (pick it on
+      the Categories tab). Someone whose category has no list follows their additional category's list, then the
+      <b>default</b> list, then greytHR's own holiday marks.</p>
+    <p>A holiday for some categories only (e.g. a Delhi festival) goes into each of their lists — use <b>Holiday for
+      several categories</b> below, or give the row those categories in the holiday file.</p>
     <p><b>Optional</b> holidays are working days unless greytHR marks the person's day as a holiday (they took it).</p>
     <p>Lists change every year: upload next year's list (or paste it) — a full year replaces that year's dates; dates
       that moved are removed. A Day column is checked against the date.</p>
-    <p><b>Targeted holidays</b> (below) apply only to the categories, locations, groups or people you choose.</p>
     <p>Weekly offs follow the category's pattern (Categories tab) unless set on the employee's page. Work from home on a
       person's own weekly off or holiday is not counted as WFH — it is off-day work.</p>
-    <p class="muted">Bulk load: greytHR's Holiday List Importer files (Holiday Date, Description, Is Optional, Location, Category) or the template (Date, Holiday, Category / Calendar, Is Optional, Day; For Categories / Locations / Groups / Employees → targeted).</p>
+    <p class="muted">Holiday file columns: <b>Date, Day, Holiday, Category, Optional</b> (greytHR's Holiday List
+      Importer files work as they are). Several categories in one cell, comma-separated, put the holiday in each list;
+      no category → the default list.</p>
     <form method="post" action="/settings/calendars" class="mt" style="border-top:1px solid var(--border);padding-top:14px">{{ ui.csrf_field() }}
       <div class="field"><label>New calendar</label><input name="name" required placeholder="e.g. Mumbai 2027"></div>
       <label class="check mb"><input type="checkbox" name="is_default" value="1"> Make it the default</label>
@@ -151,33 +153,19 @@
   </div>
 </div>
 
-<div class="card mt" id="targeted"><div class="hd"><h2>Targeted holidays</h2><span class="sub">a one-off holiday for some people only — chosen categories, locations, groups or employees</span></div>
+{% if th_categories %}
+<div class="card mt" id="multi"><div class="hd"><h2>Holiday for several categories</h2><span class="sub">added to each ticked category's own list</span></div>
   <div class="bd">
-  {% if targeted %}<div class="tw"><table class="compact" id="th-list">
-    <thead><tr><th>Date</th><th>Holiday</th><th>For</th><th class="num">People</th><th>Added by</th><th></th></tr></thead><tbody>
-    {% for t in targeted %}<tr><td style="white-space:nowrap"><span class="badge b-violet">{{ t.h.day.strftime('%d %b %Y') }}</span> <span class="muted small">{{ t.h.day.strftime('%a') }}</span></td>
-      <td class="strong">{{ t.h.name }}</td><td class="small">{{ t.who }}{% if t.unknown %} <span class="badge b-warn" title="Not in the employee list">unknown: {{ t.unknown|join(', ') }}</span>{% endif %}</td>
-      <td class="num" title="{{ t.people }}">{{ t.count }}</td><td class="small muted">{{ t.h.created_by }}</td>
-      <td class="num"><form method="post" action="/settings/targeted-holidays/{{ t.h.id }}/delete" class="inline" data-confirm="Remove {{ t.h.name }} ({{ t.h.day.strftime('%d %b %Y') }}) for {{ t.who }}?">{{ ui.csrf_field() }}<button class="btn sm ghost" title="Remove">{{ ui.icon('x','sm') }}</button></form></td></tr>{% endfor %}
-  </tbody></table></div>{% else %}<p class="muted small" style="margin-top:0">None yet. Example: a Delhi-only festival, or a holiday given to a few named people.</p>{% endif %}
-
-  <form method="post" action="/settings/targeted-holidays" class="th-form mt" id="th-form">{{ ui.csrf_field() }}
+  <form method="post" action="/settings/holidays/categories" class="th-form" id="multi-form">{{ ui.csrf_field() }}
     <div class="row"><div class="field" style="flex:0 0 170px"><label>Date</label><input type="date" name="day" required></div>
-      <div class="field"><label>Holiday</label><input name="name" placeholder="e.g. Chhath Puja" maxlength="128"></div></div>
-    <div class="field"><label>Categories <span class="muted small">(blank = any)</span></label><div class="th-chips">
-      {% for cn in th_categories %}<label class="th-chip"><input type="checkbox" name="categories" value="{{ cn }}"> {{ cn }}</label>{% else %}<span class="muted small">No categories yet.</span>{% endfor %}</div></div>
-    <div class="field"><label>Locations <span class="muted small">(blank = any)</span></label><div class="th-chips">
-      {% for l in th_locations %}<label class="th-chip"><input type="checkbox" name="locations" value="{{ l }}"> {{ l }}</label>{% else %}<span class="muted small">No locations in the employee master.</span>{% endfor %}</div></div>
-    <div class="field"><label>Groups <span class="muted small">(blank = any)</span></label><div class="th-chips">
-      {% for g in th_groups %}<label class="th-chip"><input type="checkbox" name="groups" value="{{ g }}"> {{ g }}</label>{% else %}<span class="muted small">No groups in the employee master.</span>{% endfor %}</div></div>
-    <div class="field"><label>Employees <span class="muted small">(also given the holiday, whatever their location or group)</span></label>
-      <div class="th-picked" id="th-picked"></div>
-      <input list="th-people" id="th-pick" placeholder="Type a name or employee number, then Enter" autocomplete="off">
-      <datalist id="th-people">{% for p in th_people %}<option value="{{ p[0] }} — {{ p[1] }}"></option>{% endfor %}</datalist></div>
-    <p class="small muted" id="th-preview" style="margin:0 0 10px"></p>
-    <button class="btn">{{ ui.icon('plus','sm') }} Add targeted holiday</button>
+      <div class="field"><label>Holiday</label><input name="name" placeholder="e.g. Chhath Puja" maxlength="128"></div>
+      <label class="check" style="align-self:end;margin-bottom:10px;white-space:nowrap"><input type="checkbox" name="optional" value="1"> Optional</label></div>
+    <div class="field"><label>Categories</label><div class="th-chips">
+      {% for cn in th_categories %}<label class="th-chip"><input type="checkbox" name="categories" value="{{ cn }}"> {{ cn }}</label>{% endfor %}</div></div>
+    <p class="small muted" id="multi-note" style="margin:0 0 10px">Tick at least one category.</p>
+    <button class="btn">{{ ui.icon('plus','sm') }} Add to the ticked lists</button>
   </form></div></div>
-<script type="application/json" id="th-emps">{{ th_people|tojson_safe }}</script>
+{% endif %}
 </section>
 
 <section class="pane" data-pane="general">
@@ -275,43 +263,13 @@
 </section>
 {% endblock %}
 {% block scripts %}<script>
-// targeted holidays: employee picker (chips) + live "who gets it" preview — same rule as services/holidays.applies
+// holiday for several categories: at least one category
 (function(){
-  const f=document.getElementById('th-form'); if(!f) return;
-  const people=JSON.parse(document.getElementById('th-emps').textContent||'[]');   // [emp_no, name, location, group, category, additional]
-  const ckey=s=>{let k=(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); return k.startsWith('hsco')&&k.length>4?k.slice(4):k;};
-  const byNo=Object.fromEntries(people.map(p=>[p[0].toLowerCase(),p]));
-  const pick=document.getElementById('th-pick'), box=document.getElementById('th-picked'), pv=document.getElementById('th-preview');
-  const chosen=new Set();
-  const lc=s=>(s||'').trim().toLowerCase();
-  function find(v){ v=lc(v); if(!v) return null; const no=v.split(' — ')[0].trim();
-    return byNo[no]||people.find(p=>lc(p[1])===v)||null; }
-  function draw(){
-    box.innerHTML=''; chosen.forEach(no=>{const p=byNo[no.toLowerCase()]; const s=document.createElement('span');
-      s.textContent=p?`${p[1]} (${p[0]})`:no; const x=document.createElement('button'); x.type='button'; x.textContent='×';
-      x.title='Remove'; x.onclick=()=>{chosen.delete(no);draw();}; s.appendChild(x);
-      const h=document.createElement('input'); h.type='hidden'; h.name='emp_nos'; h.value=no; s.appendChild(h); box.appendChild(s);});
-    preview();
-  }
-  function add(){ const p=find(pick.value); if(p){chosen.add(p[0]); pick.value=''; draw();} }
-  pick.addEventListener('change',add);
-  pick.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();add();}});
-  function preview(){
-    const locs=[...f.querySelectorAll('input[name=locations]:checked')].map(x=>lc(x.value));
-    const grps=[...f.querySelectorAll('input[name=groups]:checked')].map(x=>lc(x.value));
-    const cats=[...f.querySelectorAll('input[name=categories]:checked')].map(x=>ckey(x.value));
-    const emps=new Set([...chosen].map(lc));
-    const who=people.filter(p=>emps.has(lc(p[0]))||((locs.length||grps.length||cats.length)&&(!locs.length||locs.includes(lc(p[2])))
-      &&(!grps.length||grps.includes(lc(p[3])))&&(!cats.length||cats.includes(ckey(p[4]))||cats.includes(ckey(p[5])))));
-    pv.textContent=who.length?`Applies to ${who.length} ${who.length===1?'person':'people'}: `+who.slice(0,12).map(p=>p[1]).join(', ')+(who.length>12?' …':'')
-      :'Choose a category, a location, a group or employees.';
-  }
-  f.addEventListener('change',preview);
-  f.addEventListener('submit',e=>{ if(pick.value.trim()) add();
-    if(!f.querySelector('input[name=locations]:checked,input[name=groups]:checked,input[name=categories]:checked,input[name=emp_nos]')){e.preventDefault();preview();pv.classList.add('neg');} });
+  const f=document.getElementById('multi-form');
+  if(f) f.addEventListener('submit',e=>{ if(!f.querySelector('input[name=categories]:checked')){ e.preventDefault();
+    const n=document.getElementById('multi-note'); n.classList.add('neg'); n.textContent='Tick the categories that get this holiday.'; } });
   // categories: show the custom weekly-off fields only for "Custom"
   document.querySelectorAll('select.cat-wo').forEach(s=>s.addEventListener('change',()=>document.getElementById('cc-'+s.dataset.id).classList.toggle('hidden',s.value!=='CUSTOM')));
-  preview();
 })();
 const cb=document.getElementById('chk-now'); if(cb) cb.onclick=async()=>{cb.disabled=true;cb.textContent='Checking…';
   try{const s=await HSCO.post('/api/update/check'); if(s.check_error){alert('Could not check: '+s.check_error);} location.hash='updates'; location.reload();}catch(e){alert(e.message);cb.disabled=false;}};

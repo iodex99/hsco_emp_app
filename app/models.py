@@ -164,6 +164,7 @@ class Employee(Base):
     hours_per_day: Mapped[float | None] = mapped_column(Float, nullable=True)
     exempt: Mapped[bool] = mapped_column(Boolean, default=False)
     exempt_reason: Mapped[str] = mapped_column(String(128), default="")
+    # retired in v1.9 (holidays follow the category only); column kept so older databases open — always empty
     holiday_calendar_id: Mapped[int | None] = mapped_column(ForeignKey("holiday_calendars.id", ondelete="SET NULL"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     notes: Mapped[str] = mapped_column(Text, default="")
@@ -173,7 +174,8 @@ class Employee(Base):
 
 
 class TargetedHoliday(Base):
-    """A holiday for some people only (chosen locations / groups / employees), on top of their holiday calendar."""
+    """Retired in v1.9 (holidays are targeted only by category; migration holidays_by_category_v1 moved these into the
+    category lists). Table kept so older databases open; nothing reads or writes it."""
     __tablename__ = "targeted_holidays"
     id: Mapped[int] = mapped_column(primary_key=True)
     day: Mapped[date] = mapped_column(Date, index=True)
@@ -329,7 +331,8 @@ class MonthOverrideRow(Base):
 
 
 class LeaveOpening(Base):
-    """Opening leave / comp-off balance as at the START of a given month (go-live or correction)."""
+    """Retired in v1.9 (leave balances are kept in greytHR, not calculated here). Table kept so older databases open
+    and earlier entries are not lost; nothing reads or writes it."""
     __tablename__ = "leave_openings"
     __table_args__ = (UniqueConstraint("emp_no", "year", "month"),)
     id: Mapped[int] = mapped_column(primary_key=True)

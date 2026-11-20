@@ -1,4 +1,4 @@
-"""DB → engine → MonthResult, plus the leave & comp-off ledgers (docs/BUSINESS_RULES.md §4-5)."""
+"""DB → engine → MonthResult (docs/BUSINESS_RULES.md). Leave balances are kept in greytHR, not here (v1.9)."""
 from __future__ import annotations
 
 from dataclasses import fields as dc_fields
@@ -9,9 +9,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.engine import model as M
-from app.engine.compute import SEV_HIGH, SEV_MEDIUM, compute_month
+from app.engine.compute import compute_month
 from app.models import (
-    DayOverrideRow, Employee, HolidayCalendar, LeaveOpening, MonthOverrideRow, MonthResult, MusterRow, Period, SwipeRow,
+    DayOverrideRow, Employee, HolidayCalendar, MonthOverrideRow, MonthResult, MusterRow, Period, SwipeRow,
 )
 from app.services.attendance_stats import month_stats
 from app.services.settings import get_policy
@@ -23,8 +23,7 @@ def _ints(s: str) -> tuple:
     return tuple(int(x) for x in (s or "").replace(" ", "").split(",") if x.strip().lstrip("-").isdigit())
 
 
-def engine_employee(e: Employee, holidays: Optional[dict], targeted: Optional[dict] = None,
-                    eff=None, optional: Optional[dict] = None) -> M.Employee:
+def engine_employee(e: Employee, holidays: Optional[dict], eff=None, optional: Optional[dict] = None) -> M.Employee:
     """eff = categories.Effective (what applies after the category rules); without it the employee's own settings."""
     pat = eff.weekly_off if eff else (e.weekly_off if e.weekly_off in M.PATTERNS else M.P_MUSTER)
     offs = eff.off_weekdays if eff else e.off_weekdays
@@ -34,7 +33,7 @@ def engine_employee(e: Employee, holidays: Optional[dict], targeted: Optional[di
         emp_no=e.emp_no, name=e.name, group=e.group or "", location=e.location or "", doj=e.doj, dol=e.dol,
         weekly_off=pat or M.P_MUSTER, off_weekdays=_ints(offs) or (5, 6),
         working_saturdays=_ints(sats), hours_per_day=hpd, exempt=bool(e.exempt),
-        exempt_reason=e.exempt_reason or "", holidays=holidays, targeted_holidays=targeted or {},
+        exempt_reason=e.exempt_reason or "", holidays=holidays,
         optional_holidays=optional or {}, category=e.category or "",
     )
 
@@ -74,17 +73,6 @@ def fy_of(year: int, month: int, fy_start: int) -> int:
     return year if month >= fy_start else year - 1
 
 
-def prorata_entitlement(doj: Optional[date], year: int, month: int, policy: M.Policy) -> float:
-    """Entitlement credited for the FY containing (year, month) for someone joining on doj."""
-    fy = fy_of(year, month, policy.fy_start_month)
-    fy_start = date(fy, policy.fy_start_month, 1)
-    if doj is None or doj <= fy_start:
-        return policy.annual_leave_days
-    months_elapsed = (doj.year - fy_start.year) * 12 + (doj.month - fy_start.month)
-    remaining = max(0, 12 - months_elapsed)
-    return round(policy.annual_leave_days * remaining / 12 * 2) / 2
-
-
 def _serialize_day(dd: M.DayDetail) -> dict:
     hm = lambda t: t.strftime("%H:%M") if t else ""  # noqa: E731
     return {
@@ -105,20 +93,19 @@ def _serialize_day(dd: M.DayDetail) -> dict:
     }
 
 
-def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
+def compute_period(db: Session, period: Period) -> dict:
+    """Calculate one month. Months are independent (no balance carries forward), so nothing else is touched."""
     policy = get_policy(db)
     y, m = period.year, period.month
     emps_db = {e.emp_no: e for e in db.scalars(select(Employee)).all()}
     cal_days, default_cal, cal_opt, cal_loaded = calendars_for_month(db, y, m)
     from app.services import categories as CAT
-    from app.services import holidays as TH
-    targeted = TH.by_employee(TH.for_month(db, y, m), emps_db.values())
     cats = CAT.by_key(db)
     employees, effs = {}, {}
     for k, e in emps_db.items():
         eff = effs[k] = CAT.effective(e, cats, default_cal, cal_loaded)
         cal_id = eff.calendar_id
-        employees[k] = engine_employee(e, cal_days.get(cal_id) if cal_id else None, targeted.get(k), eff,
+        employees[k] = engine_employee(e, cal_days.get(cal_id) if cal_id else None, eff,
                                        cal_opt.get(cal_id) if cal_id else None)
 
     # plain rows, not ORM objects (thousands per month)
@@ -145,14 +132,6 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
     from app.services.location_checks import flags_by_employee
     loc_flags = flags_by_employee(swipes, {k: e.name for k, e in emps_db.items()})
 
-    # ledgers
-    prev = previous_period(db, period)
-    prev_res = {}
-    if prev:
-        prev_res = {e: d for e, d in db.execute(select(MonthResult.emp_no, MonthResult.data)
-                                                .where(MonthResult.period_id == prev.id))}
-    openings = {o.emp_no: o for o in db.scalars(select(LeaveOpening).where(LeaveOpening.year == y, LeaveOpening.month == m))}
-
     db.execute(delete(MonthResult).where(MonthResult.period_id == period.id))
     for emp_no, r in results.items():
         data = {k: getattr(r, k) for k in SCALARS}
@@ -162,22 +141,10 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
         for k, v in list(data.items()):
             if isinstance(v, float):
                 data[k] = round(v, 4)
-        e = employees.get(emp_no)
-        ledger = _ledger(r, e, y, m, policy, openings.get(emp_no), prev_res.get(emp_no))
-        data.update(ledger)
         data["overrides"] = r.overrides
         days = [_serialize_day(d) for d in r.days]
         data["_ins"] = month_stats(days)          # compact summary for Insights history/trends
         flags = [{"code": c, "severity": s, "message": msg} for c, s, msg in r.flags]
-        if ledger.get("leave_opening") is None:
-            flags.append({"code": "NO_OPENING_BALANCE", "severity": "info",
-                          "message": "Leave opening balance not set — closing balance unknown"})
-        if (ledger.get("salary_deduction_days") or 0) > 0:
-            flags.append({"code": "LEAVE_EXHAUSTED", "severity": SEV_HIGH,
-                          "message": f"Leave balance exhausted — {ledger['salary_deduction_days']:g} day(s) to be deducted from salary"})
-        if ledger.get("compoff_overdraft"):
-            flags.append({"code": "COMPOFF_OVERDRAWN", "severity": SEV_MEDIUM,
-                          "message": f"Comp-off availed beyond balance by {ledger['compoff_overdraft']:g} day(s)"})
         flags.extend(loc_flags.get(emp_no, []))
         db.add(MonthResult(period_id=period.id, emp_no=emp_no, name=r.name, group=r.group, location=r.location,
                            category=(emps_db[emp_no].category or "") if emp_no in emps_db else "",
@@ -187,77 +154,4 @@ def compute_period(db: Session, period: Period, cascade: bool = True) -> dict:
     period.computed_at = datetime.now()
     db.flush()
     summary = {"employees": len(results), "deductions": sum(1 for r in results.values() if r.deduction_days)}
-    if cascade:
-        nxt = get_period(db, y + (m == 12), m % 12 + 1)
-        if nxt and nxt.status == "DRAFT" and db.scalar(select(MusterRow.id).where(MusterRow.period_id == nxt.id).limit(1)):
-            db.commit()        # this month is final; release the write lock before calculating the next one
-            compute_period(db, nxt, cascade=True)
     return summary
-
-
-def _ledger(r: M.EmployeeMonth, e: Optional[M.Employee], y: int, m: int, policy: M.Policy,
-            opening: Optional[LeaveOpening], prev: Optional[dict]) -> dict:
-    doj = e.doj if e else None
-    fy_start = policy.fy_start_month
-    credit = 0.0
-    encash = None
-    leave_open: Optional[float] = None
-    if opening is not None and opening.leave_balance is not None:
-        leave_open = float(opening.leave_balance)
-    elif prev is not None and prev.get("leave_closing") is not None:
-        leave_open = float(prev["leave_closing"])
-        if m == fy_start:   # new FY: previous balance goes to encashment, no carry forward
-            encash = leave_open
-            leave_open = 0.0
-    if opening is None or opening.leave_balance is None:
-        if policy.leave_credit_mode == "monthly":
-            if not doj or (doj.year, doj.month) <= (y, m):
-                credit = round(policy.annual_leave_days / 12, 2)
-                if leave_open is None and doj and (doj.year, doj.month) == (y, m):
-                    leave_open = 0.0
-        else:
-            if m == fy_start and (not doj or doj <= date(y, m, 28)):
-                credit = prorata_entitlement(doj, y, m, policy)
-                if leave_open is None:
-                    leave_open = 0.0
-            elif doj and (doj.year, doj.month) == (y, m):
-                credit = prorata_entitlement(doj, y, m, policy)
-                leave_open = 0.0
-    debit_pl = r.pl_days
-    debit_short = r.deduction_days          # shortfall + WFH over the limit (split below for the ledger)
-    debit_wfh = min(r.wfh_deduction_days, debit_short)
-    debit_absent = r.unauth_absent_days if policy.absent_debits_leave else 0.0
-
-    # comp-off
-    co_open: Optional[float] = None
-    if opening is not None and opening.compoff_balance is not None:
-        co_open = float(opening.compoff_balance)
-    elif prev is not None and prev.get("compoff_closing") is not None:
-        co_open = float(prev["compoff_closing"])
-    co_overdraft = 0.0
-    co_close = None
-    if co_open is not None:
-        avail = co_open + r.compoff_earned
-        co_overdraft = max(0.0, r.cof_days - avail)
-        co_close = max(0.0, avail - r.cof_days)
-    debit_cof = co_overdraft if policy.cof_overdraft_to_leave else 0.0
-
-    total_debit = debit_pl + debit_short + debit_absent + debit_cof
-    salary_days = 0.0
-    leave_close = None
-    if leave_open is not None:
-        bal = leave_open + credit - total_debit
-        if bal < 0:
-            salary_days = -bal
-            bal = 0.0
-        leave_close = round(bal, 2)
-    lop_extra = co_overdraft if not policy.cof_overdraft_to_leave else 0.0
-    return {
-        "leave_opening": leave_open, "leave_credit": credit, "leave_debit_pl": debit_pl,
-        "leave_debit_shortfall": round(debit_short - debit_wfh, 2), "leave_debit_wfh": debit_wfh,
-        "leave_debit_absent": debit_absent, "leave_debit_compoff": debit_cof,
-        "leave_debit_total": round(total_debit, 2), "leave_closing": leave_close,
-        "salary_deduction_days": round(salary_days, 2), "encashment_days": encash,
-        "compoff_opening": co_open, "compoff_closing": co_close, "compoff_overdraft": co_overdraft,
-        "payroll_lop_days": round(r.lop_days + salary_days + lop_extra, 2),
-    }

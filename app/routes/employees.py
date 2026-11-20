@@ -20,7 +20,7 @@ router = APIRouter()
 
 FIELDS = ("name", "group", "location", "category", "additional_category", "department", "designation", "email",
           "weekly_off", "off_weekdays",
-          "working_saturdays", "hours_per_day", "exempt", "exempt_reason", "holiday_calendar_id", "doj", "dol",
+          "working_saturdays", "hours_per_day", "exempt", "exempt_reason", "doj", "dol",
           "is_active", "notes")
 
 
@@ -50,7 +50,7 @@ def _form(c: Ctx, e: Employee, new: bool = False, history=None):
     cats = CAT.by_key(c.db)
     # what the category would give (shown on the "Follow category" choices)
     probe = Employee(emp_no=e.emp_no, category=e.category, additional_category=e.additional_category,
-                     weekly_off=CAT.FOLLOW, hours_per_day=None, holiday_calendar_id=None)
+                     weekly_off=CAT.FOLLOW, hours_per_day=None)
     via = CAT.effective(probe, cats, CAT.default_calendar_id(c.db))
     cal_names = {x.id: x.name for x in cals}
     return render(c, "employee_form.html", e=e, new=new, patterns=PATTERNS, cals=cals, groups=g.get("groups", []),
@@ -78,7 +78,7 @@ def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Fo
                         department: str = Form(""), designation: str = Form(""), email: str = Form(""),
                         weekly_off: str = Form("MUSTER"), off_weekdays: list[str] = Form([]),
                         working_saturdays: str = Form(""), hours_per_day: str = Form(""), exempt: str = Form(""),
-                        exempt_reason: str = Form(""), holiday_calendar_id: str = Form(""), doj: str = Form(""),
+                        exempt_reason: str = Form(""), doj: str = Form(""),
                         dol: str = Form(""), is_active: str = Form(""), notes: str = Form(""), new: str = Form(""),
                         c: Ctx = Depends(hr)):
     emp_no = emp_no.strip().upper()
@@ -113,7 +113,6 @@ def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Fo
     e.working_saturdays = ",".join(x for x in working_saturdays.replace(" ", "").split(",") if x in "12345" and x)
     e.exempt = bool(exempt)
     e.exempt_reason = exempt_reason.strip()
-    e.holiday_calendar_id = int(holiday_calendar_id) if holiday_calendar_id.strip() else None
     e.is_active = bool(is_active) and e.dol is None
     e.notes = notes
     after = {f: str(getattr(e, f, "")) for f in FIELDS}
@@ -122,6 +121,6 @@ def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Fo
     c.db.flush()
     for p in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))
                           .order_by(Period.year, Period.month)):
-        compute_period(c.db, p, cascade=False)
+        compute_period(c.db, p)
         c.db.commit()          # one month per transaction
     return redirect(f"/employees/{emp_no}", "Employee saved and draft months recomputed.")

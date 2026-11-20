@@ -27,7 +27,7 @@ Then:
 2. Add a DNS record (or hosts entry) for `hsco-app` → server IP.
 3. Open `https://hsco-app:8443`, sign in as admin, set up 2FA, then create users (Users page).
 4. Rules & calendars: confirm policy defaults; import greytHR's Employee Category Report and each category's Holiday List Importer file, then set each category's weekly offs / hours (Categories tab). (Place names need no setup.)
-5. Import the employee master (or last month's manual MIS to seed groups) and opening leave balances.
+5. Import the employee master (or last month's manual MIS to seed groups). (No leave balances: greytHR keeps them.)
 
 ## Updates (automatic)
 **Publishing (developer):** bump `__version__` in `app/__init__.py`, add a CHANGELOG entry, push to `main`.

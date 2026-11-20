@@ -23,8 +23,8 @@
        (d.actual_hours|n(1)) ~ ' worked · ' ~ (d.required_hours|n(1)) ~ ' required') }}
   {{ ui.kpi('Leave deduction', (d.deduction_days|n) ~ ' d', 'calendar', 'bad' if d.deduction_days else '', none,
        d.remark if d.remark else 'no deduction') }}
-  {{ ui.kpi('Leave balance', d.leave_closing|n if d.leave_closing is not none else '—', 'briefcase', 'bad' if d.salary_deduction_days else '', none,
-       ('Payroll LOP ' ~ (d.payroll_lop_days|n) ~ ' d') if d.payroll_lop_days else ('opening not set' if d.leave_opening is none else 'after this month')) }}
+  {{ ui.kpi('Leave taken', ((d.pl_days or 0) + (d.cof_days or 0))|n ~ ' d', 'briefcase', '', none,
+       'paid ' ~ (d.pl_days|n) ~ ' · comp-off ' ~ (d.cof_days|n) ~ ((' · LOP ' ~ (d.lop_days|n)) if d.lop_days else '')) }}
 </div>
 
 <div class="tabs" data-tabs id="emp-tabs">
@@ -154,27 +154,19 @@
 
 <section class="pane" data-pane="ledger">
 <div class="grid g2">
-  <div class="card"><div class="hd"><h2>Paid leave</h2><span class="sub">FY {{ policy.fy_start_month == 4 and 'Apr–Mar' or '' }} · {{ policy.annual_leave_days|n }} days a year</span>
-    <div class="tools">{% if editable %}<button class="btn sm sec" type="button" onclick="HSCO.openDrawer('opening')">Set opening balance</button>{% endif %}</div></div>
+  <div class="card"><div class="hd"><h2>Leave this month</h2><span class="sub">balances are kept in greytHR</span></div>
     <div class="bd"><table class="ledger plain"><tbody>
-      <tr><td>Opening balance</td><td class="num">{{ d.leave_opening|n if d.leave_opening is not none else 'not set' }}</td></tr>
-      <tr><td>+ Credited</td><td class="num">{{ d.leave_credit|n }}</td></tr>
-      <tr><td>− Paid leave taken</td><td class="num">{{ d.leave_debit_pl|n }}</td></tr>
-      <tr><td>− Hours-shortfall deduction</td><td class="num">{{ d.leave_debit_shortfall|n }}</td></tr>
-      {% if d.leave_debit_wfh %}<tr><td>− WFH over the limit ({{ d.wfh_excess_days|n }} day{{ 's' if d.wfh_excess_days != 1 }} × {{ ((d.leave_debit_wfh / d.wfh_excess_days) if d.wfh_excess_days else policy.wfh_excess_deduction_days)|n(1) }})</td><td class="num">{{ d.leave_debit_wfh|n }}</td></tr>{% endif %}
-      <tr><td>− Unauthorised absence</td><td class="num">{{ d.leave_debit_absent|n }}</td></tr>
-      <tr><td>− Comp-off taken beyond balance</td><td class="num">{{ d.leave_debit_compoff|n }}</td></tr>
-      <tr class="tot"><td>Closing balance</td><td class="num">{{ d.leave_closing|n if d.leave_closing is not none else '—' }}</td></tr>
-      <tr><td class="{{ 'neg' if d.salary_deduction_days }}">Deducted from salary (leave exhausted)</td><td class="num {{ 'neg' if d.salary_deduction_days }}">{{ d.salary_deduction_days|n }}</td></tr>
-      <tr class="tot"><td>Payroll loss-of-pay days</td><td class="num">{{ d.payroll_lop_days|n }}</td></tr>
-    </tbody></table>
-    {% if d.leave_opening is none %}<p class="help">Set the opening balance once (go-live month) — later months carry forward automatically.</p>{% endif %}
-    {% if d.encashment_days %}<p class="help">Unavailed leave from the previous FY for encashment: <b>{{ d.encashment_days|n }}</b> days.</p>{% endif %}</div></div>
+      <tr><td>Paid leave taken</td><td class="num">{{ d.pl_days|n }}</td></tr>
+      <tr><td>Comp-off taken</td><td class="num">{{ d.cof_days|n }}</td></tr>
+      <tr><td>Loss of pay (approved in greytHR)</td><td class="num">{{ d.lop_days|n }}</td></tr>
+      <tr><td>Absent without approved leave</td><td class="num {{ 'neg' if d.unauth_absent_days }}">{{ d.unauth_absent_days|n }}</td></tr>
+      <tr><td>Hours-shortfall deduction</td><td class="num">{{ d.shortfall_deduction_days|n }}</td></tr>
+      {% if d.wfh_deduction_days %}<tr><td>WFH over the limit ({{ (d.wfh_excess_days - (d.wfh_approved_days or 0))|n }} day{{ 's' if (d.wfh_excess_days - (d.wfh_approved_days or 0)) != 1 }} × {{ policy.wfh_excess_deduction_days|n }})</td><td class="num">{{ d.wfh_deduction_days|n }}</td></tr>{% endif %}
+      <tr class="tot"><td>Leave deduction (to take from leave)</td><td class="num {{ 'neg' if d.deduction_days }}">{{ d.deduction_days|n }}</td></tr>
+    </tbody></table></div></div>
   <div class="card"><div class="hd"><h2>Comp-off</h2><span class="sub">earned for ≥ {{ policy.comp_off_min_hours|n }} h on an off-day</span></div><div class="bd"><table class="ledger plain"><tbody>
-      <tr><td>Opening balance</td><td class="num">{{ d.compoff_opening|n if d.compoff_opening is not none else 'not set' }}</td></tr>
-      <tr><td>+ Earned this month</td><td class="num">{{ d.compoff_earned|n }}</td></tr>
-      <tr><td>− Taken this month</td><td class="num">{{ d.cof_days|n }}</td></tr>
-      <tr class="tot"><td>Closing balance</td><td class="num">{{ d.compoff_closing|n if d.compoff_closing is not none else '—' }}</td></tr>
+      <tr><td>Earned this month</td><td class="num">{{ d.compoff_earned|n }}</td></tr>
+      <tr><td>Taken this month</td><td class="num">{{ d.cof_days|n }}</td></tr>
   </tbody></table></div></div>
 </div>
 </section>
@@ -182,8 +174,8 @@
 {% if history|length > 1 %}
 <section class="pane" data-pane="hist">
   <div class="card"><div class="hd"><h2>Month by month</h2></div><div class="bd"><div class="chartbox"><canvas id="cHist"></canvas></div></div></div>
-  <div class="card flush"><div class="bd"><div class="tw"><table class="compact"><thead><tr><th>Month</th><th class="num">Present</th><th class="num">Leave</th><th class="num">Absent</th><th class="num">WFH</th><th class="num">Late</th><th class="num">Regularised</th><th class="num">+/− h</th><th class="num">Deduction</th><th class="num">Leave bal.</th></tr></thead><tbody>
-  {% for h in history %}<tr class="click" data-href="/periods/{{ h.key }}/employee/{{ r.emp_no }}"><td class="strong">{{ h.label }}</td><td class="num">{{ h.days_present|n }}</td><td class="num">{{ h.pl_days|n }}</td><td class="num">{{ h.unauth_absent_days|n }}</td><td class="num">{{ h.wfh_days|n }}</td><td class="num">{{ h.late_days }}</td><td class="num">{{ h.regularised_days }}</td><td class="num {{ 'neg' if h.balance_hours and h.balance_hours < 0 }}">{{ h.balance_hours|n(1) }}</td><td class="num">{{ h.deduction_days|n }}</td><td class="num">{{ h.leave_closing|n if h.leave_closing is not none else '—' }}</td></tr>{% endfor %}
+  <div class="card flush"><div class="bd"><div class="tw"><table class="compact"><thead><tr><th>Month</th><th class="num">Present</th><th class="num">Leave</th><th class="num">Absent</th><th class="num">WFH</th><th class="num">Late</th><th class="num">Regularised</th><th class="num">+/− h</th><th class="num">Deduction</th></tr></thead><tbody>
+  {% for h in history %}<tr class="click" data-href="/periods/{{ h.key }}/employee/{{ r.emp_no }}"><td class="strong">{{ h.label }}</td><td class="num">{{ h.days_present|n }}</td><td class="num">{{ h.pl_days|n }}</td><td class="num">{{ h.unauth_absent_days|n }}</td><td class="num">{{ h.wfh_days|n }}</td><td class="num">{{ h.late_days }}</td><td class="num">{{ h.regularised_days }}</td><td class="num {{ 'neg' if h.balance_hours and h.balance_hours < 0 }}">{{ h.balance_hours|n(1) }}</td><td class="num">{{ h.deduction_days|n }}</td></tr>{% endfor %}
   </tbody></table></div></div></div>
 </section>
 {% endif %}
@@ -224,14 +216,7 @@
   <div class="field"><label>New value</label><input name="value" required id="adj-val"><div class="help">Numbers for figures; "yes"/"no" for exemption; any text for the remark.</div></div>
   <div class="field"><label>Reason <span class="muted">(required)</span></label><textarea name="reason" rows="3" required placeholder="e.g. Partner approved exception for audit season"></textarea></div>
 </div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn">Apply</button></div></form></aside><div class="scrim"></div>
-
-<aside class="drawer" id="opening" aria-label="Opening balances"><div class="dh"><h2>Opening balances</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
-<form method="post" action="/periods/{{ period.key }}/employee/{{ r.emp_no }}/opening" style="display:contents">{{ ui.csrf_field() }}
-<div class="db"><p class="muted small" style="margin-top:0">Balances at the start of {{ period.label }}. Usually only needed once, in the first month you use the app.</p>
-  <div class="field"><label>Paid leave balance (days)</label><input name="leave_balance" inputmode="decimal" value="{{ opening.leave_balance if opening and opening.leave_balance is not none else '' }}"></div>
-  <div class="field"><label>Comp-off balance (days)</label><input name="compoff_balance" inputmode="decimal" value="{{ opening.compoff_balance if opening and opening.compoff_balance is not none else '' }}"></div>
-  <div class="field"><label>Note</label><input name="note" value="{{ opening.note if opening else '' }}" placeholder="e.g. from greytHR leave balance report"></div>
-</div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn">Save balances</button></div></form></aside><div class="scrim"></div>
+<div class="scrim"></div>
 {% endif %}
 {% endblock %}
 

@@ -10,7 +10,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from sqlalchemy import select
 
-from app.models import Employee, HolidayCalendar, MonthResult, Period
+from app.models import Employee, HolidayCalendar, Period
 from app.reports.excel import build_locations_workbook, build_workbook
 from app.routes.periods import get_p
 from app.services.audit import audit
@@ -106,15 +106,14 @@ def _wb(headers: list[str], rows: list[list], note: str, lists: dict | None = No
 def template(name: str, c: Ctx = Depends(hr)):
     if name == "employee_master":
         from app.models import Category
-        cals = {x.id: x.name for x in c.db.scalars(select(HolidayCalendar))}
         emps = list(c.db.scalars(select(Employee).order_by(Employee.emp_no)))
         cat_names = sorted({x.name for x in c.db.scalars(select(Category))} | {e.category for e in emps if e.category})
         rows = [[e.emp_no, e.name, e.group, e.category, e.additional_category, e.location, e.weekly_off,
                  e.working_saturdays, e.hours_per_day, "Yes" if e.exempt else "No", e.exempt_reason,
-                 cals.get(e.holiday_calendar_id, ""), e.doj, e.dol, e.email, e.department, e.designation]
+                 e.doj, e.dol, e.email, e.department, e.designation]
                 for e in emps]
         data = _wb(["Employee No", "Name", "Group", "Category", "Additional Category", "Location", "Weekly Off Pattern",
-                    "Working Saturdays", "Hours Per Day", "Exempt From Deduction", "Exempt Reason", "Holiday Calendar",
+                    "Working Saturdays", "Hours Per Day", "Exempt From Deduction", "Exempt Reason",
                     "Date of Joining", "Date of Leaving", "Email", "Department", "Designation"], rows,
                    "Employee master import.\nCategory: greytHR employee category (decides holiday list, weekly offs and "
                    "hours per day unless set on the employee).\n"
@@ -123,47 +122,44 @@ def template(name: str, c: Ctx = Depends(hr)):
                    "(CUSTOM only).\n"
                    "Hours Per Day: blank = policy default (8.5).\nExempt From Deduction: Yes/No — the hours-shortfall "
                    "deduction only (WFH over the limit is still deducted).\n"
-                   "Holiday Calendar: name of a calendar created in Rules & calendars.\nBlank cells leave existing values unchanged.\n"
+                   "Holidays follow the Category (its holiday list in Rules & calendars).\nBlank cells leave existing values unchanged.\n"
                    "Dates: dd-mm-yyyy (e.g. 01-04-2024) or an Excel date. The drop-downs list the values the app knows; "
                    "a new category or group can still be typed in.",
                    lists={"Group": sorted({e.group for e in emps if e.group}), "Category": cat_names,
                           "Additional Category": cat_names, "Location": sorted({e.location for e in emps if e.location}),
                           "Weekly Off Pattern": ["CATEGORY", "MUSTER", "STD_FIRST_SAT", "ALL_SAT_OFF", "SUN_ONLY", "CUSTOM"],
-                          "Exempt From Deduction": ["Yes", "No"], "Holiday Calendar": sorted(cals.values())},
+                          "Exempt From Deduction": ["Yes", "No"]},
                    dates=("Date of Joining", "Date of Leaving"), width={"Name": 28, "Email": 28, "Exempt Reason": 24})
     elif name == "holidays":
-        from app.models import Category
-        cat_names = sorted(x.name for x in c.db.scalars(select(Category)))
-        data = _wb(["Date", "Day", "Holiday", "Category", "Is Optional", "Calendar", "For Categories", "For Locations",
-                    "For Groups", "For Employees"], [],
-                   "Holiday list import (greytHR's Holiday List Importer files work as they are). Date as dd-mm-yyyy or "
-                   "an Excel date; Day (optional) is checked against the date.\n"
-                   "Category = the employee category whose list this is (e.g. HSCO (Mum)) — each category keeps its own "
-                   "list; a full year (5+ holidays) replaces that year, so next year's list is simply uploaded again.\n"
-                   "Is Optional: Yes / Optional = an optional holiday (a working day unless greytHR marks it H).\n"
-                   "Calendar = a named calendar instead of a category (blank both = 'Standard').\n"
-                   "For Categories: a one-off holiday only for these categories (targeted).\n"
-                   "Targeted holiday: fill For Locations and/or For Groups (comma-separated; both = people matching "
-                   "both) and/or For Employees (employee numbers or exact names; always included). Calendar is then "
-                   "ignored for that row.\n\nExamples (type into the Data sheet):\n"
-                   "  15-08-2027 | Sun | Independence Day | HSCO (Mum) | No" "\n"
-                   "  02-10-2027 |  | Gandhi Jayanti |  | No |  | HSCO (Mum), Carlyle   <- targeted to two categories" "\n"
-                   "  10-09-2027 |  | Ganesh Chaturthi |  | Yes |  |  | Mumbai   <- optional, Mumbai only",
-                   lists={"Category": cat_names, "Is Optional": ["Yes", "No"],
-                          "Calendar": sorted(x.name for x in c.db.scalars(select(HolidayCalendar)))},
-                   dates=("Date",), width={"Holiday": 28, "For Categories": 24, "For Employees": 24})
-    elif name == "leave_opening":
-        latest = c.db.scalar(select(Period).where(Period.computed_at.is_not(None)).order_by(Period.year.desc(), Period.month.desc()))
+        # owner (v1.9): Date, Day, Holiday, Category, Optional. Pre-filled with the lists in the app from this year on
+        # (one row per holiday per list), so next year's list is the same file with new dates.
+        from app.models import Category, Holiday
+        cats = list(c.db.scalars(select(Category).order_by(Category.name)))
+        by_cal: dict = {}
+        for cat in cats:
+            if cat.holiday_calendar_id:
+                by_cal.setdefault(cat.holiday_calendar_id, []).append(cat.name)
+        default = c.db.scalar(select(HolidayCalendar).where(HolidayCalendar.is_default.is_(True)))
         rows = []
-        if latest:
-            for r in c.db.scalars(select(MonthResult).where(MonthResult.period_id == latest.id).order_by(MonthResult.emp_no)):
-                rows.append([r.emp_no, r.name, None, None, date(latest.year, latest.month, 1)])
-        data = _wb(["Employee No", "Name", "Leave Balance", "Comp Off Balance", "As Of"], rows,
-                   "Opening balances at the START of a month (go-live). 'As Of' = any date in that month, e.g. 01-10-2026; "
-                   "or leave blank and choose the month on the Import page.\nLeave Balance = paid leave days available; "
-                   "Comp Off Balance = comp-off days available.\nDays, half days allowed (12 or 12.5). "
-                   "Rows with no balance are skipped, so fill in only the people you have balances for.",
-                   dates=("As Of",), width={"Name": 28})
+        for h in c.db.scalars(select(Holiday).where(Holiday.day >= date(date.today().year, 1, 1)).order_by(Holiday.day)):
+            names = by_cal.get(h.calendar_id) or ([""] if default and h.calendar_id == default.id else [])
+            for cn in names:
+                rows.append([h.day, h.day.strftime("%a"), h.name, cn, "Yes" if h.optional else "No"])
+        rows.sort(key=lambda r: (r[3], r[0]))
+        data = _wb(["Date", "Day", "Holiday", "Category", "Optional"], rows,
+                   "Holiday list import — holidays go by category only.\n"
+                   "Date: dd-mm-yyyy or an Excel date. Day (optional): checked against the date.\n"
+                   "Holiday: the name. Category: whose list it is (e.g. HSCO (Mum)); several categories separated by commas put the holiday in each of their lists (e.g. a Delhi-only festival); blank = the default list (people whose category has no list of its own).\n"
+                   "Optional: Yes = an optional holiday (a working day unless greytHR marks the person's day H), else No.\n"
+                   "A full year for a category (5+ holidays) replaces that year of its list, so next year's list is simply this file with next year's dates. Fewer rows are added without removing anything.\n"
+                   "This file is pre-filled with the lists in the app from this year on.\n"
+                   "\n"
+                   "Examples:\n"
+                   "  15-08-2027 | Sun | Independence Day | HSCO (Mum) | No\n"
+                   "  07-11-2027 | Sun | Chhath Puja | HSCO (Delhi), HSCO (CBV) | No   <- two categories\n"
+                   "  10-09-2027 | Fri | Ganesh Chaturthi | HSCO (Mum) | Yes   <- optional",
+                   lists={"Category": [x.name for x in cats], "Optional": ["Yes", "No"]},
+                   dates=("Date",), width={"Holiday": 30, "Category": 30})
     else:
         raise HTTPException(404, "Unknown template")
     return Response(data, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{name}_template.xlsx"'})

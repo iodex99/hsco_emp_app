@@ -273,25 +273,10 @@ F = {
     "hours_per_day": (["hours per day", "required hours per day", "daily hours"], "number"),
     "exempt": (["exempt from deduction", "exempt", "exemption"], "text"),
     "exempt_reason": (["exempt reason", "exemption reason"], "text"),
-    "holiday_calendar": (["holiday calendar", "calendar name"], "text"),
-    "leave_balance": (["leave balance", "pl balance", "privilege leave balance", "earned leave balance", "el balance",
-                       "balance leave", "leaves balance", "available leave"], "number"),
-    "compoff_balance": (["comp off balance", "compoff balance", "comp off", "co balance", "compensatory off balance"], "number"),
-    "as_of": (["as of", "as on", "as at", "balance date", "date"], "date"),
     "holiday_name": (["holiday", "holiday name", "occasion", "festival", "description"], "text"),
-    "calendar": (["calendar", "holiday calendar", "calendar name"], "text"),
     "optional": (["is optional", "optional", "optional holiday", "restricted", "restricted holiday", "holiday type"],
                  "optional"),
     "weekday": (["day", "weekday", "week day", "day of week", "day name"], "weekday"),
-    "for_categories": (["for categories", "for category", "applies to categories", "applies to category",
-                        "target categories", "target category", "only for categories", "only for category"], "text"),
-    # targeted holidays (v1.6.4): who a holiday-list row is for; any of these makes the row a targeted holiday
-    "for_locations": (["for locations", "for location", "applies to locations", "applies to location",
-                       "target locations", "target location", "only for locations", "only for location"], "text"),
-    "for_groups": (["for groups", "for group", "applies to groups", "applies to group", "target groups", "target group",
-                    "only for groups", "only for group"], "text"),
-    "for_employees": (["for employees", "for employee", "applies to employees", "applies to employee",
-                       "target employees", "target employee", "only for employees", "only for employee"], "text"),
     # greytHR Attendance Summary / manual MIS figures
     "present": (["present days", "days present", "present"], "number"),
     "absent": (["absent days", "days absent", "absent"], "number"),
@@ -335,16 +320,15 @@ SCHEMAS = {
     "doj": (["emp_no", "doj"], ["name", "dol", "department", "designation", "location"], 0.8),
     "employee_master": (["emp_no", ("group", "weekly_off", "hours_per_day", "exempt")],
                         ["name", "location", "weekly_off", "working_saturdays", "hours_per_day", "exempt", "exempt_reason",
-                         "holiday_calendar", "doj", "dol", "email", "department", "designation", "group",
+                         "doj", "dol", "email", "department", "designation", "group",
                          "category", "additional_category"], 0.9),
-    "leave_opening": (["emp_no", "leave_balance"], ["name", "compoff_balance", "as_of"], 1.1),
-    "holidays": (["date", "holiday_name"], ["calendar", "category", "location", "optional", "weekday", "for_locations",
-                                            "for_groups", "for_categories", "for_employees"], 0.7),
+    # holiday lists (v1.9, owner): Date, Day, Holiday, Category, Optional — holidays are targeted only by category
+    "holidays": (["date", "holiday_name"], ["category", "optional", "weekday"], 0.7),
     # greytHR "Employee Category Report": Employee Number, Name, Curr.Location, Curr.Category, Additional Category
     "employee_category": (["emp_no", "category"], ["name", "location", "additional_category", "group", "doj", "dol",
                                                     "email", "department", "designation", "weekly_off",
-                                                    "working_saturdays", "hours_per_day", "exempt", "exempt_reason",
-                                                    "holiday_calendar"], 0.95),
+                                                    "working_saturdays", "hours_per_day", "exempt", "exempt_reason"],
+                          0.95),
 }
 KIND_LABELS = {
     "muster": "Attendance Muster Report (day-wise status)",
@@ -352,7 +336,6 @@ KIND_LABELS = {
     "summary": "Attendance Summary Report",
     "doj": "Date of Joining Report (joining dates)",
     "mis_manual": "Manual MIS working (for reconciliation / employee master)",
-    "leave_opening": "Leave / comp-off opening balances",
     "holidays": "Holiday list",
     "employee_category": "Employee category report",
     "employee_master": "Employee master",
@@ -707,7 +690,7 @@ def suggest(rows: list[list], header_row: int, kind: str) -> dict:
     is_dt = lambda v: (lambda d: d is not None and 1990 <= d.year <= 2100 and (d.hour or d.minute))(parse_dt(v))
     tests = {"emp_no": is_id, "date": is_date, "s1": is_status, "s2": is_status, "status": is_status,
              "in_time": lambda v: is_time(v) or is_dt(v), "out_time": lambda v: is_time(v) or is_dt(v),
-             "timestamp": is_dt, "time": is_time, "doj": is_date, "dol": is_date, "as_of": is_date,
+             "timestamp": is_dt, "time": is_time, "doj": is_date, "dol": is_date,
              "coords": lambda v: bool(_COORD_RE.search(str(v)))}
     order = [f for f in schema_fields(kind) if f in tests]
     if "s1" in order and "status" in order:     # two status columns → halves; one → whole day (decided below)
@@ -930,7 +913,7 @@ def parse_employee_master(rows, ds) -> list[dict]:
             continue
         rec = {"emp_no": e}
         for k in ("name", "group", "location", "weekly_off", "working_saturdays", "hours_per_day", "exempt",
-                  "exempt_reason", "holiday_calendar", "doj", "dol", "email", "department", "designation",
+                  "exempt_reason", "doj", "dol", "email", "department", "designation",
                   "category", "additional_category"):
             if k not in ds.map:
                 continue
@@ -947,34 +930,22 @@ def parse_employee_master(rows, ds) -> list[dict]:
     return out
 
 
-def parse_leave_opening(rows, ds) -> list[dict]:
-    out = []
-    for r in _data_rows(rows, ds):
-        e = _row_emp(r, ds)
-        if e:
-            out.append({"emp_no": e, "leave_balance": num(_g(r, ds, "leave_balance"), None),
-                        "compoff_balance": num(_g(r, ds, "compoff_balance"), None) if "compoff_balance" in ds.map else None,
-                        "as_of": parse_date(_g(r, ds, "as_of")) if "as_of" in ds.map else None})
-    return out
-
-
 def parse_holidays(rows, ds) -> list[dict]:
+    """Holiday-list rows: date, name, optional, weekday (checked against the date) and category (whose list it is;
+    several categories separated by commas → the holiday goes into each of their lists)."""
     out = []
     for r in _data_rows(rows, ds):
         d = parse_date(_g(r, ds, "date"))
         if d:
             out.append({"date": d, "name": str(_g(r, ds, "holiday_name") or "").strip(),
-                        "calendar": str(_g(r, ds, "calendar") or "").strip() if "calendar" in ds.map else "",
                         "optional": is_optional(_g(r, ds, "optional")) if "optional" in ds.map else False,
                         "weekday": weekday_of(_g(r, ds, "weekday")) if "weekday" in ds.map else None,
-                        **{k: str(_g(r, ds, k) or "").strip() if k in ds.map else ""
-                           for k in ("category", "location", "for_locations", "for_groups", "for_categories",
-                                     "for_employees")}})
+                        "category": str(_g(r, ds, "category") or "").strip() if "category" in ds.map else ""})
     return out
 
 
 PARSERS = {"muster": parse_muster, "swipes": parse_swipes, "summary": parse_summary, "doj": parse_doj,
-           "mis_manual": parse_mis_manual, "employee_master": parse_employee_master, "leave_opening": parse_leave_opening,
+           "mis_manual": parse_mis_manual, "employee_master": parse_employee_master,
            "holidays": parse_holidays}
 
 

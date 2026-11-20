@@ -24,14 +24,11 @@
   {% endfor %}</div></div></div>
 {% endif %}
 
-{% if k.no_opening and can_hr %}<div class="alert warn">{{ ui.icon('triangle-alert') }}<span><b>Leave opening balances missing for {{ k.no_opening }} {{ k.no_opening|plural('person', 'people') }}</b> — their leave balance,
-  salary deduction (leave exhausted) and the board's leave liability can't be worked out. Download the
-  <a href="/exports/templates/leave_opening.xlsx">leave opening template</a>, fill in the balances and import it.</span></div>{% endif %}
 <div class="kpis">
   {{ ui.kpi('Leave deductions', k.deduction_employees, 'calendar-days', 'bad' if k.deduction_employees else '', '/periods/' ~ key ~ '?f=deduction',
        ui.delta(k.deduction_employees, pk.deduction_employees if pk else none) or 'people with a leave deduction (hours or WFH)', 'people · ' ~ (k.deduction_days|n) ~ ' days') }}
-  {{ ui.kpi('Payroll LOP days', k.payroll_lop_days|n, 'briefcase', 'bad' if k.payroll_lop_days else '', '/periods/' ~ key ~ '?f=lop',
-       ui.delta(k.payroll_lop_days, pk.payroll_lop_days if pk else none) or 'loss of pay incl. leave exhausted') }}
+  {{ ui.kpi('LOP days', k.lop_days|n, 'briefcase', 'bad' if k.lop_days else '', '/periods/' ~ key ~ '?f=lop',
+       ui.delta(k.lop_days, pk.lop_days if pk else none) or 'loss of pay approved in greytHR') }}
   {{ ui.kpi('Attendance rate', (k.attendance_rate|n(1)) ~ '%', 'circle-check', '', none,
        ui.delta(k.attendance_rate, pk.attendance_rate if pk else none, True, '%') or 'days present ÷ working days') }}
   {{ ui.kpi('Exceptions to review', nav_open, 'list-checks', 'warn' if nav_open else 'good', '/flags?period=' ~ key,

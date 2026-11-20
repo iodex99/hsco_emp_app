@@ -76,12 +76,9 @@ class Policy:
     default_shift_start: time = time(10, 0)
     default_shift_end: time = time(18, 30)
     shift_overrides: dict = field(default_factory=dict)   # shift name -> (start, end)
-    # leave ledger
+    # paid leave per financial year — only for "leave used" in Insights (balances are kept in greytHR, v1.9)
     annual_leave_days: float = 15.0
     fy_start_month: int = 4
-    leave_credit_mode: str = "annual"     # 'annual' or 'monthly'
-    absent_debits_leave: bool = True
-    cof_overdraft_to_leave: bool = True
 
 
 @dataclass
@@ -101,7 +98,6 @@ class Employee:
     holidays: Optional[dict] = None        # {date: name} from assigned calendar, None = use muster
     optional_holidays: dict = field(default_factory=dict)   # {date: name} optional holidays of that calendar (v1.7)
     category: str = ""
-    targeted_holidays: dict = field(default_factory=dict)   # {date: name} holidays aimed at this person (v1.6.4)
 
 
 @dataclass

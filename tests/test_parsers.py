@@ -368,7 +368,8 @@ def test_category_names_effective_settings_and_pasted_lists():
     assert (x.weekly_off, x.pattern_from, x.hours_per_day, x.calendar_id, x.calendar_from) == \
         ("ALL_SAT_OFF", "HSCO (Mum)", 8.0, 11, "HSCO (Mum)")              # Article has none → additional category
     x = CAT.effective(emp(category="HSCO (Mum)", weekly_off="SUN_ONLY", hours_per_day=7.5, holiday_calendar_id=3), cats, 5)
-    assert (x.weekly_off, x.pattern_from, x.hours_per_day, x.calendar_id) == ("SUN_ONLY", "employee", 7.5, 3)
+    # own weekly off and hours win; holidays follow the category only (v1.9) — a stale own calendar is ignored
+    assert (x.weekly_off, x.pattern_from, x.hours_per_day, x.calendar_id, x.calendar_from) ==         ("SUN_ONLY", "employee", 7.5, 11, "HSCO (Mum)")
     x = CAT.effective(emp(), cats, 5)
     assert (x.weekly_off, x.pattern_from, x.calendar_id, x.calendar_from) == ("MUSTER", "greytHR", 5, "default")
     assert CAT.effective(emp(), cats, None).calendar_from == "greytHR"

@@ -202,7 +202,7 @@ def test_wfh_methods_and_late():
 
 def test_wfh_counts_only_on_the_persons_own_working_days():
     """v1.6.4 (owner): WFH on a person's weekly off or holiday is not WFH — it is off-day work. Weekly offs and holidays
-    are the person's own: weekly-off pattern, holiday calendar, targeted holidays, day corrections."""
+    are the person's own: weekly-off pattern, their category's holiday list, day corrections."""
     def wfh(d):
         return [Swipe("E1", datetime(2026, 10, d, 11, 0), "Mobile Sign In", "Work from Home", "Mobile Sign In"),
                 Swipe("E1", datetime(2026, 10, d, 15, 0), "Mobile Sign In", "Work from Home", "Mobile Sign In")]
@@ -218,9 +218,9 @@ def test_wfh_counts_only_on_the_persons_own_working_days():
     # someone whose Saturdays are all off: Sat 3 is their weekly off → not WFH for them
     r = compute_employee_month(Employee("E1", group="BSS", weekly_off=P_ALL_SAT_OFF), 2026, 10, rows, sw, POL)
     assert r.wfh_days == 3 and r.offday_wfh_days == 3
-    # their own holiday calendar (7 Oct) and a targeted holiday (6 Oct) also exclude WFH
-    e = Employee("E1", group="BSS", holidays={date(2026, 10, 7): "Local holiday", date(2026, 10, 20): "Dussehra"},
-                 targeted_holidays={date(2026, 10, 6): "Delhi festival"})
+    # their category's holiday list (7 Oct, and 6 Oct added to it for a few categories) also excludes WFH
+    e = Employee("E1", group="BSS", holidays={date(2026, 10, 6): "Delhi festival", date(2026, 10, 7): "Local holiday",
+                                              date(2026, 10, 20): "Dussehra"})
     r = compute_employee_month(e, 2026, 10, rows, sw, POL)
     d6 = next(d for d in r.days if d.day.day == 6)
     assert d6.day_type == HOLIDAY and d6.holiday_name == "Delhi festival" and not d6.is_wfh
@@ -319,24 +319,19 @@ def test_excel_wfh_term_matches_what_was_charged():
     assert _wfh_term({"wfh_excess_days": 0, "wfh_deduction_days": 0}, 8, pol) == "+CEILING(MAX(0,J8-2),1)*0.5"
 
 
-def test_targeted_holiday_without_calendar_and_matching():
-    from types import SimpleNamespace as NS
+def test_one_off_holiday_in_a_category_list():
+    """v1.9 (owner): holidays are targeted only by category — a one-off holiday is a date in the category's list.
+    It turns a working day into a holiday (noted where greytHR differs); without a list greytHR's marks are used."""
     from app.services import holidays as TH
-    # no calendar (greytHR marks used) + a targeted holiday on a working day
-    r = compute_employee_month(Employee("E1", group="BSS", targeted_holidays={date(2026, 10, 9): "Chhath"}), 2026, 10,
-                               month(), [], POL)
+    r = compute_employee_month(Employee("E1", group="BSS", holidays={date(2026, 10, 9): "Chhath",
+                                                                    date(2026, 10, 20): "Dussehra"}),
+                               2026, 10, month(), [], POL)
     d9 = next(d for d in r.days if d.day.day == 9)
     assert d9.day_type == HOLIDAY and d9.holiday_name == "Chhath" and "Holiday calendar differs from greytHR" in d9.notes
-    assert r.holidays == 2 and next(d for d in r.days if d.day.day == 20).day_type == HOLIDAY   # greytHR's H still used
-    # who it applies to: listed employees always; locations AND groups (blank = any); case/space-insensitive
-    h = NS(locations="Delhi", groups=" article ,ATA", emp_nos="HS009")
-    assert TH.applies(h, "E1", "delhi", "Article") and TH.applies(h, "E1", "Delhi", "ata")
-    assert not TH.applies(h, "E1", "Mumbai", "Article") and not TH.applies(h, "E1", "Delhi", "BSS")
-    assert TH.applies(h, "HS009", "Mumbai", "BSS")
-    assert TH.applies(NS(locations="Delhi", groups="", emp_nos=""), "E1", "Delhi", "BSS")
-    assert not TH.applies(NS(locations="", groups="", emp_nos=""), "E1", "Delhi", "BSS")   # must target someone
-    assert TH.split("Mumbai, Delhi; mumbai|Pune") == ["Mumbai", "Delhi", "Pune"]
-    assert TH.describe(h) == "Delhi & article / ATA · plus HS009"
+    assert r.holidays == 2
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, month(), [], POL)        # no list: greytHR's H
+    assert r.holidays == 1 and next(d for d in r.days if d.day.day == 20).day_type == HOLIDAY
+    assert TH.split("HSCO (Mum), HSCO (Delhi); hsco (mum)|HSCO (CBV)") == ["HSCO (Mum)", "HSCO (Delhi)", "HSCO (CBV)"]
 
 
 def test_missing_punch_and_regularisation():

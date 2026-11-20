@@ -218,14 +218,17 @@ def test_overrides_ledger_and_audit(loaded):
                                          "reason": "No punch, not approved"})
     d, _ = _result("T001")
     assert d["unauth_absent_days"] == 1 and d["days_present"] == 21
-    # opening balance -> ledger
-    c.post(base + "/opening", data={"csrf": csrf, "leave_balance": "0.5", "compoff_balance": "0"})
+    # v1.9: leave balances are kept in greytHR — no opening balance, ledger, salary deduction or payroll LOP
+    assert c.post(base + "/opening", data={"csrf": csrf, "leave_balance": "0.5"}).status_code in (404, 405)
     d, flags = _result("T001")
-    assert d["leave_opening"] == 0.5 and d["leave_debit_absent"] == 1 and d["leave_closing"] == 0
-    assert d["salary_deduction_days"] == 0.5 and d["payroll_lop_days"] == 0.5
-    assert "LEAVE_EXHAUSTED" in {f["code"] for f in flags}
+    for k in ("leave_opening", "leave_closing", "leave_credit", "salary_deduction_days", "payroll_lop_days",
+              "compoff_opening", "compoff_closing"):
+        assert k not in d, k
+    assert not {"NO_OPENING_BALANCE", "LEAVE_EXHAUSTED", "COMPOFF_OVERDRAWN"} & {f["code"] for f in flags}
+    page = c.get(base).text
+    assert "Leave this month" in page and "Opening balance" not in page and "Leave balance" not in page
     audit = c.get("/audit").text
-    for a in ("override.month", "override.day", "leave.opening", "import"):
+    for a in ("override.month", "override.day", "import"):
         assert a in audit
 
 
@@ -297,8 +300,8 @@ def test_exports(loaded):
     r = c.get("/exports/2026-10.xlsx")
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/vnd.openxmlformats")
     wb = load_workbook(io.BytesIO(r.content))
-    assert wb.sheetnames[:6] == ["Contents", "Payroll Leave Sheet", "Payroll Input", "Leave & Comp-off Ledger",
-                                 "Corrections", "Flags"]                                       # v1.8 order
+    assert wb.sheetnames[:6] == ["Contents", "Payroll Leave Sheet", "Payroll Input", "Comp-off Ledger",
+                                 "Corrections", "Flags"]                                       # v1.8 order (v1.9 names)
     cs = wb["Contents"]
     links = {cs.cell(row=i, column=1).value: cs.cell(row=i, column=1).hyperlink for i in range(1, cs.max_row + 1)
              if cs.cell(row=i, column=1).hyperlink}
@@ -308,17 +311,23 @@ def test_exports(loaded):
     assert pws.page_setup.orientation == "landscape" and pws.print_title_rows == "$5:$5" and pws.page_setup.fitToWidth == 1
     assert pws.sheet_properties.tabColor is not None
     pin = wb["Payroll Input"]
-    assert [c_.value for c_ in pin[5]][:7] == ["Employee No", "Name", "Group", "Category", "Location",
-                                              "Leave deduction (days)", "Payroll LOP (days)"]
-    pin_rows = {pin.cell(row=i, column=1).value: i for i in range(6, pin.max_row + 1) if pin.cell(row=i, column=1).value}
-    assert "T002" in pin_rows and str(pin.cell(row=pin_rows["T002"], column=6).value).startswith("='Payroll Leave Sheet'!V")
+    # v1.9 (owner): the deduction split into hours shortfall and WFH over the limit, in columns and in the remark;
+    # no LOP, salary deduction or leave balance
+    assert [c_.value for c_ in pin[5]] == ["Employee No", "Name", "Group", "Category", "Location",
+                                           "Hours shortfall deduction (days)", "WFH over-limit deduction (days)",
+                                           "Total leave deduction (days)", "Remark"]
+    pin_rows = {pin.cell(row=i, column=1).value: i for i in range(6, pin.max_row + 1)
+                if str(pin.cell(row=i, column=1).value or "").startswith("T0")}
+    assert set(pin_rows) == {e for e in ("T001", "T002", "T003", "T004", "T005", "T006") if _result(e)[0]["deduction_days"]}
     assert "T003" not in pin_rows                           # partner: no deduction → not listed
-    for s in ("Late & Punctuality", "WFH & Locations", "Regularisation & Punches", "Leave & Comp-off Ledger",
+    for s in ("Late & Punctuality", "WFH & Locations", "Regularisation & Punches", "Comp-off Ledger",
               "People Movement", "Daily Detail", "Rules Applied", "Scorecard", "Groups Compared"):
         assert s in wb.sheetnames
     ws = wb["Payroll Leave Sheet"]
     hdr = [c_.value for c_ in ws[5]]
     assert hdr[:4] == ["Employee No", "Name", "Group", "Location"]
+    assert hdr[25:] == ["LOP (approved)", "Comp-off Earned", "Flags", "Category"]       # no balance columns (v1.9)
+    assert not any("Leave Opening" in h or "Closing" in h or "Salary" in h or "Payroll LOP" in h for h in hdr)
     rows = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
     i = rows["T001"]
     assert ws.cell(row=i, column=9).value == f"=E{i}-F{i}-G{i}-H{i}"
@@ -339,16 +348,32 @@ def test_exports(loaded):
     assert any("1 day(s) deducted from leave" in x["message"] for x in f4 if x["code"] == "WFH_OVER_LIMIT")
     i3 = rows["T003"]                    # Partner: the WFH term is not in the formula at all
     assert "CEILING(MAX(0,J" not in ws.cell(row=i3, column=22).value
-    led = [c_.value for c_ in wb["Leave & Comp-off Ledger"][5]]
-    assert led[7:10] == ["Shortfall deduction", "WFH over-limit deduction", "Unauthorised absence"]   # (+ Category)
+    led = [c_.value for c_ in wb["Comp-off Ledger"][5]]
+    assert led == ["Employee No", "Name", "Group", "Category", "Comp-off earned", "Comp-off taken"]
+    # Payroll Input: the formulas replicate the payroll sheet — hours part = the app's shortfall deduction, the rest of
+    # column V = the WFH part; the remark says both in words
+    P = "'Payroll Leave Sheet'!"
+    for emp, k in pin_rows.items():
+        d, i = _result(emp)[0], rows[emp]
+        f, g, h = (pin.cell(row=k, column=x).value for x in (6, 7, 8))
+        assert f.startswith(f'=IF({P}U{i}<>"No",0,') and g == f"={P}V{i}-F{k}" and h == f"={P}V{i}"
+        o, p_, t, e_, f_, g_, h_ = (ws.cell(row=i, column=x).value for x in (15, 16, 20, 5, 6, 7, 8))
+        bal = round((o - p_) - (e_ - f_ - g_ - h_) * t, 2)
+        hours = 0 if bal >= 0 or ws.cell(row=i, column=21).value != "No" else math.ceil(round(-bal, 4) / 4) * 0.5
+        assert hours == d["shortfall_deduction_days"] and d["deduction_days"] - hours == d["wfh_deduction_days"], emp
+        remark = pin.cell(row=k, column=9).value
+        assert ("Hours shortfall:" in remark) == bool(d["shortfall_deduction_days"]), (emp, remark)
+        assert ("WFH over the limit:" in remark) == bool(d["wfh_deduction_days"]), (emp, remark)
+    assert "WFH over the limit: 4 WFH days, limit 2 → 2 extra × 0.5 = 1 day" in pin.cell(row=pin_rows["T004"], column=9).value
     # the HTML board pack was removed in v1.6 (the app itself is the board view)
     assert c.get("/exports/2026-10.html").status_code == 404
     assert "/exports/2026-10.html" not in c.get("/exports").text and "Board pack" not in c.get("/").text
     # templates
-    for t in ("employee_master", "holidays", "leave_opening"):
+    for t in ("employee_master", "holidays"):
         r = c.get(f"/exports/templates/{t}.xlsx")
         assert r.status_code == 200
         load_workbook(io.BytesIO(r.content))
+    assert c.get("/exports/templates/leave_opening.xlsx").status_code == 404       # leave balances: greytHR (v1.9)
     # round-trip the pre-filled employee master template through the importer
     r = c.get("/exports/templates/employee_master.xlsx")
     tmp = io.BytesIO(r.content)
@@ -587,68 +612,113 @@ def test_ranked_lists_cover_everyone_and_heatmap_total(loaded):
     assert page.count('class="num hm-tot" data-v=') == page.count('class="hm-name"') > 0
 
 
-def test_targeted_holidays_settings_import_and_wfh(loaded):
-    """v1.6.4: targeted holidays (Rules & calendars and holiday-list import) apply only to the chosen people; WFH on
-    the person's own holiday is not WFH."""
+def test_holidays_by_category_settings_import_and_wfh(loaded):
+    """v1.9 (owner): holidays are targeted only by category. Rules & calendars → "Holiday for several categories" adds
+    the holiday to each ticked category's list; a holiday file has Date, Day, Holiday, Category, Optional (several
+    categories comma-separated; blank = the default list). WFH on the person's own holiday is not WFH."""
     import io
     from datetime import date
     import openpyxl
     from sqlalchemy import select
     from app.db import session_scope
-    from app.models import AuditLog, TargetedHoliday
+    from app.models import AuditLog, Category, Employee
     c = loaded
+    with session_scope() as db:
+        for nm in ("HSCO (Art)", "HSCO (Mum)"):
+            db.add(Category(name=nm))
+        for no, cat in (("T001", "HSCO (Mum)"), ("T002", "HSCO (Mum)"), ("T004", "HSCO (Art)")):
+            db.get(Employee, no).category = cat
     day_of = lambda emp, iso: next(d for d in _result_days(emp) if d["date"] == iso)  # noqa: E731
     wfh_dates = [d["date"] for d in _result_days("T004") if d["wfh"]]
     before, _ = _result("T004")
     assert before["wfh_days"] == len(wfh_dates) == 4 and before.get("offday_wfh_days", 0) == 0
     st = c.get("/settings").text
-    assert 'id="targeted"' in st and 'name="groups" value="Article"' in st and 'name="locations" value="Mumbai"' in st
-    assert 'name="wfh_excess_deduction_days"' in st and "0 = flag only" in st         # v1.6.5 setting
+    assert 'id="multi"' in st and 'name="categories" value="HSCO (Art)"' in st
+    assert 'type="checkbox" name="locations"' not in st and 'type="checkbox" name="groups"' not in st
+    assert "Targeted holidays" not in st and 'id="th-pick"' not in st
+    assert "Date, Day, Holiday, Category, Optional" in st
     csrf = csrf_of(c, "/settings")
-    r = c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-07", "name": "X"}, follow_redirects=True)
-    assert "Choose who the holiday is for" in r.text
-    r = c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-07", "emp_nos": ["NOPE1"]},
+    r = c.post("/settings/holidays/categories", data={"csrf": csrf, "day": "2026-10-07", "name": "X"},
                follow_redirects=True)
-    assert "Unknown employee number" in r.text
-    # a holiday for the Article group on one of T004's WFH days
+    assert "Tick the categories" in r.text
+    # a holiday for the Article category on one of T004's WFH days
     wd = wfh_dates[0]
-    r = c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": wd, "name": "Article day off",
-                                                    "groups": ["Article"]}, follow_redirects=True)
-    assert r.status_code == 200 and "Article day off" in r.text and "Targeted holiday" in r.text
+    r = c.post("/settings/holidays/categories", data={"csrf": csrf, "day": wd, "name": "Article day off",
+                                                      "categories": ["HSCO (Art)"]}, follow_redirects=True)
+    assert "Article day off" in r.text and "added to 1 list: HSCO (Art)" in r.text
+    assert "had no 2026 holidays yet" in r.text                     # the list now counts as loaded for 2026
     d4 = day_of("T004", wd)
     assert d4["type"] == "HOLIDAY" and d4["holiday"] == "Article day off" and not d4["wfh"]
     assert any("not counted as WFH" in n for n in d4["notes"])
     after, _ = _result("T004")
-    assert after["wfh_days"] == 3 and after["offday_wfh_days"] == 1 and after["holidays"] == before["holidays"] + 1
-    assert day_of("T001", wd)["type"] == "WORKDAY"                       # BSS: not targeted
-    # named employee on top of a location filter
-    c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-09", "name": "Pune fest",
-                                                "locations": ["Pune"], "emp_nos": ["T001"]})
-    assert day_of("T001", "2026-10-09")["type"] == "HOLIDAY" and day_of("T002", "2026-10-09")["type"] == "WORKDAY"
+    assert after["wfh_days"] == 3 and after["offday_wfh_days"] == 1
+    assert day_of("T001", wd)["type"] == "WORKDAY"                       # other category: not given it
     with session_scope() as db:
-        hs = {h.name: h.id for h in db.scalars(select(TargetedHoliday))}
-        assert {"holiday.targeted.add"} <= {a.action for a in db.scalars(select(AuditLog))}
-    c.post(f"/settings/targeted-holidays/{hs['Article day off']}/delete", data={"csrf": csrf})
-    assert day_of("T004", wd)["type"] == "WORKDAY" and _result("T004")[0]["wfh_days"] == 4
-    # holiday list import with targeted columns (+ an unknown employee is reported, not guessed)
+        assert "holiday.add" in {a.action for a in db.scalars(select(AuditLog))}
+    # the old targeting routes are gone
+    assert c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": wd}).status_code in (404, 405)
+    # holiday list import: Date, Day, Holiday, Category, Optional
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["Date", "Holiday", "Calendar", "For Locations", "For Groups", "For Employees"])
-    ws.append([date(2026, 10, 14), "Navratri (Article)", "", "", "Article", ""])
-    ws.append([date(2026, 10, 15), "Asha's day", "", "", "", "Asha Rao, Nobody Here"])
-    ws.append([date(2026, 10, 16), "Firm day", "Standard", "", "", ""])
+    ws.append(["Date", "Day", "Holiday", "Category", "Optional"])
+    ws.append([date(2026, 10, 14), "Wed", "Navratri", "HSCO (Art), HSCO (Mum)", "No"])     # two categories
+    ws.append([date(2026, 10, 16), "Fri", "Firm day", "", "No"])                          # no category → default
+    ws.append([date(2026, 10, 15), "Mon", "Wrong weekday", "HSCO (Mum)", "Yes"])          # 15 Oct 2026 is a Thursday
     buf = io.BytesIO()
     wb.save(buf)
     r = c.post("/imports", data={"csrf": csrf_of(c, "/imports")},
                files=[("files", ("holidays.xlsx", buf.getvalue(), "application/octet-stream"))])
-    assert r.status_code == 200 and "Holiday list" in r.text and "Nobody Here" in r.text
-    assert day_of("T004", "2026-10-14")["type"] == "HOLIDAY" and day_of("T001", "2026-10-14")["type"] == "WORKDAY"
-    assert day_of("T001", "2026-10-15")["holiday"] == "Asha's day" and day_of("T002", "2026-10-15")["type"] == "WORKDAY"
-    assert day_of("T002", "2026-10-16")["type"] == "HOLIDAY"                 # calendar row: everyone
-    t = c.get("/exports/templates/holidays.xlsx")
-    hdr = [x.value for x in openpyxl.load_workbook(io.BytesIO(t.content)).active[1]]
-    assert hdr[:10] == ["Date", "Day", "Holiday", "Category", "Is Optional", "Calendar", "For Categories",
-                        "For Locations", "For Groups", "For Employees"]
+    assert r.status_code == 200 and "Holiday list" in r.text and "Unexpected" not in r.text
+    assert "Thu" in r.text                                              # the Day column is checked
+    for e in ("T001", "T002", "T004"):
+        assert day_of(e, "2026-10-14")["type"] == "HOLIDAY", e
+    assert day_of("T005", "2026-10-16")["type"] == "HOLIDAY"           # no category → default list
+    assert day_of("T001", "2026-10-16")["type"] == "WORKDAY"           # has its own list
+    assert day_of("T001", "2026-10-15")["type"] == "WORKDAY"           # optional, not taken
+    # the template: only these columns, pre-filled with the lists
+    t = openpyxl.load_workbook(io.BytesIO(c.get("/exports/templates/holidays.xlsx").content))["Data"]
+    assert [x.value for x in t[1]] == ["Date", "Day", "Holiday", "Category", "Optional"]
+    got = {(r_[2].value, r_[3].value) for r_ in t.iter_rows(min_row=2) if r_[0].value}
+    assert {("Article day off", "HSCO (Art)"), ("Navratri", "HSCO (Art)"), ("Navratri", "HSCO (Mum)"),
+            ("Firm day", "")} <= {(a_, b_ or "") for a_, b_ in got}
+    # employee form: holidays follow the category (no calendar of their own)
+    page = c.get("/employees/T004").text
+    assert 'name="holiday_calendar_id"' not in page and "Holidays follow the category" in page
+
+
+def test_migration_moves_targeted_holidays_into_category_lists(data_dir):
+    """v1.9 migration: a targeted holiday for categories becomes a holiday in each of their lists; location / group /
+    person targeting is listed in the audit log; employees' own calendars are cleared."""
+    from datetime import date
+    from sqlalchemy import select
+    from app.db import init_db, migrate_data, session_scope
+    from app.models import AuditLog, Category, Employee, Holiday, HolidayCalendar, Setting, TargetedHoliday
+    init_db()
+    with session_scope() as db:
+        own = HolidayCalendar(name="Own list")
+        db.add(own)
+        db.flush()
+        db.add(Category(name="HSCO (Delhi)"))
+        db.add(Employee(emp_no="E1", name="A", category="HSCO (Delhi)", holiday_calendar_id=own.id))
+        db.add(TargetedHoliday(day=date(2026, 11, 7), name="Chhath", categories="HSCO (Delhi)", locations="",
+                               groups="", emp_nos=""))
+        db.add(TargetedHoliday(day=date(2026, 11, 9), name="Pune fest", categories="", locations="Pune",
+                               groups="", emp_nos=""))
+        st = db.get(Setting, "migrations")
+        st.value = {"done": [x for x in st.value["done"] if x != "holidays_by_category_v1"]}
+    migrate_data()
+    with session_scope() as db:
+        cat = db.scalar(select(Category).where(Category.name == "HSCO (Delhi)"))
+        assert cat.holiday_calendar_id
+        hs = {(h.day, h.name) for h in db.scalars(select(Holiday).where(Holiday.calendar_id == cat.holiday_calendar_id))}
+        assert hs == {(date(2026, 11, 7), "Chhath")}
+        assert db.scalar(select(TargetedHoliday)) is None
+        assert db.get(Employee, "E1").holiday_calendar_id is None
+        a = db.scalar(select(AuditLog).where(AuditLog.action == "migration.holidays_by_category"))
+        assert a and "Pune fest" in str(a.details["no_longer_targeted"]) and a.details["own_calendar_cleared"] == ["E1"]
+    migrate_data()                                                    # runs once
+    with session_scope() as db:
+        assert len(list(db.scalars(select(AuditLog).where(AuditLog.action == "migration.holidays_by_category")))) == 1
 
 
 def test_rule_change_recalculates_draft_months_once(loaded):
@@ -730,7 +800,7 @@ def _post_files(c, files):
 def test_categories_end_to_end(loaded):
     """v1.7: employee categories from greytHR's category report; each category's holiday list (incl. optional
     holidays, a Day column with a wrong year, a list without a Category column named in the file name); replace-by-
-    year; category weekly offs / hours; employee override; rename / delete; targeted by category; paste a list;
+    year; category weekly offs / hours; employee override; rename / delete; a holiday for a category; paste a list;
     disagreements with greytHR; categories everywhere (pages + Excel)."""
     from datetime import date
     from sqlalchemy import select
@@ -827,9 +897,9 @@ def test_categories_end_to_end(loaded):
         assert db.get(Employee, "T001").category == "HSCO (Mumbai)" and db.get(Employee, "T004").additional_category == "HSCO (Mumbai)"
     r = c.post(f"/settings/categories/{mum_id}/delete", data={"csrf": csrf}, follow_redirects=True)
     assert "still has employees" in r.text
-    # 8) a targeted holiday for a category (Carlyle) only
-    c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-13", "name": "Carlyle offsite",
-                                                "categories": ["HSCO (Carlyle)"]})
+    # 8) a holiday for one category (Carlyle) only — added to its list (v1.9)
+    c.post("/settings/holidays/categories", data={"csrf": csrf, "day": "2026-10-13", "name": "Carlyle offsite",
+                                                  "categories": ["HSCO (Carlyle)"]})
     assert day("T006", "2026-10-13")["type"] == "HOLIDAY" and day("T001", "2026-10-13")["type"] == "WORKDAY"
     # 9) paste a list (as copied from the New Delhi PDF) into a new calendar
     c.post("/settings/calendars", data={"csrf": csrf, "name": "Delhi 2026"})
@@ -856,9 +926,9 @@ def test_categories_end_to_end(loaded):
     cc = {x[0].value for x in wb["Categories Compared"].iter_rows(min_row=6) if x[0].value}
     assert {"HSCO (Mumbai)", "Article", "HSCO (Carlyle)"} <= cc
     ws = wb["Payroll Leave Sheet"]
-    assert ws.cell(row=5, column=35).value == "Category"
+    assert ws.cell(row=5, column=29).value == "Category"
     rows = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
-    assert ws.cell(row=rows["T004"], column=35).value == "Article + HSCO (Mumbai)"
+    assert ws.cell(row=rows["T004"], column=29).value == "Article + HSCO (Mumbai)"
     assert "Category" in [x.value for x in wb["Scorecard"][6]]
     tpl = load_workbook(io.BytesIO(c.get("/exports/templates/employee_master.xlsx").content)).active
     assert [x.value for x in tpl[1]][3:5] == ["Category", "Additional Category"]
@@ -873,11 +943,11 @@ def test_category_review_fixes(loaded):
     """v1.7.1 review: a list not loaded for the year falls back to greytHR; a shared / default calendar is never
     rewritten; a year split over two files or an optional-only file never wipes the rest; '(1)' in a file name is no
     category; older masters (MUSTER, groups in a Category column); blanks clear the additional category; rename /
-    delete keep targeted holidays right; a list's location vs its people; formula-safe category in Excel."""
+    delete keep the category's holidays; a list's Location column is ignored; formula-safe category in Excel."""
     from datetime import date
     from sqlalchemy import select
     from app.db import session_scope
-    from app.models import Category, Employee, Holiday, HolidayCalendar, TargetedHoliday
+    from app.models import Category, Employee, Holiday, HolidayCalendar
     c = loaded
     day = lambda emp, d: next(x for x in _result_days(emp) if x["date"] == d)  # noqa: E731
     csrf = csrf_of(c, "/settings")
@@ -945,21 +1015,21 @@ def test_category_review_fixes(loaded):
                                                             "Additional Category"], ["T002", "Bilal Khan", "HSCO (Old)", None]]))])
     with session_scope() as db:
         assert db.get(Employee, "T002").additional_category == ""
-    # 9) a Delhi list for a category whose people are in Mumbai is pointed out
+    # 9) greytHR's Holiday List Importer files carry a Location column: holidays go by category only (v1.9), so it
+    # is ignored — the rows land in the category's list, nothing is said about locations
     rows = [["Holiday Date", "Description", "Location", "Category"]] + \
         [[date(2026, m_, 11), f"D{m_}", "Delhi", "HSCO (Old)"] for m_ in range(1, 7)]
     r = _post_files(c, [("Holiday List Importer HSCO (Old) Delhi.xlsx", _xlsx(rows))])
-    assert "the list is for Delhi, but" in r.text and "Mumbai" in r.text
-    # 7) rename keeps targeted holidays; deleting drops those only for it
-    c.post("/settings/targeted-holidays", data={"csrf": csrf, "day": "2026-10-14", "name": "Old offsite",
-                                                "categories": ["HSCO (Old)"]})
+    assert "the list is for Delhi" not in r.text and "HSCO (Old) 2026: 6 holidays" in r.text
+    # 7) a one-off holiday for the category goes into its list; renaming the category keeps it
+    c.post("/settings/holidays/categories", data={"csrf": csrf, "day": "2026-10-14", "name": "Old offsite",
+                                                  "categories": ["HSCO (Old)"]})
     with session_scope() as db:
         cat = db.scalar(select(Category).where(Category.name == "HSCO (Old)"))
         cid, cal = cat.id, cat.holiday_calendar_id
+        assert db.scalar(select(Holiday).where(Holiday.calendar_id == cal, Holiday.name == "Old offsite"))
     c.post("/settings/categories/save", data={"csrf": csrf, "cid": str(cid), "name": "HSCO (Older)",
                                               "holiday_calendar_id": str(cal)})
-    with session_scope() as db:
-        assert db.scalar(select(TargetedHoliday).where(TargetedHoliday.name == "Old offsite")).categories == "HSCO (Older)"
     assert day("T001", "2026-10-14")["type"] == "HOLIDAY"
     # 12) category text is never an Excel formula
     with session_scope() as db:
@@ -968,9 +1038,9 @@ def test_category_review_fixes(loaded):
     wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
     ws = wb["Payroll Leave Sheet"]
     rows_ = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
-    cell = ws.cell(row=rows_["T006"], column=35)
+    cell = ws.cell(row=rows_["T006"], column=29)
     assert cell.value == "=SUM(1,1)" and cell.data_type == "s"
-    # 15) delete: refused while anyone (also leavers) has it; drops targeted holidays only for it
+    # 15) delete: refused while anyone (also leavers) has it; its holiday list is kept
     for e in ("T001", "T002", "T003", "T005"):
         c.post("/employees/save", data={"csrf": csrf_of(c, f"/employees/{e}"), "emp_no": e, "name": e, "category": "",
                                         "cat_fields": "1", "weekly_off": "CATEGORY", "is_active": "1"})
@@ -979,9 +1049,9 @@ def test_category_review_fixes(loaded):
                 if "Old" in (e.category or "") + (e.additional_category or "")]
     assert not left, left
     r = c.post(f"/settings/categories/{cid}/delete", data={"csrf": csrf}, follow_redirects=True)
-    assert "deleted" in r.text and "Old offsite" in r.text
+    assert "deleted" in r.text and "its holiday calendar is kept" in r.text
     with session_scope() as db:
-        assert db.scalar(select(TargetedHoliday).where(TargetedHoliday.name == "Old offsite")) is None
+        assert db.scalar(select(Holiday).where(Holiday.calendar_id == cal, Holiday.name == "Old offsite"))
 
 
 def test_approve_extra_wfh_from_review_queue_and_excel_follows(loaded):
@@ -1158,7 +1228,7 @@ def test_excel_resists_injected_text(loaded):
     from app.services.compute import compute_period, get_period
     with session_scope() as db:
         db.get(Employee, "T001").name = '</script><!--<script>alert(1)</script> =HYPERLINK("http://x")'
-        compute_period(db, get_period(db, 2026, 10), cascade=False)
+        compute_period(db, get_period(db, 2026, 10))
     page = loaded.get("/periods/2026-10").text
     assert "<script>alert(1)" not in page and "&lt;/script&gt;" in page       # escaped in the app
     wb = load_workbook(io.BytesIO(loaded.get("/exports/2026-10.xlsx").content))
@@ -1601,9 +1671,20 @@ def test_day_drawer_explains_codes_and_warns_about_fixed_figures(loaded):
     assert "they override what the days add up to" in c.get(base).text
 
 
-def test_overview_warns_when_opening_balances_missing(loaded):
-    page = loaded.get("/").text
-    assert "Leave opening balances missing for" in page and "/exports/templates/leave_opening.xlsx" in page
+def test_no_leave_balances_anywhere(loaded):
+    """v1.9 (owner): leave balances are kept in greytHR — the app neither asks for nor shows them."""
+    c = loaded
+    page = c.get("/").text
+    assert "opening balance" not in page.lower() and "LOP days" in page and "Payroll LOP" not in page
+    sheet = c.get("/periods/2026-10").text
+    assert "Leave bal." not in sheet and "Salary ded." not in sheet and "LOP days (greytHR)" in sheet
+    ins = c.get("/insights?period=2026-10").text
+    assert "Leave liability" not in ins and "Comp-off bal." not in ins and "Annual leave used" in ins
+    imp = c.get("/imports").text
+    assert "leave_opening" not in imp and "Leave opening" not in imp
+    assert "leave_opening" not in c.get("/exports").text
+    st = c.get("/settings").text
+    assert 'name="leave_credit_mode"' not in st and 'name="absent_debits_leave"' not in st and "kept in greytHR" in st
 
 
 def test_import_templates_round_trip(loaded, tmp_path):
@@ -1627,17 +1708,28 @@ def test_import_templates_round_trip(loaded, tmp_path):
     assert {e: _result(e)[0]["deduction_days"] for e in before} == before
     hw = load_workbook(io.BytesIO(c.get("/exports/templates/holidays.xlsx").content))
     assert "Examples" in " ".join(str(x.value) for x in hw["Instructions"]["A"])
-    # leave opening: As Of pre-filled; one balance filled → only that one saved, the others untouched
-    base = "/periods/2026-10/employee/T002"
-    c.post(base + "/opening", data={"csrf": csrf_of(c, base), "leave_balance": "7", "compoff_balance": "0"})
-    lw = load_workbook(io.BytesIO(c.get("/exports/templates/leave_opening.xlsx").content))
-    ws = lw["Data"]
-    rows = {ws.cell(row=r, column=1).value: r for r in range(2, ws.max_row + 1) if ws.cell(row=r, column=1).value}
-    assert ws.cell(row=rows["T001"], column=5).value.strftime("%Y-%m-%d") == "2026-10-01"
-    ws.cell(row=rows["T001"], column=3, value=4.5)
-    f = tmp_path / "leave_opening.xlsx"
-    lw.save(f)
+    assert "Holiday Calendar" not in heads                  # holidays follow the category (v1.9)
+    # holiday template (v1.9): Date, Day, Holiday, Category, Optional, pre-filled; re-importing it changes nothing
+    from app.db import session_scope
+    from app.models import Category
+    with session_scope() as db:
+        db.add(Category(name="HSCO (Mum)"))
+    tw = __import__("openpyxl").Workbook()
+    tw.active.append(["Date", "Day", "Holiday", "Category", "Optional"])
+    from datetime import date as _date
+    for d_, n_ in ((_date(2026, 1, 26), "Republic Day"), (_date(2026, 3, 4), "Holi"), (_date(2026, 8, 15), "Independence Day"),
+                   (_date(2026, 10, 2), "Gandhi Jayanti"), (_date(2026, 10, 20), "Dussehra"), (_date(2026, 12, 25), "Christmas")):
+        tw.active.append([d_, d_.strftime("%a"), n_, "HSCO (Mum)", "No"])
+    f = tmp_path / "Holidays 2026.xlsx"
+    tw.save(f)
+    assert "6 holidays loaded" in _upload(c, [f]).text
+    hw = load_workbook(io.BytesIO(c.get("/exports/templates/holidays.xlsx").content))
+    assert [x.value for x in hw["Data"][1]] == ["Date", "Day", "Holiday", "Category", "Optional"]
+    pre = [[x.value for x in r_] for r_ in hw["Data"].iter_rows(min_row=2) if r_[0].value]
+    assert any(r_[2] == "Dussehra" and r_[3] == "HSCO (Mum)" and r_[1] == "Tue" and r_[4] == "No" for r_ in pre), pre
+    f = tmp_path / "holidays_template.xlsx"
+    f.write_bytes(c.get("/exports/templates/holidays.xlsx").content)
     r = _upload(c, [f])
-    assert r.status_code == 200 and "Unexpected" not in r.text
-    assert _result("T001")[0]["leave_opening"] == 4.5 and _result("T002")[0]["leave_opening"] == 7
-    assert _result("T004")[0]["leave_opening"] is None
+    assert "HSCO (Mum) 2026: 6 holidays — no changes." in r.text and "Unexpected" not in r.text
+    # a leave-balance file is no longer imported as balances
+    assert c.get("/exports/templates/leave_opening.xlsx").status_code == 404

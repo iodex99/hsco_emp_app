@@ -207,3 +207,15 @@ vs *All columns*, Employee No + Name split, rows in screen order, raw numbers; r
 Browser on the real October copy: review queue at 1200 / 1440 px, Waive drawer, day drawer, Overview banner, holiday
 calendars, audit log, print preview, CSV of the payroll sheet (97 rows) and punch exceptions (1,198 rows), Excel
 "Preparing…" — no console errors. Full suite: **157 passed** (incl. e2e and real data).
+
+## v1.9.0 — holidays by category; no leave balances; Payroll Input split
+New / rewritten: engine — a one-off holiday is a date in the category list (no targeting field); categories — a stale
+employee calendar is ignored; web — *Holiday for several categories* (validation, added to the ticked list only, the
+"no holidays yet that year" warning, audit), holiday file with Date/Day/Holiday/Category/Optional (two categories in a
+cell, blank → default list, Day check, optional not taken), old targeting routes 404; migration (category-targeted →
+list, location-targeted listed in audit, own calendar cleared, runs once); no leave balances anywhere (pages,
+settings, imports, template 404, no ledger keys or flags); Payroll Input columns, formulas (hours part = the app's
+shortfall deduction, V − hours = WFH part, every deducted person) and remarks; Comp-off Ledger columns; payroll sheet
+columns; holiday template pre-filled and re-import = "no changes". Real data copy (browser): migration log, HS207
+unchanged (0.5 day), firm totals unchanged (6 people, 4 days), Payroll Input 6 rows with remarks, holiday template 69
+rows, pages render with no console errors. Full suite: **158 passed** (incl. e2e and real data).

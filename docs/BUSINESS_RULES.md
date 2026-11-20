@@ -16,7 +16,8 @@ with the default shown. Engine code: `app/engine/compute.py` (pure functions, un
 - 14 festival holidays per calendar year (incl. Janmashtami).
 - Leave: **15 paid days per financial year (Apr–Mar)**, pro‑rata for joiners/leavers; unapproved leave = unauthorised
   absence, adjusted against leave balance, then salary. No carry‑forward; unavailed leave **encashed** after 31‑Mar at
-  (monthly gross ÷ 26) × days; leavers forfeit unavailed leave.
+  (monthly gross ÷ 26) × days; leavers forfeit unavailed leave. **Leave balances are kept in greytHR, not in this app
+  (owner, v1.9):** the app gives the leave deduction to apply; it keeps no opening, ledger or closing balance.
 - WFH: max **2 days per month** (owner instruction) — excess is flagged.
 
 ## 2. Day classification (per employee, per date within employment)
@@ -25,18 +26,16 @@ with the default shown. Engine code: `app/engine/compute.py` (pure functions, un
      `MUSTER` (use greytHR OFF), `STD_FIRST_SAT` (Sun off, Sat off except 1st), `ALL_SAT_OFF`, `SUN_ONLY`,
      `CUSTOM` (choose the weekly-off weekdays, e.g. Wednesday only for HS068, plus which Saturdays of the month are
      working when Saturday is an off day, e.g. `1,3`).
-   - **Category (v1.7, §2b) decides the defaults**: weekly-off pattern, hours per day and holiday list come from the
-     employee's own settings, else their category, else their additional category, else greytHR / policy / the
-     default calendar.
-   - Holiday: if the employee has a **holiday calendar** (own → category's → additional category's → default) → date
-     in calendar; otherwise greytHR `H`. A holiday on a weekly‑off day stays a weekly off.
+   - **Category (v1.7, §2b) decides the defaults**: weekly-off pattern and hours per day come from the employee's own
+     settings, else their category, else their additional category, else greytHR / policy. **Holidays go by category
+     only** (owner, v1.9) — there is no per-employee holiday calendar.
+   - Holiday: the date is in the person's **category list** (category's → additional category's → default list) →
+     HOLIDAY; no list loaded for the year → greytHR `H`. A holiday on a weekly‑off day stays a weekly off.
    - **Optional holiday** (list flag *Is Optional*): a HOLIDAY only when greytHR marks the person's day `H` (they took
      it, named "… (optional)"); otherwise a working day with the note "Optional holiday (…) — not taken".
-   - **Targeted holiday** (v1.6.4, `targeted_holidays`, `services/holidays.py`): a holiday for some people only, on top
-     of their calendar. Applies to every employee listed by number, plus everyone whose location is in *locations*
-     (blank = any) **and** whose group is in *groups* (blank = any); at least one of the three must be set. Matching
-     ignores case/spaces. Also stays a weekly off when it falls on one. Bulk: holiday list with *For Locations /
-     For Groups / For Employees* columns.
+   - **A holiday for some categories only** (e.g. a Delhi festival; owner, v1.9 — replaces the v1.6.4 "targeted
+     holidays" by location / group / person): it is a date in each of those categories' lists — Rules & calendars →
+     *Holiday for several categories*, or a holiday-file row whose Category cell names several categories.
    - Result: `WORKDAY`, `WEEKLY_OFF` or `HOLIDAY`.
 2. **Status** per session half (0.5 day each) from greytHR code via a mapping table (Settings → Status codes):
    `P→present`, `A→absent`, `PL/CL/SL/EL/ML→leave`, `COF→compoff`, `LOP→lop`, `OFF/H→off`, `WFH/OD→present`.
@@ -69,26 +68,22 @@ dependent figures are recomputed in the order E,F,G,H → I → N → Q → R �
 result. This exemption does not cover WFH over the limit (§6 — only `wfh_deduction_exempt_groups`, default Partner,
 and a month exception).
 
-## 4. Leave ledger (financial year Apr–Mar)
-- Credit mode `annual` (default): 15 days credited on 1‑Apr; joiners pro‑rata = 15 × (months remaining incl. joining
-  month) ÷ 12 rounded to nearest 0.5. Alternative `monthly`: 1.25/month. *(Assumption — confirm with HR.)*
-- Opening balance: manual entry / Excel import "as at" a month (go‑live), else carried from previous computed month,
-  else (April) the new entitlement. Missing opening ⇒ flag `NO_OPENING_BALANCE` and balance shown as "net".
-- Monthly debit = PL days + shortfall deduction days + unauthorised absent days (`absent_debits_leave`, default **on**,
-  per policy). COF days debit the comp‑off ledger instead.
-- Closing < 0 ⇒ excess becomes **salary‑deduction days**, closing set to 0.
-- **Payroll LOP days** = LOP status days + excess (+ comp‑off overdraft if `cof_overdraft_to_leave` off).
-- Year end (March): unavailed balance reported for **encashment**; leavers forfeit.
+## 4. Leave balances — not calculated (owner, v1.9)
+Leave and comp-off balances are kept in greytHR. The app does not take opening balances, credit leave, carry
+balances forward, compute closing balances, salary-deduction days for exhausted leave or "payroll LOP". What it gives
+per month: **leave deduction days** (hours shortfall + WFH over the limit, §3 and §6 — what to take from leave), PL /
+COF / LOP / unauthorised-absence days as marked in greytHR. *Annual leave used* (Insights) compares paid leave taken in
+the financial year with `annual_leave_days`. (Until v1.8 a ledger did this — `leave_openings` is kept in the database,
+unused.)
 
-## 5. Comp‑off ledger
-Earned = days of type WEEKLY_OFF/HOLIDAY with work ≥ **5 h** (1 day each). Availed = COF halves.
-Opening manual. Availed > balance ⇒ flag `COMPOFF_OVERDRAWN`; overdraft debited from leave (default) — this reproduces
-HR's manual reclassification (e.g. HS134).
+## 5. Comp‑off
+Earned = days of type WEEKLY_OFF/HOLIDAY with work ≥ **5 h** (1 day each). Taken = COF halves (greytHR). Shown per
+month as earned and taken (Excel *Comp-off Ledger*); no balance.
 
 ## 6. WFH
 Swipes whose Location Type ∈ {`Work from Home`, `WFH`}, **on the employee's own WORKDAY only, when present at least
 half the day** (v1.6.7: a WFH sign-in on a day of full leave / absence is not WFH — `leaveday_wfh_days`, day note) (v1.6.4, owner): the
-day type after their weekly-off pattern, holiday calendar, targeted holidays and day corrections. A WFH sign-in on
+day type after their weekly-off pattern, their category's holiday list and day corrections. A WFH sign-in on
 their weekly off / holiday is *off-day work* (extra day, hours, comp-off ≥ 5 h as usual), not WFH; the day gets the
 note "Work from home on a weekly off/holiday — not counted as WFH" and the month stores `offday_wfh_days`.
 Method `distinct_days` (default): each working date with ≥1 WFH swipe counts 1 (partial‑WFH days reported
@@ -111,7 +106,7 @@ employee's group is in `wfh_deduction_exempt_groups` (default Partner) or a mont
 exemption (employee master flag, `exempt_groups` Partner/SS/Article/Trainee) does **not** exempt from the WFH
 deduction (owner, v1.6.6: Article, SS and Trainee also lose ½ day).
 `deduction_days = shortfall_deduction_days + wfh_deduction_days` (a month correction of deduction days overrides the
-total) and is debited from leave (ledger `leave_debit_wfh`), then salary when leave runs out. The WFH days beyond the
+total) — the leave to deduct (in greytHR); Payroll Input shows the two parts separately. The WFH days beyond the
 limit (in date order) get a note.
 
 ## 7. Behaviour metrics (never affect pay)
@@ -159,7 +154,8 @@ recalculated.
 - A month with punches but no muster is **not calculated**: its pages say so; Locations works from the punches.
 
 ## 10. Period lifecycle
-`DRAFT` (imports, auto‑compute) → `FINALISED` (locked: no imports/overrides; ledgers posted; exports stamped).
+`DRAFT` (imports, auto‑compute) → `FINALISED` (locked: no imports/overrides; exports stamped). Months are
+independent (nothing carries forward), so changing one month never recalculates another.
 Re‑open = admin only, reason mandatory, audit‑logged.
 **Delete a month** (v1.4.1) = admin only, DRAFT only, reason + typing the month name, audit‑logged; removes the month's
 imports, results, corrections and reviews; later draft months are recalculated.
@@ -187,22 +183,27 @@ greytHR "Category" (HSCO (Mum), HSCO (Carlyle), HSCO (CDTIPL), HSCO (CDTIPL) Bou
 HSCO (CBV), Article). `Employee.category` + `additional_category` (e.g. Article + HSCO (Mum)). `Category`: holiday list
 (calendar), weekly-off pattern ('' = not set), off weekdays / working Saturdays (CUSTOM), hours per day (blank = not set).
 **What applies** (first match): weekly offs — employee's own pattern (anything but *Follow category*) → category →
-additional category → greytHR muster; hours/day — employee → category → additional → policy; holidays — employee's
-calendar → category's → additional's → default calendar → greytHR `H`.
+additional category → greytHR muster; hours/day — employee → category → additional → policy; holidays — category's
+list → additional's → default list → greytHR `H` (never per employee, v1.9).
 **Names match loosely** (`categories.key`: letters/digits only, lower case, firm prefix "HSCO" dropped).
 **Imports:** *Employee Category Report* (Employee Number, Name, Curr.Location, Curr.Category, Additional Category —
 cached values of VLOOKUP cells are used) sets category / additional category / location; categories are created as
-needed; a category first created by a holiday list takes the report's spelling. **Holiday lists:** each row goes to
-its Category's own calendar (created and linked on first use, never the default) → else Calendar → else the category
-in the file name (no Category/Calendar column) → else Location (older lists) → "Standard". All rows of one file are
-applied together; for each calendar and year with ≥ 5 holidays the file **replaces** that year *within the span of
-dates it covers* (moved dates removed; a file of optional holidays only removes only optional ones; fewer than 5 =
-added only). A category pointing at a shared calendar (the default, another category's or an employee's own) gets a
-list of its own instead of rewriting it. In a file without Category / Calendar columns, the category comes from an
-"HSCO (…)" file name or an existing category's name in it. A list whose Location differs from where the category's
-people work is pointed out. **A list with no holidays in the year being calculated is skipped** (next in the chain,
-finally greytHR's marks); the month stores the list used (`calendar_from`). A Day column is checked; a date whose year differs from the list's main year is corrected when
-the same day/month in that year falls on the stated weekday, otherwise reported. Pasted lists follow the same rules.
-**Targeted holidays** may name categories (matched against category and additional category).
+needed; a category first created by a holiday list takes the report's spelling. **Holiday lists (v1.9, owner):** columns **Date, Day, Holiday, Category, Optional** — nothing else is needed
+(greytHR's Holiday List Importer files work; their Location column is ignored). Each row goes to its Category's own
+calendar (created and linked on first use, never the default); several categories in the cell (comma-separated) → the
+holiday goes into each list; no Category column → the category in the file name ("… HSCO (Carlyle) 2026.xlsx"); a
+blank category → the **default list** ("Standard", created as the default when there is none) for people whose
+category has no list. All rows of one file are applied together; for each list and year with ≥ 5 holidays the file
+**replaces** that year *within the span of dates it covers* (moved dates removed; a file of optional holidays only
+removes only optional ones; fewer than 5 = added only). A category pointing at a shared calendar (the default or
+another category's) gets a list of its own instead of rewriting it. **A list with no holidays in the year being
+calculated is skipped** (next in the chain, finally greytHR's marks); the month stores the list used
+(`calendar_from`). A Day column is checked; a date whose year differs from the list's main year is corrected when the
+same day/month in that year falls on the stated weekday, otherwise reported. Pasted lists follow the same rules.
+*Holiday for several categories* (Rules & calendars) adds one date to each ticked category's list and warns when a
+list had no holiday yet in that year (it then counts as loaded for the year).
+**Migration (v1.9):** targeted holidays for categories were moved into those categories' lists; ones for locations /
+groups / named people are listed in the audit log (`migration.holidays_by_category`) and no longer apply; employees'
+own holiday calendars were cleared.
 **Check these dates:** in the latest calculated draft month, a (category, date) where ≥ 50 % (and ≥ 2) of the
 category's people have "Holiday calendar differs from greytHR".

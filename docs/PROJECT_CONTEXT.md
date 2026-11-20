@@ -49,9 +49,9 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 
 ## Open questions for HR / partners (assumptions in force until answered)
 1. **HS207**: should auto-marked hours on holidays count? (app says no → 0.5 day deduction for Oct.)
-2. Leave credit: annual 15 days on 1-Apr pro-rata (assumed) or monthly 1.25? Policy says "other criteria remain the same".
+2. ~~Leave credit: annual or monthly?~~ Moot since v1.9: leave balances are kept in greytHR (owner).
 3. Should leavers in their exit month be exempt from shortfall deduction? (Currently only via group/override.)
-4. Opening leave & comp-off balances at go-live — need a one-time upload (template provided).
+4. ~~Opening leave & comp-off balances at go-live~~ Not needed since v1.9 (balances stay in greytHR).
 5. LOP: leave column or absent column? (default leave).
 6. ~~Which greytHR report carries sign-in coordinates?~~ Answered 2026-11-18: the newer *Employee Swipe Details*
    export (Longitude/Latitude columns, phone, remarks) — supported from v1.5.0.
@@ -75,11 +75,16 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
   exception, not counted towards the WFH limit / deduction.
 - **Employee categories** (owner, v1.7): every employee has a category (+ additional); holiday list, weekly offs and
   hours per day per category; holiday lists change yearly (upload / paste replaces the year); targeted by category.
+- **Holidays only by category; list fields Date, Day, Holiday, Category, Optional** (owner, v1.9): no targeting by
+  location / group / person and no per-employee calendar.
+- **Leave balances are calculated in greytHR, not here** (owner, v1.9): removed everywhere (openings, ledger,
+  closing, salary deduction, payroll LOP, liability). Payroll Input: the deduction split into hours shortfall and WFH
+  over the limit (column + remark), no LOP / salary deduction / balance columns; Comp-off Ledger: A–D + earned + taken.
 - **Punch exceptions view** (owner, v1.6.7): missing / incorrect punches, regularisations, WFH and other day
   exceptions, day by day and per employee, in the app and the payroll Excel.
 - **WFH above 2 a month: ½ day of leave per extra day** (owner, v1.6.5) — also for Article, SS and Trainee (owner,
   v1.6.6); only Partners (setting) and month exceptions are not deducted.
 - **WFH on a person's own weekly off / holiday is not WFH** (owner, v1.6.4); weekly offs and holidays are per
-  person; **targeted holidays** for chosen locations / groups / employees.
+  person (holidays by category only since v1.9).
 - **Named places removed** (owner, v1.6.2): "we are using locations from the package" — no Settings Locations tab; the
   office check that depended on named offices went with it; shared-phone check kept.

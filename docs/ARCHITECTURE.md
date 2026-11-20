@@ -20,7 +20,7 @@ app/web.py                 per-request DB session, auth context, role guards + C
 app/engine/                PURE calculation engine (no DB/web): model.py (types, Policy), compute.py
 app/importers/             readers.py (xlsx/xls/csv → rows, filters ignored), parsers.py (universal recognition + parse)
 app/services/              settings, audit, imports (pipeline, remembered layouts, pending uploads, partial-file
-                           rules, recompute_from), compute (DB→engine→results + ledgers), metrics, insights
+                           rules, recompute_from), compute (DB→engine→results), metrics, insights
                            (scorecards, absence, heatmaps), attendance_stats (compact month summaries), geo,
                            maintenance (start-up background jobs)
 app/security/              core.py (passwords, sessions, CSRF, TOTP, recovery, email OTP), passkeys.py (WebAuthn)
@@ -75,10 +75,10 @@ start child → /healthz == new build within 90 s ? done : restore previous code
 0. Every request gets one DB session via `Depends(get_db, scope="function")`: committed **before** the response is
    sent (required with SQLite — otherwise the next browser request can hit a held write lock).
 1. Upload → `readers.read_workbook` → `parsers.detect` (header signatures, any sheet, any header row ≤ 15) →
-   parser per kind → stored rows (muster/swipes/summary/manual MIS replace the month; master/DOJ/holidays/openings upsert).
+   parser per kind → stored rows (muster/swipes/summary/manual MIS replace the month; master/DOJ/holidays upsert).
 2. `services.compute.compute_period` builds engine inputs (employees + holiday calendars + overrides), runs
-   `engine.compute_month`, adds ledgers, stores one `MonthResult` per employee (scalars, flags, serialized days) and
-   cascades to the next draft month (ledger carry-forward).
+   `engine.compute_month`, stores one `MonthResult` per employee (scalars, flags, serialized days). Months are
+   independent (v1.9: no ledger carry-forward), so nothing cascades.
 3. Pages, Excel and HTML read `MonthResult` (fast; no recomputation on view).
 
 ## Database (SQLite file `DATA_DIR/hsco.db`)
@@ -87,12 +87,12 @@ start child → /healthz == new build within 90 s ? done : restore previous code
 | users, mfa_methods, recovery_codes, email_otps, sessions | identity, 2FA, server-side sessions |
 | audit_log | every login, import, override, setting, user change |
 | settings | `policy` and `general` JSON |
-| employees, categories, holiday_calendars, holidays, targeted_holidays, geofences, geo_cache | master data |
+| employees, categories, holiday_calendars, holidays, geofences, geo_cache | master data (`targeted_holidays` and `employees.holiday_calendar_id`: retired v1.9, kept empty) |
 | periods | month + status DRAFT/FINALISED |
 | flag_reviews | review-queue state per period/employee/flag (note, who, when); survives recomputation |
 | imports | file name, sha256, sheet, rows, warnings, who/when |
 | muster_rows, swipes, summary_rows, manual_mis_rows | imported data per period |
-| day_overrides, month_overrides, leave_openings | manual entries (reason mandatory) |
+| day_overrides, month_overrides | manual entries (reason mandatory); `leave_openings` retired v1.9 (kept, unused) |
 | month_results | computed output (JSON `data`, `flags`, `days`) |
 Schema is created with `create_all` at start-up (additive). For future column changes add a small migration step in
 `db.init_db` and record it here.
@@ -258,3 +258,23 @@ v1.7.5: `POST /flags/wfh-approve` (HR; period, emp_no, days, reason) → `MonthO
 - Import templates (`routes/reports.py` `_wb`): hidden *Lists* sheet + list validations (no error alert), date
   formats, freeze/filter, Instructions second. `imports.py` leave opening: rows without any balance skipped; a
   missing balance never overwrites a stored one.
+
+## Holidays by category, no leave balances (v1.9.0)
+- **Holidays**: `categories.effective` takes the calendar from category → additional category → default only (no
+  employee calendar). Engine `Employee.targeted_holidays` removed. `services/holidays.py` = `split` + `parse_pasted`.
+  Parser kind `holidays`: date, holiday_name (+ category, optional, weekday). `imports._apply_holiday_lists` targets
+  `("category", name)`, `("default", "")` (default list, "Standard" created as default when missing) and
+  `("calendar_id", id)` (paste into a chosen calendar); a comma-separated Category cell → one plan row per category.
+  `POST /settings/holidays/categories` (HR; day, name, optional, categories[]) → those lists + audit `holiday.add`.
+  Removed: `/settings/targeted-holidays*`, the employee form's calendar, the master template's Holiday Calendar column.
+  `db._holidays_by_category` (migration `holidays_by_category_v1`): category-targeted rows → category lists; the rest
+  listed in audit `migration.holidays_by_category`; `employees.holiday_calendar_id` cleared.
+- **No leave balances**: `services/compute._ledger`, `prorata_entitlement`, the `cascade` argument and the
+  `/periods/{key}/employee/{emp}/opening` route are gone; parser kind `leave_opening` and its template removed; policy
+  fields `leave_credit_mode`, `absent_debits_leave`, `cof_overdraft_to_leave` removed (stored values ignored).
+  `recompute_from` recalculates only the months given. Metrics drop `no_opening`, `salary_deduction_days`,
+  `payroll_lop_days`; insights drop liabilities / encashment.
+- **Excel**: payroll sheet columns 27–29 = Comp-off Earned, Flags, Category (`TEXT_COLS` 28, 29). *Payroll Input*:
+  F = hours part (same formula as column V's hours term, referencing the payroll sheet), G = `V − F`, H = `V`, I =
+  `_deduction_remark(d, pol, manual)`; a hand-set deduction (month correction) uses the app's stored split.
+  *Comp-off Ledger* (was *Leave & Comp-off Ledger*): A–D + earned + taken. RULES_VERSION 10.

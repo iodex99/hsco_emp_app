@@ -126,7 +126,9 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
 # 7 = v1.7.4: WFH on a working Saturday the office is closed (only the 1st Saturday open) is not counted as WFH.
 # 8 = v1.7.5: extra WFH days approved by a manager / partner (month correction) are not deducted.
 # 9 = v1.8.0: the hours-shortfall deduction can be waived for a month (month correction "shortfall_waived").
-RULES_VERSION = 9
+# 10 = v1.9.0: holidays only by category (no per-employee calendar, no location / group / person targeting); leave
+#      balances are not calculated (no ledger, salary deduction or payroll LOP).
+RULES_VERSION = 10
 
 
 def office_closed_saturday(d: date, policy: Policy) -> bool:
@@ -206,9 +208,6 @@ def compute_employee_month(
             elif muster_type == HOLIDAY:
                 day_type = HOLIDAY
                 holiday_name = "Holiday (greytHR)"
-        if day_type == WORKDAY and d in emp.targeted_holidays:
-            day_type = HOLIDAY
-            holiday_name = emp.targeted_holidays[d] or "Holiday"
         opt_note = ""
         if day_type == WORKDAY and d in emp.optional_holidays:
             # optional holiday: a holiday only for those who took it — greytHR marks their day H
@@ -220,7 +219,7 @@ def compute_employee_month(
         if ov and ov.day_type:
             day_type = ov.day_type
         notes = [opt_note] if opt_note else []
-        if (emp.holidays is not None or d in emp.targeted_holidays) and d not in emp.optional_holidays and (muster_type == HOLIDAY) != (day_type == HOLIDAY) \
+        if emp.holidays is not None and d not in emp.optional_holidays and (muster_type == HOLIDAY) != (day_type == HOLIDAY) \
                 and day_type != WEEKLY_OFF:
             notes.append("Holiday calendar differs from greytHR")
         if ptype and (ptype == WEEKLY_OFF) != (muster_type == WEEKLY_OFF) and muster_type != HOLIDAY:
@@ -253,8 +252,8 @@ def compute_employee_month(
             if s.swipe_type.lower().startswith("mobile") and s.location_type.lower() == "office":
                 dd.mobile_office_swipes += 1
         dd.location_types = lt
-        # WFH counts only on the person's own working days (their weekly-off pattern, holiday calendar, targeted
-        # holidays and day corrections decide); WFH sign-ins on an off day / holiday are off-day work, not WFH.
+        # WFH counts only on the person's own working days (their weekly-off pattern, their category's holiday
+        # list and day corrections decide); WFH sign-ins on an off day / holiday are off-day work, not WFH.
         # ... and only when they were present at least half the day (a WFH sign-in on a day of full leave / absence
         # is not a WFH day — it would otherwise be charged on top of the leave)
         wfh_sw = [s for s in sw if s.location_type.strip().lower() in policy.wfh_location_types]

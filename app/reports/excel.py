@@ -25,7 +25,7 @@ AMBER = PatternFill("solid", fgColor="FFE5B4")
 GREEN = PatternFill("solid", fgColor="D4EDDA")
 GREY = PatternFill("solid", fgColor="EEF1F5")
 THIN = Border(bottom=Side(style="thin", color="D0D7E2"))
-TEXT_COLS = {1, 2, 3, 4, 19, 34, 35}   # payroll sheet columns holding imported text (never formulas)
+TEXT_COLS = {1, 2, 3, 4, 19, 28, 29}   # payroll sheet columns holding imported text (never formulas)
 SEV_FILL = {"critical": RED, "high": AMBER, "medium": PatternFill("solid", fgColor="FFF7D6"), "info": GREY}
 
 
@@ -173,6 +173,23 @@ def _wfh_term(d: dict, i: int, pol) -> str:
     return f"+CEILING(MAX(0,J{i}-{pol.wfh_limit_days:g}" + (f"-{ok:g}" if ok else "") + f"),1)*{rate:g}"
 
 
+def _deduction_remark(d: dict, pol, manual=None) -> str:
+    """Why this person loses leave this month, in words: the hours part and the WFH part (Payroll Input)."""
+    parts = []
+    sd, short = d.get("shortfall_deduction_days") or 0, d.get("shortfall_hours") or 0
+    if sd:
+        parts.append(f"Hours shortfall: {short:.2f} h short of {d.get('required_hours') or 0:g} h required → {sd:g} day")
+    wd = d.get("wfh_deduction_days") or 0
+    if wd:
+        ex, ok = d.get("wfh_excess_days") or 0, d.get("wfh_approved_days") or 0
+        parts.append(f"WFH over the limit: {d.get('wfh_days') or 0:g} WFH days, limit {pol.wfh_limit_days:g}"
+                     + (f", {ok:g} approved" if ok else "") + f" → {max(0, ex - ok):g} extra × "
+                     f"{pol.wfh_excess_deduction_days:g} = {wd:g} day")
+    if manual is not None:
+        parts.append(f"Deduction set by hand to {d.get('deduction_days') or 0:g} day ({manual.created_by}: {manual.reason})")
+    return "; ".join(parts)
+
+
 def build_workbook(db: Session, period: Period) -> bytes:
     org = get_general(db)
     pol = get_policy(db)
@@ -193,9 +210,8 @@ def build_workbook(db: Session, period: Period) -> bytes:
              "Total Days Worked", "Hours Required", "Total Hours Present (decimal)", "Off-day / holiday hours (excluded)",
              "Actual Hours Worked", "Shortfall / Excess", "Remark",
              "Hours / Day", "Exempt (hours)", "Deduction Days", "PL Taken", "Comp-off Taken",
-             "Unauthorised Absent", "LOP (approved)", "Leave Opening", "Leave Credit", "Total Leave Debit",
-             "Leave Closing", "Salary Deduction Days", "Payroll LOP Days", "Comp-off Earned", "Flags", "Category"]
-    widths = [10, 24, 9, 9, 8, 8, 8, 8, 8, 6, 10, 8, 8, 9, 10, 10, 10, 10, 34, 7, 7, 10, 7, 8, 9, 7, 8, 7, 8, 8, 9, 8, 8, 40, 20]
+             "Unauthorised Absent", "LOP (approved)", "Comp-off Earned", "Flags", "Category"]
+    widths = [10, 24, 9, 9, 8, 8, 8, 8, 8, 6, 10, 8, 8, 9, 10, 10, 10, 10, 34, 7, 7, 10, 7, 8, 9, 7, 8, 40, 20]
     _title(ws, org, title, len(heads))
     HR_ = 5
     _header(ws, HR_, heads, widths)
@@ -217,12 +233,10 @@ def build_workbook(db: Session, period: Period) -> bytes:
             # for WFH: Partner-type group or a month exception)
             22: f'=IF(U{i}<>"No",0,IF(-R{i}>{grace},CEILING(ROUND(-R{i},4)/{blk},1)*{per_blk},0))' + _wfh_term(d, i, pol),
             23: d.get("pl_days"), 24: d.get("cof_days"), 25: d.get("unauth_absent_days"), 26: d.get("lop_days"),
-            27: d.get("leave_opening"), 28: d.get("leave_credit"), 29: d.get("leave_debit_total"),
-            30: d.get("leave_closing"), 31: d.get("salary_deduction_days"), 32: d.get("payroll_lop_days"),
-            33: d.get("compoff_earned"),
-            34: "; ".join(MX.FLAG_LABELS.get(f["code"], f["code"]) for f in r.flags
+            27: d.get("compoff_earned"),
+            28: "; ".join(MX.FLAG_LABELS.get(f["code"], f["code"]) for f in r.flags
                           if f["severity"] in ("critical", "high", "medium")),
-            35: (r.category or "") + (f" + {d['additional_category']}" if d.get("additional_category") else ""),
+            29: (r.category or "") + (f" + {d['additional_category']}" if d.get("additional_category") else ""),
         }
         if (r.emp_no, "required_hours") in ovr:
             vals[14] = d["required_hours"]
@@ -237,65 +251,71 @@ def build_workbook(db: Session, period: Period) -> bytes:
                 c = ws.cell(row=i, column=fmap[field])
                 c.fill = OVR
                 c.comment = Comment(f"Manual override by {o.created_by}: {o.reason}", "HSCO app")
-        for col in (27, 30):                      # no opening balance imported: say so instead of a blank
-            if vals[col] is None:
-                c = ws.cell(row=i, column=col, value="not set")
-                c.fill, c.font = GREY, Font(italic=True, color="888888")
         if d.get("deduction_days"):
             ws.cell(row=i, column=22).fill = RED
-        if d.get("salary_deduction_days"):
-            ws.cell(row=i, column=31).fill = RED
     last = HR_ + len(res)
     ws.cell(row=HR_, column=22).comment = Comment(
         f"½ day per {pol.shortfall_block_hours:g} h short (rounded up; none when column U is Yes / Waived) + "
         f"{pol.wfh_excess_deduction_days:g} day per WFH day over {pol.wfh_limit_days:g} not approved by a manager / partner",
         "HSCO app")
-    no_open = sum(1 for r in res if (r.data or {}).get("leave_opening") is None)
     ws.auto_filter.ref = f"A{HR_}:{get_column_letter(len(heads))}{last}"
     ws.conditional_formatting.add(f"R{HR_ + 1}:R{last}", CellIsRule(operator="lessThan", formula=["0"], fill=RED))
     ws.conditional_formatting.add(f"J{HR_ + 1}:J{last}", CellIsRule(operator="greaterThan", formula=[str(pol.wfh_limit_days)], fill=AMBER))
     tr = last + 2
     ws.cell(row=tr, column=2, value="TOTAL").font = Font(bold=True)
-    for col in (5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 22, 23, 24, 25, 26, 31, 32, 33):
+    for col in (5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 22, 23, 24, 25, 26, 27):
         L = get_column_letter(col)
         ws.cell(row=tr, column=col, value=f"=SUBTOTAL(9,{L}{HR_ + 1}:{L}{last})").font = Font(bold=True)
     ws.cell(row=tr + 2, column=1, value="Yellow cells = manual override (hover for reason). Formulas are live: edit E–H, "
                                           "O, P, T or J (WFH) and Excel recalculates the deduction. Generated "
                                           f"{datetime.now():%d-%b-%Y %H:%M} from the app's figures at that moment, "
                                           "including every correction (see the Corrections sheet) and review "
-                                          "(see Flags)." + (f" Leave balances 'not set' for {no_open} people: import the "
-                                                            "opening balances (leave opening template) to complete "
-                                                            "the closing balance and salary deduction."
-                                                            if no_open else "")).font = Font(italic=True, color="666666")
+                                          "(see Flags). Leave balances are kept in greytHR — this sheet gives the "
+                                          "deduction to apply.").font = Font(italic=True, color="666666")
 
     # ------------------------------------------------------------------ payroll input (what the payroll team needs)
+    # owner (v1.9): only people with a leave deduction, the deduction split into hours shortfall and WFH over the
+    # limit — in columns and in words. Linked to the payroll sheet: the hours part uses the same formula as column V,
+    # the WFH part is the rest of V (a deduction set by hand: the app's split, and the remark says so).
     pi = wb.create_sheet("Payroll Input")
     rowmap = {r.emp_no: i for i, r in enumerate(res, start=HR_ + 1)}
-    pick = [r for r in res if (r.data or {}).get("deduction_days") or (r.data or {}).get("payroll_lop_days")
-            or (r.data or {}).get("salary_deduction_days")]
+    pick = [r for r in res if (r.data or {}).get("deduction_days")]
     P = "'Payroll Leave Sheet'!"
-    prow = [[r.emp_no, r.name, r.group, r.category, r.location, f"={P}V{rowmap[r.emp_no]}", f"={P}AF{rowmap[r.emp_no]}",
-             f"={P}AE{rowmap[r.emp_no]}", f"={P}AD{rowmap[r.emp_no]}", f"={P}S{rowmap[r.emp_no]}"] for r in pick]
-    _table(pi, 5, ["Employee No", "Name", "Group", "Category", "Location", "Leave deduction (days)", "Payroll LOP (days)",
-                   "Salary deduction (days)", "Leave balance after", "Remark"], [], [10, 24, 9, 18, 10, 12, 12, 12, 12, 60],
-           org, f"Payroll input — {period.label} ({'FINAL' if period.status == 'FINALISED' else 'DRAFT'}): "
-                f"{len(pick)} people with a leave deduction, LOP or salary deduction")
-    for i_, row in enumerate(prow, start=6):
-        for j_, v in enumerate(row, start=1):
-            c = _put(pi, i_, j_, v, text=j_ in (1, 2, 3, 4, 5))
-            if 6 <= j_ <= 9:
+    _table(pi, 5, ["Employee No", "Name", "Group", "Category", "Location", "Hours shortfall deduction (days)",
+                   "WFH over-limit deduction (days)", "Total leave deduction (days)", "Remark"], [],
+           [10, 24, 9, 18, 10, 14, 14, 14, 80], org,
+           f"Payroll input — {period.label} ({'FINAL' if period.status == 'FINALISED' else 'DRAFT'}): "
+           f"{len(pick)} {'person' if len(pick) == 1 else 'people'} with a leave deduction")
+    for k_, r in enumerate(pick, start=6):
+        d, i = r.data, rowmap[r.emp_no]
+        manual = (r.emp_no, "deduction_days") in ovr
+        if manual:
+            hours, wfh = d.get("shortfall_deduction_days") or 0, d.get("wfh_deduction_days") or 0
+        else:
+            hours = (f'=IF({P}U{i}<>"No",0,IF(-{P}R{i}>{grace},CEILING(ROUND(-{P}R{i},4)/{blk},1)*{per_blk},0))')
+            wfh = f"={P}V{i}-F{k_}"
+        vals = [r.emp_no, r.name, r.group, r.category, r.location, hours, wfh, f"={P}V{i}",
+                _deduction_remark(d, pol, ovr.get((r.emp_no, "deduction_days")))]
+        for j_, v in enumerate(vals, start=1):
+            c = _put(pi, k_, j_, v, text=j_ in (1, 2, 3, 4, 5, 9))
+            if 6 <= j_ <= 8:
                 c.number_format = "0.0#"
-    if prow:
-        pi.auto_filter.ref = f"A5:J{5 + len(prow)}"
-        t = 6 + len(prow) + 1
+        pi.cell(row=k_, column=9).alignment = Alignment(wrap_text=True, vertical="top")
+    if pick:
+        last_p = 5 + len(pick)
+        pi.auto_filter.ref = f"A5:I{last_p}"
+        t = last_p + 2
         pi.cell(row=t, column=2, value="TOTAL").font = Font(bold=True)
         for col in "FGH":
-            pi[f"{col}{t}"] = f"=SUBTOTAL(9,{col}6:{col}{5 + len(prow)})"
+            pi[f"{col}{t}"] = f"=SUBTOTAL(9,{col}6:{col}{last_p})"
             pi[f"{col}{t}"].font = Font(bold=True)
+            pi[f"{col}{t}"].number_format = "0.0#"
     else:
-        pi.cell(row=6, column=1, value="Nobody has a leave deduction, LOP or salary deduction this month.")
-    pi.cell(row=4, column=1, value="Figures are linked to the Payroll Leave Sheet (they follow any edit there). People "
-                                   "without a deduction or LOP are not listed.").font = Font(italic=True, color="666666")
+        pi.cell(row=6, column=1, value="Nobody has a leave deduction this month.")
+    pi.cell(row=4, column=1, value="Linked to the Payroll Leave Sheet (follows any edit there). Hours shortfall: "
+                                   f"{pol.deduction_per_block_days:g} day per {pol.shortfall_block_hours:g} h short "
+                                   f"(rounded up). WFH: {pol.wfh_excess_deduction_days:g} day per WFH day over "
+                                   f"{pol.wfh_limit_days:g} not approved.").font = Font(italic=True, color="666666")
 
     # ------------------------------------------------------------------ 2. board summary
     ws = wb.create_sheet("Board Summary")
@@ -305,7 +325,6 @@ def build_workbook(db: Session, period: Period) -> bytes:
           ("Attendance rate %", k["attendance_rate"]), ("Avg hours / present day", k["avg_work_hours"]),
           ("Avg in-time", k["avg_in_time"]), ("Avg out-time", k["avg_out_time"]),
           ("Employees with leave deduction", k["deduction_employees"]), ("Total deduction days", k["deduction_days"]),
-          ("Salary deduction days (leave exhausted)", k["salary_deduction_days"]),
           ("Paid leave days taken", k["leave_days"]), ("Comp-off days taken", k["compoff_days"]),
           ("Unauthorised absent days", k["absent_days"]), ("LOP days", k["lop_days"]),
           ("WFH days", k["wfh_days"]), (f"Employees over WFH limit ({pol.wfh_limit_days:g})", k["wfh_over_limit"]),
@@ -476,19 +495,12 @@ def build_workbook(db: Session, period: Period) -> bytes:
             + [pp["wfh_deduction"] or None] for pp in X["people"]],
            [10, 24, 9, 18] + [11] * (len(keys) + 1), org, f"Exceptions by employee — {period.label}")
 
-    ws = wb.create_sheet("Leave & Comp-off Ledger")
-    rows = []
-    for r in res:
-        d = r.data
-        rows.append([r.emp_no, r.name, r.group, r.category, d.get("leave_opening"), d.get("leave_credit"), d.get("leave_debit_pl"),
-                     d.get("leave_debit_shortfall"), d.get("leave_debit_wfh"), d.get("leave_debit_absent"),
-                     d.get("leave_debit_compoff"),
-                     d.get("leave_closing"), d.get("salary_deduction_days"), d.get("compoff_opening"),
-                     d.get("compoff_earned"), d.get("cof_days"), d.get("compoff_closing"), d.get("payroll_lop_days")])
-    _table(ws, 5, ["Employee No", "Name", "Group", "Category", "Leave opening", "Credit", "PL taken", "Shortfall deduction",
-                   "WFH over-limit deduction", "Unauthorised absence", "Comp-off overdraft", "Leave closing", "Salary deduction days",
-                   "Comp-off opening", "Comp-off earned", "Comp-off taken", "Comp-off closing", "Payroll LOP days"],
-           rows, [10, 24, 9, 18] + [11] * 14, org, f"Leave & comp-off ledger — {period.label} (FY Apr–Mar, {pol.annual_leave_days:g} days)")
+    ws = wb.create_sheet("Comp-off Ledger")
+    rows = [[r.emp_no, r.name, r.group, r.category, (r.data or {}).get("compoff_earned") or 0,
+             (r.data or {}).get("cof_days") or 0] for r in res]
+    _table(ws, 5, ["Employee No", "Name", "Group", "Category", "Comp-off earned", "Comp-off taken"], rows,
+           [10, 24, 9, 18, 14, 14], org, f"Comp-off — {period.label} (earned for ≥ {pol.comp_off_min_hours:g} h on a "
+                                         "weekly off / holiday; taken = COF days in greytHR)")
 
     # ------------------------------------------------------------------ insights scorecard (docs/METRICS.md "Insights")
     from app.services import insights as INS
@@ -498,16 +510,16 @@ def build_workbook(db: Session, period: Period) -> bytes:
     rows = [[r["emp_no"], r["name"], r["group"], r.get("category", ""), r["location"], r["tenure_m"], r["attention"],
              ", ".join(r["attention_why"]), r["attendance_pct"], r["absence_pct"], r["absence_12m_days"], r["absence_12m_spells"],
              r["punctuality_pct"], r["avg_in"], r["avg_hours"], r["utilisation_pct"], r["balance_hours"], r["long_days"],
-             r["late_sitting_days"], r["wfh_days"], r["regularised_days"], r["missing_punch_days"], r["leave_used_fy"],
-             r["leave_closing"], r["compoff_closing"]] for r in sorted(ins["rows"], key=lambda x: -x["attention"])]
+             r["late_sitting_days"], r["wfh_days"], r["regularised_days"], r["missing_punch_days"], r["leave_used_fy"]]
+            for r in sorted(ins["rows"], key=lambda x: -x["attention"])]
     _table(ws, 6, ["Emp No", "Name", "Group", "Category", "Location", "Tenure (months)", "Attention (0-100)", "Main reasons",
                    "Attendance %", "Unplanned absence %", "Unplanned absence days (12 m)", "Absence spells (12 m)", "On time %", "Avg first punch",
                    "Avg day (h)", "Hours vs required %", "Balance (h)", "Long days", "Late sitting", "WFH days",
-                   "Regularised", "Missing punch", f"Leave used {ik['fy_label']}", "Leave balance", "Comp-off balance"],
+                   "Regularised", "Missing punch", f"Leave used {ik['fy_label']}"],
            rows, [10, 24, 9, 18, 10] + [11] * 20, org, f"Employee scorecard — {period.label}")
     ws.cell(row=4, column=1, value=(
         f"Firm: unplanned absence {ik['absenteeism_pct']}% · on time {ik['punctuality_pct']}% · hours vs required "
-        f"{ik['utilisation_pct']}% · attrition (12 m) {ik['attrition_pct']}% · leave liability {ik['leave_liability_days']} d. "
+        f"{ik['utilisation_pct']}% · attrition (12 m) {ik['attrition_pct']}%. "
         "Attention = unplanned absence (12 m) 25 + punctuality 20 + hours 20 + regularisation 15 + WFH 10 + missing punches 10."))
     ws.freeze_panes = "C7"
     ws2 = wb.create_sheet("Groups Compared")
@@ -599,8 +611,8 @@ def build_workbook(db: Session, period: Period) -> bytes:
         ("WFH limit", f"{pol.wfh_limit_days:g} days per month ({pol.wfh_method.replace('_', ' ')})"),
         ("Late arrival", f"First-in more than {pol.late_grace_min} min after shift start (information only)"),
         ("LOP in MIS columns", f"Counted under {'Leaves (G)' if pol.lop_bucket == 'leave' else 'Absent (H)'}"),
-        ("Leave", f"{pol.annual_leave_days:g} days per FY, credit mode '{pol.leave_credit_mode}', unauthorised absence "
-                  f"{'debits' if pol.absent_debits_leave else 'does not debit'} leave"),
+        ("Leave balances", "Kept in greytHR — not calculated by the app. The deduction days (column V) are what to "
+                           "take from leave."),
         ("Source", "greytHR Muster (day status & hours), Swipe Details (punches/locations), DOJ report, app master data"),
     ]
     _table(ws, 5, ["Rule", "Applied as"], [list(n) for n in notes], [26, 110], org, "Rules applied in this workbook")
@@ -617,11 +629,13 @@ def build_workbook(db: Session, period: Period) -> bytes:
         ("Employees", len(res)),
         ("People with a leave deduction", sum(1 for r in res if (r.data or {}).get("deduction_days"))),
         ("Leave deduction (days)", round(sum((r.data or {}).get("deduction_days") or 0 for r in res), 2)),
-        ("Payroll LOP (days)", round(sum((r.data or {}).get("payroll_lop_days") or 0 for r in res), 2)),
-        ("Salary deduction (days)", round(sum((r.data or {}).get("salary_deduction_days") or 0 for r in res), 2)),
+        ("of which hours shortfall (days)", round(sum((r.data or {}).get("shortfall_deduction_days") or 0 for r in res
+                                                      if (r.data or {}).get("deduction_days")), 2)),
+        ("of which WFH over the limit (days)", round(sum((r.data or {}).get("wfh_deduction_days") or 0 for r in res
+                                                         if (r.data or {}).get("deduction_days")), 2)),
+        ("LOP days (approved in greytHR)", round(sum((r.data or {}).get("lop_days") or 0 for r in res), 2)),
         ("Open exceptions (not reviewed)", open_flags),
         ("Manual corrections", len(corr)),
-        ("Leave balances not set", no_open),
     ])
     buf = io.BytesIO()
     wb.save(buf)
@@ -633,8 +647,8 @@ SHEET_GUIDE = [
     # (sheet, tab colour, one line on what it is for) — also the order of the workbook
     ("Contents", NAVY, "This page: key figures and every sheet."),
     ("Payroll Leave Sheet", NAVY, "The month for payroll in the MIS layout — live formulas; edit E–H, J, O, P or T and the deduction recalculates."),
-    ("Payroll Input", NAVY, "Only what payroll needs: people with a leave deduction, LOP or salary deduction (linked to the payroll sheet)."),
-    ("Leave & Comp-off Ledger", NAVY, "Opening, credit, every debit and closing leave / comp-off per person."),
+    ("Payroll Input", NAVY, "Only what payroll needs: people with a leave deduction, split into hours shortfall and WFH over the limit, with the reason (linked to the payroll sheet)."),
+    ("Comp-off Ledger", NAVY, "Comp-off earned and taken per person this month."),
     ("Corrections", NAVY, "Every manual correction included in these figures, with the reason, who and when."),
     ("Flags", NAVY, "Exceptions found by the app and whether each was reviewed (open items first)."),
     ("Punch Exceptions", "C77700", "Day by day: missing / incorrect punches, regularisations, WFH, late, early, short, absence."),
@@ -643,7 +657,7 @@ SHEET_GUIDE = [
     ("Late & Punctuality", "C77700", "Late arrivals, early exits, short days, late sitting (information only)."),
     ("WFH & Locations", "C77700", "WFH days (limit), client / on-duty days, biometric vs mobile punches."),
     ("Board Summary", "2E7D32", "Firm-level figures for partners, by group and by category."),
-    ("Scorecard", "2E7D32", "Per person: attention score and its reasons, attendance, punctuality, hours, leave."),
+    ("Scorecard", "2E7D32", "Per person: attention score and its reasons, attendance, punctuality, hours, leave used."),
     ("Groups Compared", "2E7D32", "Groups side by side."),
     ("Categories Compared", "2E7D32", "Categories (holiday list & working pattern) side by side."),
     ("People Movement", "2E7D32", "Joiners, exits, possible exits, anniversaries."),
@@ -653,7 +667,8 @@ SHEET_GUIDE = [
     ("Places", "7A869A", "Places people signed in from."),
     ("Rules Applied", "7A869A", "The rules and settings behind these figures."),
 ]
-NO_HIDE = {"Contents", "Payroll Leave Sheet", "Payroll Input", "Board Summary", "People Movement", "Rules Applied"}
+NO_HIDE = {"Contents", "Payroll Leave Sheet", "Payroll Input", "Comp-off Ledger", "Board Summary", "People Movement",
+           "Rules Applied"}
 
 
 def _header_row(ws):

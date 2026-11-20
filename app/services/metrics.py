@@ -39,6 +39,7 @@ FLAG_LABELS = {
     "MANUAL_OVERRIDE": "Manual override applied",
     "NOT_IN_MASTER": "Not in employee master",
     "UNKNOWN_STATUS": "Unknown status code",
+    # no longer raised since v1.9 (leave balances are kept in greytHR); kept so finalised months still read well
     "NO_OPENING_BALANCE": "Leave opening balance not set",
     "LEAVE_EXHAUSTED": "Leave exhausted → salary deduction",
     "COMPOFF_OVERDRAWN": "Comp-off overdrawn",
@@ -79,10 +80,7 @@ def compute_kpis(db: Session, period: Period, policy=None, res=None, emps=None) 
         "new_joinees": sum(1 for e in emps.values() if e.doj and month_start <= e.doj <= month_end),
         "exits": sum(1 for e in emps.values() if e.dol and month_start <= e.dol <= month_end),
         "deduction_employees": sum(1 for d in D if d.get("deduction_days")),
-        "no_opening": sum(1 for d in D if d.get("leave_opening") is None),
         "deduction_days": tot("deduction_days"),
-        "salary_deduction_days": tot("salary_deduction_days"),
-        "payroll_lop_days": tot("payroll_lop_days"),
         "leave_days": tot("pl_days"),
         "compoff_days": tot("cof_days"),
         "absent_days": tot("unauth_absent_days"),
@@ -307,7 +305,7 @@ def employee_history(db: Session, emp_no: str) -> list[dict]:
                       .where(MonthResult.emp_no == emp_no).order_by(Period.year, Period.month)).all()
     return [{"key": p.key, "label": p.label, **{k: r.data.get(k) for k in (
         "days_present", "pl_days", "cof_days", "unauth_absent_days", "lop_days", "wfh_days", "late_days", "regularised_days",
-        "missing_punch_days", "actual_hours", "required_hours", "balance_hours", "deduction_days", "leave_closing",
+        "missing_punch_days", "actual_hours", "required_hours", "balance_hours", "deduction_days",
         "avg_in_min", "avg_work_hours", "extra_days")}} for p, r in rows]
 
 
