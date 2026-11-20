@@ -14,6 +14,9 @@ Owner: "now I have to deploy it on the client side … I need the installation t
 - CI: every release is first installed from its zip on a clean Windows machine and checked over HTTPS (twice — the
   second run is a repair); releases are only published when that passes.
 - `create-admin` asks for the password twice when typed.
+- Found by the first CI install run (not released): started from a PowerShell 7 window, Windows PowerShell picked up
+  PowerShell 7's modules and could not trust the certificate. Install.cmd now resets the module path and the
+  certificate is trusted with Windows' own `certutil`.
 
 ## 1.9.0 — 2026-11-20 — holidays only by category; leave balances left to greytHR; Payroll Input split by cause
 Owner: "for holidays they only need these fields: date, day, holiday, category, optional … holidays are targeted only

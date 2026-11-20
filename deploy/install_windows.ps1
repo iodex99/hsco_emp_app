@@ -181,7 +181,10 @@ if (-not $SkipCert -and -not (Test-Path $crt)) {
 } else {
   Say "Keeping the existing certificate" "Green"
 }
-if (Test-Path $crt) { Import-Certificate -FilePath $crt -CertStoreLocation Cert:\LocalMachine\Root | Out-Null }
+if (Test-Path $crt) {           # trusted on this PC too (certutil: no PowerShell module needed)
+  certutil -addstore -f Root $crt | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "The certificate could not be trusted on this PC (certutil code $LASTEXITCODE)." }
+}
 
 # ---------------------------------------------------------------- 6. first administrator
 Step 6 "Administrator"

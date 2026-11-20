@@ -11,6 +11,8 @@ if errorlevel 1 (
   exit /b
 )
 title Installing HSCO Attendance ^& Leave
+rem started from PowerShell 7? its module path breaks Windows PowerShell 5.1 modules - use the default one
+set "PSModulePath="
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy\install_windows.ps1" %*
 set "RC=%errorlevel%"
 echo.
