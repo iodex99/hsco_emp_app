@@ -227,6 +227,7 @@
       <div class="field"><label>Lock for (minutes)</label><input name="lockout_minutes" value="{{ general.lockout_minutes }}"></div></div>
   </div></div>
   <div class="form-sec"><div><h3>Place names</h3><p>Coordinates are named offline by default, so they never leave the server.</p></div><div>
+    {% if not geo_ok %}<div class="alert bad mb">{{ ui.icon('triangle-alert') }}<span>The offline place-name file (app\data\in_places.csv.gz) is missing on this server, so punches show coordinates instead of place names. Install the latest update (or run Install.cmd from the complete package) — the names are filled in automatically at the next start.</span></div>{% endif %}
     <label class="check mb"><input type="checkbox" name="online_geocoding" value="1" {{ 'checked' if general.online_geocoding }}> <span>Also look up unknown places on OpenStreetMap <span class="help" style="display:block">Sends coordinates outside the server.</span></span></label>
     <div class="field" style="max-width:240px"><label>Offline match radius (km)</label><input name="geocode_max_km" value="{{ general.geocode_max_km }}"></div>
   </div></div>

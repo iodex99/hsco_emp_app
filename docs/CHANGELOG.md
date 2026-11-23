@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.12.1 — 2026-11-23 — place names missing on a fresh install (fix)
+Owner: "the location package basically the name of the locations is not showing on the client side instance".
+- Cause: Install.cmd copied the app with `robocopy /XD data`, which skips **every** folder called `data` — including
+  `app\data`, the bundled offline place-name file (`in_places.csv.gz`). Without it every punch was stored with its
+  bare coordinates, and those coordinates were cached as if they were names.
+- Installer: skips only the package's own top-level folders (`data`, `.venv`, `reference`, `exports`, `backups`, …,
+  by full path) and stops with a clear message if the place-name file did not arrive. The CI install job checks it.
+- App: coordinates are no longer cached as a place name; at every start, punches still shown as coordinates (any
+  month) are named from the offline file as soon as it is there — draft months are recalculated, figures unchanged.
+- Settings → Place names shows a red warning when the place-name file is missing on the server.
+- Client servers: installing this update (the update banner) brings the file and fills in the names automatically
+  at the restart — nothing to re-import.
+
 ## 1.12.0 — 2026-11-23 — RH earned holiday, a two-type review queue, movable data folder
 Owner: "the status code in muster report RH shall be considered as an earned holiday and no absence shall be
 registered on that day … if those employees have worked on those days, no comp offs are to be given / in the review

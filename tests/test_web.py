@@ -564,6 +564,43 @@ def test_place_names_upgraded_once(loaded):
     assert geo.upgrade_place_names() == 0
 
 
+def test_punches_saved_without_the_place_file_are_named_once_it_is_there(loaded, tmp_path):
+    """v1.12.1: installs whose installer skipped app\\data stored coordinates as place names (and cached them). With the
+    file missing nothing is cached; once it is there the next start names those punches — finalised months too."""
+    from datetime import datetime
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import GeoCache, Period, SwipeRow
+    from app.services import geo
+    from app.services.geo import Namer
+    with session_scope() as db:
+        geo.upgrade_place_names()                                   # names version already current
+        pid = db.scalar(select(Period.id))
+        db.add(Period(year=2025, month=1, status="FINALISED"))
+        db.flush()
+        final = db.scalar(select(Period.id).where(Period.year == 2025))
+        db.add_all([SwipeRow(period_id=pid, emp_no="T001", ts=datetime(2026, 10, 2, 10), lat=19.1145, lon=72.8712,
+                             place="19.11450, 72.87120"),
+                    SwipeRow(period_id=final, emp_no="T001", ts=datetime(2025, 1, 2, 10), lat=19.1145, lon=72.8712,
+                             place="19.11450, 72.87120")])
+        db.add(GeoCache(key="19.1145,72.8712", name="19.11450, 72.87120", source="offline"))
+    # place file missing: coordinates shown, nothing cached, nothing renamed
+    src, built = geo.SRC, geo._DB
+    geo.SRC, geo._DB = tmp_path / "missing.csv.gz", None
+    with session_scope() as db:
+        n = Namer(db)
+        n._known = {}
+        assert n.name(28.6331, 77.2211) == "28.63310, 77.22110" and n.new == []
+    assert geo.upgrade_place_names() == 0
+    geo.SRC, geo._DB = src, built
+    assert geo.upgrade_place_names() == 2                          # the draft and the finalised punch
+    with session_scope() as db:
+        places = set(db.scalars(select(SwipeRow.place).where(SwipeRow.lat == 19.1145, SwipeRow.lon == 72.8712)))
+        assert places and all("Andheri" in p for p in places), places
+        assert db.get(GeoCache, "19.1145,72.8712") is None          # the cached coordinates are gone
+    assert geo.upgrade_place_names() == 0
+
+
 def test_insights_kpis_and_scorecard(loaded):
     """Insights numbers follow the definitions in METRICS.md on the synthetic month."""
     from sqlalchemy import select

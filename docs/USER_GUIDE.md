@@ -214,3 +214,8 @@ Rules & calendars → *Security & system* → **Data folder** shows where everyt
 (e.g. to a bigger drive): type a new or empty folder such as `D:\HSCOData` → **Move the data here** → confirm. The app
 copies and checks everything and restarts on the new folder within a few seconds — reload the page. The old folder is
 left untouched with a MOVED.txt note; delete it once you are happy.
+
+## Places show as numbers (coordinates)?
+Rules & calendars → *Place names*: a red warning means the built-in map of India is missing on the server (installs
+before v1.12.1). Install the update from the banner; after the restart every punch gets its place name — nothing to
+re-import.

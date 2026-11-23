@@ -69,9 +69,10 @@ def settings_page(c: Ctx = Depends(hr)):
     conflicts = CAT.calendar_conflicts(c.db, c.db.scalars(select(MonthResult).where(MonthResult.period_id == latest.id))
                                        ) if latest else []
     this_year = date.today().year
-    from app.services import datadir as DD
+    from app.services import datadir as DD, geo as GEO
     return render(c, "settings.html", backups=BK.list_backups()[:12], bk=BK.summary(),
                   dd=DD.info() if c.can("admin") else None,
+                  geo_ok=GEO.SRC.exists(),
                   pol=get_policy_json(c.db), g=get_general(c.db), numbers=POLICY_NUMBERS,
                   buckets=BUCKETS, cals=cals, shift_names=shift_names,
                   cat_rows=cat_rows, cal_use=cal_use, conflicts=conflicts, conflict_period=latest,

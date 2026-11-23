@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import gzip
 import json
+import logging
 import math
 import os
 import pathlib
@@ -26,6 +27,7 @@ from app.config import APP_DIR
 from app.models import GeoCache
 from app.services.settings import get_general
 
+log = logging.getLogger("hsco.geo")
 _LOCK = threading.Lock()
 CELL = 0.05  # degrees (~5.5 km) — grid used to index the gazetteer
 _DB: Optional[str] = None
@@ -93,22 +95,33 @@ def warm_up() -> None:
 
 def upgrade_place_names() -> int:
     """Once per gazetteer version: re-name swipes stored with older offline names, then recalculate draft months.
+    At every start: name punches still stored as bare coordinates (saved while the place file was missing).
 
     Never holds the database write lock for long: names are worked out first (reads only, offline gazetteer only —
     no online lookups), then written in short batches; each draft month is recalculated in its own
     transaction. Finalised months are left untouched (their results are frozen)."""
-    from sqlalchemy import delete, update
+    from sqlalchemy import delete, not_, or_, update
     from app.db import session_scope
     from app.models import Period, Setting, SwipeRow
     from app.services.compute import compute_period
+    if gazetteer_db() is None:          # place file missing: nothing can be named — try again at the next start
+        return 0
     with session_scope() as db:
         st = db.get(Setting, "geo_names_version")
-        if st and (st.value or {}).get("v", 0) >= NAMES_VERSION:
-            return 0
         drafts = {p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT"))}
         max_km = float(get_general(db).get("geocode_max_km") or 15)
-        rows = db.execute(select(SwipeRow.id, SwipeRow.period_id, SwipeRow.lat, SwipeRow.lon, SwipeRow.place)
-                          .where(SwipeRow.lat.is_not(None), SwipeRow.period_id.in_(drafts or {-1}))).all()
+        q = select(SwipeRow.id, SwipeRow.period_id, SwipeRow.lat, SwipeRow.lon, SwipeRow.place).where(
+            SwipeRow.lat.is_not(None), SwipeRow.lon.is_not(None))
+        unnamed = or_(SwipeRow.place.is_(None), SwipeRow.place == "", not_(SwipeRow.place.op("GLOB")("*[A-Za-z]*")))
+        upgrading = not (st and (st.value or {}).get("v", 0) >= NAMES_VERSION)
+        if not upgrading:
+            # names up to date — only punches still shown as bare coordinates (saved while the place file was
+            # missing, e.g. installs before v1.12.1), in any month: the place name is display text, figures unchanged
+            q = q.where(unnamed)
+        else:
+            q = q.where(or_(SwipeRow.period_id.in_(drafts or {-1}), unnamed))
+        rows = db.execute(q).all()
+        db.execute(delete(GeoCache).where(~GeoCache.name.op("GLOB")("*[A-Za-z]*")))   # coordinates cached as names
     names: dict = {}
     changes: list = []
     touched: set = set()
@@ -124,13 +137,18 @@ def upgrade_place_names() -> int:
         with session_scope() as db:
             db.execute(update(SwipeRow.__table__).where(SwipeRow.__table__.c.id == bindparam("i")).values(place=bindparam("p")),
                        changes[i:i + 2000])
-    with session_scope() as db:
-        db.execute(delete(GeoCache).where(GeoCache.source == "offline"))
+    if upgrading:
+        with session_scope() as db:
+            db.execute(delete(GeoCache).where(GeoCache.source == "offline"))
     for pid in sorted(touched):
         with session_scope() as db:
             per = db.get(Period, pid)
             if per is not None and per.status == "DRAFT" and per.computed_at:
                 compute_period(db, per)
+    if changes and not upgrading:
+        log.info("named %d punch(es) that showed coordinates", len(changes))
+    if not upgrading:
+        return len(changes)
     with session_scope() as db:
         st = db.get(Setting, "geo_names_version")
         if st is None:
@@ -246,7 +264,10 @@ class Namer:
             on = online_name(lat, lon)
             if on:
                 name, src = on, "osm"
-        name = name or f"{lat:.5f}, {lon:.5f}"
+        if not name:                                  # no place found: show coordinates but never cache them, so a
+            name = f"{lat:.5f}, {lon:.5f}"            # later start (place file present, bigger radius) can name it
+            self.cache[key] = name
+            return name
         self.new.append(GeoCache(key=key, name=name, source=src))
         self.cache[key] = name
         return name

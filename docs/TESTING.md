@@ -257,3 +257,12 @@ target checks, full copy with DB integrity / audit / MOVED.txt / transient updat
 supervisor that knows moves, older supervisor and HR refused; installer dry run follows the pointer. Live: a
 supervised server on a real-data copy moved through the Settings form, restarted itself on the new folder with all
 97 results. Real-data copy: queue shows only WFH above limit, sidebar count 78 → 1, no console errors.
+
+## v1.12.1 — place names on a fresh install
+`test_deploy::test_installer_copies_app_data_but_not_the_repo_data_folders` runs the installer's own robocopy lines on
+a small tree (app\data copied; data, reference, .venv, exports, __pycache__ skipped; a package without the place file
+refused). `test_web::test_punches_saved_without_the_place_file_are_named_once_it_is_there` (nothing cached while the
+file is missing; draft + finalised punches named once it is back; coordinate cache cleared);
+`test_datadir::test_settings_warns_when_the_offline_place_names_are_missing`. CI install job checks the file was
+copied. Live: a real-data copy put into the client's state (all 828 GPS punches stored as coordinates, cache holding
+coordinates) — after a start every punch had a place name (Locations page and employee page checked).

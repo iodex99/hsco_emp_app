@@ -311,3 +311,10 @@ of their kind and month.
   exists, free space), `move` (copytree without `updates/staged|rollback|download`, DB via `sqlite3.backup`,
   integrity check, icacls when admin, pointer written atomically, MOVED.txt). `POST /settings/data-folder` (admin) →
   audit `settings.data_folder` before the copy → restart hook. The installer honours the pointer.
+
+## Offline place names: self-repair (v1.12.1)
+`geo.upgrade_place_names` (start-up maintenance) returns early while the gazetteer is missing (version not recorded);
+when it is present it also re-names, at every start, swipes in any month whose `place` has no letter (bare
+coordinates — SQLite `GLOB '*[A-Za-z]*'`), deletes GeoCache rows that hold coordinates, and recalculates touched draft
+months. `Namer` never caches a coordinate fallback. Settings gets `geo_ok = geo.SRC.exists()`. Installer copy:
+`robocopy /XD <full paths of top-level folders> __pycache__` and a check for the gazetteer.

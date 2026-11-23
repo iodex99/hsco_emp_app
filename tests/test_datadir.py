@@ -118,3 +118,12 @@ def test_older_supervisor_or_hr_user_cannot_move(client, data_dir, pointer, tmp_
     c.post("/logout", data={"csrf": csrf_of(c)})
     login_full(c, "hr1", "Hr!Person#2026x")
     assert c.post("/settings/data-folder", data={"csrf": csrf_of(c, "/"), "target": str(tmp_path / "x")}).status_code == 403
+
+
+def test_settings_warns_when_the_offline_place_names_are_missing(client, tmp_path, monkeypatch):
+    """v1.12.1: an install without app/data/in_places.csv.gz shows coordinates — Settings says so plainly."""
+    from app.services import geo
+    c = _signed_in(client)
+    assert "place-name file" not in c.get("/settings").text
+    monkeypatch.setattr(geo, "SRC", tmp_path / "missing.csv.gz")
+    assert "place-name file (app" in c.get("/settings").text

@@ -63,11 +63,38 @@ def test_installer_follows_a_data_folder_moved_from_the_app(tmp_path):
     base = os.environ.get("HSCO_DATA_DIR_MACHINE_TEST") or "C:\HSCOData"
     app = tmp_path / "app"
     app.mkdir()
-    (app / "data_location.json").write_text(json.dumps({"base": base, "dir": "D:\Moved\HSCOData"}), encoding="utf-8")
+    (app / "data_location.json").write_text(json.dumps({"base": base, "dir": r"D:\Moved\HSCOData"}), encoding="utf-8")
     r = subprocess.run([PS, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "deploy" / "install_windows.ps1"),
                         "-DryRun", "-AppDir", str(app)], capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
     machine = subprocess.run([PS, "-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('HSCO_DATA_DIR','Machine')"],
                              capture_output=True, text=True).stdout.strip()
     if not machine or machine.rstrip("\\").lower() == base.rstrip("\\").lower():
-        assert "Data folder: D:\Moved\HSCOData" in r.stdout, r.stdout
+        assert r"Data folder: D:\Moved\HSCOData" in r.stdout, r.stdout
+
+
+@needs_ps
+def test_installer_copies_app_data_but_not_the_repo_data_folders(tmp_path):
+    r"""v1.12.1: a bare `/XD data` also skipped app\data (the offline place names), so a fresh install showed
+    coordinates instead of place names. Runs the installer's own copy lines on a small tree."""
+    src = (ROOT / "deploy" / "install_windows.ps1").read_text(encoding="utf-8")
+    start = src.index("  $skip = ")
+    block = src[start:src.index("} else {", start)]
+    here, app = tmp_path / "pkg", tmp_path / "out"
+    for rel in ("app/data/in_places.csv.gz", "app/main.py", "data/hsco.db", "reference/real.xlsx", ".venv/x",
+                "app/__pycache__/m.pyc", "exports/e.xlsx", "run_server.py"):
+        (here / rel).parent.mkdir(parents=True, exist_ok=True)
+        (here / rel).write_text("x")
+    script = tmp_path / "copy.ps1"
+    script.write_text(f"$Here = '{here}'\r\n$AppDir = '{app}'\r\n{block}", encoding="utf-8")
+    r = subprocess.run([PS, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (app / "app" / "data" / "in_places.csv.gz").exists() and (app / "run_server.py").exists()
+    for gone in ("data", "reference", ".venv", "exports", "app/__pycache__"):
+        assert not (app / gone).exists(), gone
+    (here / "app" / "data" / "in_places.csv.gz").unlink()           # an incomplete package is refused
+    script.write_text(f"$Here = '{here}'\r\n$AppDir = '{tmp_path / 'out2'}'\r\n{block}", encoding="utf-8")
+    r = subprocess.run([PS, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0 and "in_places.csv.gz is missing" in r.stdout + r.stderr, r.stdout + r.stderr

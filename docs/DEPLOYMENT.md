@@ -109,3 +109,9 @@ in it is part of the code, so reinstalling or updating the code leaves it as it 
 ## Ports & network
 Single HTTPS port (default 8443, `HSCO_PORT`). Firewall rule is created for Domain/Private profiles only.
 Do not expose to the internet; use the firm VPN for remote access.
+
+## Place names show as coordinates (fixed in v1.12.1)
+Installs made with Install.cmd before v1.12.1 were missing `app\data\in_places.csv.gz` (the installer's copy skipped
+every folder named `data`). Settings → *Place names* shows a red warning in that case. Fix: install the update from the
+banner (or run Install.cmd from the complete v1.12.1+ package); at the restart the app names every punch that was
+stored as coordinates — no re-import needed.

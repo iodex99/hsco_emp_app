@@ -124,8 +124,14 @@ if ($task) { try { Stop-ScheduledTask -TaskName $TaskName; Start-Sleep -Seconds 
 if ($Here.TrimEnd('\') -ne $AppDir) {
   Step 1 "Copying the app to $AppDir"
   New-Item -ItemType Directory -Force $AppDir | Out-Null
-  robocopy $Here $AppDir /E /NFL /NDL /NJH /NJS /NP /XD .venv data __pycache__ .git dist test-results /XF *.pyc | Out-Null
+  # skip only these top-level folders (full paths): a bare "/XD data" would also skip app\data - the offline
+  # place names - so punches showed coordinates instead of place names (fixed v1.12.1)
+  $skip = ".venv", "data", ".git", "dist", "test-results", "reference", "exports", "backups" | ForEach-Object { Join-Path $Here $_ }
+  robocopy $Here $AppDir /E /NFL /NDL /NJH /NJS /NP /XD @skip __pycache__ /XF *.pyc | Out-Null
   if ($LASTEXITCODE -ge 8) { throw "Copying the app failed (robocopy code $LASTEXITCODE)." }
+  if (-not (Test-Path (Join-Path $AppDir "app\data\in_places.csv.gz"))) {
+    throw "The offline place-name file app\data\in_places.csv.gz is missing from $Here - unpack the complete package and run Install.cmd again."
+  }
 } else {
   Step 1 "App folder: $AppDir"
 }

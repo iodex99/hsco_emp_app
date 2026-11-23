@@ -76,6 +76,7 @@ jobs:
           Check "HTTPS /healthz with a trusted certificate" { curl.exe --fail --silent --show-error --ssl-no-revoke "https://${h}:8443/healthz"; $LASTEXITCODE -eq 0 }
           Check "sign-in page" { curl.exe --fail --silent --ssl-no-revoke -o NUL "https://${h}:8443/login"; $LASTEXITCODE -eq 0 }
           Check "app copied to C:\HSCO\app" { Test-Path "C:/HSCO/app/run_server.py" }
+          Check "offline place names copied (app\data)" { Test-Path "C:/HSCO/app/app/data/in_places.csv.gz" }
           Check "database in C:\HSCOData" { Test-Path "C:/HSCOData/hsco.db" }
           foreach ($f in "Set up this PC.cmd", "hsco-server.crt", "READ ME.txt") { Check "office PC kit: $f" { Test-Path "C:/HSCO/Office PC setup/$f" } }
           Check "desktop icon" { Test-Path "$env:PUBLIC/Desktop/HSCO Attendance.url" }
