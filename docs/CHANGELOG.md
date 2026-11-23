@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.13.1 — 2026-11-24 — the PDF rebuilt; a full report with every report; Attendance rate card removed
+Owner: "the pdf is not rendering properly, need to really work upon it, i want all the reports in it, and before
+committing … check each and every page thoroughly" / "remove the attendance rate card from the overview section".
+- **PDF ▾ → This page** (every tab, rows as filtered on screen) or **Full report**: one PDF with a cover and contents
+  (page numbers, clickable), then Overview, Insights, Payroll leave sheet, Review queue, Punch exceptions, Locations
+  and Reconciliation — each report starting on a new page. On the October data: 113 pages.
+- What was wrong and is fixed: charts that printed half-drawn or empty (tenure, hours, groups) — every chart is now drawn
+  again at print size with animation off; chart titles separated from their chart; tab headings alone at the bottom of a
+  page; ranked lists printing only the top 10 shown on screen — they print everyone with the total; badges running into
+  the next word ("CriticalNo attendance", "−6 h1 d"); screen hints ("click a bar to see who") in titles and notes; empty
+  tool columns in tables; dates, times and names wrapping onto two lines (short columns now sized to their content, so
+  the punch-exceptions list fits ~34 rows a page); the heatmap without its colour key; the Review queue's type list;
+  a one-line note alone on a page.
+- Found while checking: the Punch exceptions *By employee* total for WFH deduction showed `1"` instead of `1 d`, on
+  screen too (an escaped attribute) — fixed.
+- **Overview**: the *Attendance rate* card is removed from the top row (still under the Attendance tab).
+- The app's pages may be framed by the app itself (needed for the full report): `frame-ancestors 'self'`,
+  `X-Frame-Options: SAMEORIGIN` (was none / DENY); other sites still cannot frame it.
+
 ## 1.13.0 — 2026-11-23 — no LOP, "Unapplied leave (absence)", OTHERS ignored, click-through, totals, "i", PDF
 Owner: "remove LOP completely / Unauthorised absence shall be renamed to unapplied leave (absence) everywhere / … when
 the user clicks on any of the field, it shall show those employees properly filtered out / employees with the group

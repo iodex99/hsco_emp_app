@@ -107,7 +107,7 @@ Schema is created with `create_all` at start-up (additive). For future column ch
   `remove_2fa_v1` deleted their stored secrets and the email-server settings incl. its password.)
   `UserSession.mfa_passed` / `pending` are legacy columns (always true / unused). `secret.key` protects nothing now.
 - **CSRF**: per-session token checked on every POST (form field or `X-CSRF-Token`).
-- **Headers**: CSP (self only), HSTS, X-Frame-Options DENY, nosniff, no-store on data pages.
+- **Headers**: CSP (self only; frame-ancestors 'self' since v1.13.1 for the full-report PDF), HSTS, X-Frame-Options SAMEORIGIN, nosniff, no-store on data pages.
 - **Roles**: viewer (board, read-only) < hr (import, correct, finalise) < admin (rules, users, re-open).
 - **Data at rest**: on the server's disk; installer restricts `DATA_DIR` ACL to Administrators/SYSTEM; recommend
   BitLocker. `secret.key` lives in DATA_DIR — back it up with the DB (needed to decrypt TOTP secrets).
@@ -341,3 +341,14 @@ months. `Namer` never caches a coordinate fallback. Settings gets `geo_ok = geo.
   `main.content`: page header, KPI / mini boxes, card titles, charts as PNG (side by side when the screen shows them side
   by side), ranked lists (side by side when short), tables via AutoTable with each cell's background / text colour, totals
   rows; text limited to Western European characters (→, ≥, − … spelled out). Header / footer / "Page x of y" added last.
+
+## PDF, v1.13.1
+`static/pdf.js`: `HSCO.pdf(title)` (this page) and `HSCO.pdfFull(periodKey, label)` (each page of `HSCO.REPORT_PAGES`
+loaded in a hidden same-origin iframe, laid out with `body.pdf-all`, rendered into one jsPDF document; cover + contents
+with page links). `render(P, win, root, opts)` walks `main.content`; charts are re-created off-screen from the page's
+Chart.js config (`animation: false`, fixed size, devicePixelRatio 3) instead of copying the live canvas; ranked lists use
+`li.dataset.match` (set by app.js for every person matching search / groups) so the PDF prints the whole list; tab
+headings are drawn by the next `P.need()` together with their first content; tables drop columns with no title and no
+content and give short columns their measured width (`doc.getTextWidth`). Menu: `ui.pdf_menu(title, key, label)`
+(`details.pdf-menu`; buttons `[data-pdf]`, `[data-pdf-full]`). Headers: `frame-ancestors 'self'`,
+`X-Frame-Options: SAMEORIGIN` (app/main.py).

@@ -534,3 +534,15 @@ tr.tfoot-firm td{background:var(--surface-2);font-weight:600}
 /* PDF export: every tab laid out while the PDF is drawn, behind a cover */
 .pdf-all .pane{display:block!important}
 .pdf-cover{position:fixed;inset:0;z-index:200;background:rgba(245,246,248,.96);display:grid;place-items:center;font-weight:600;color:var(--text-2)}
+.kpis.k3{grid-template-columns:repeat(3,minmax(0,1fr))}
+/* PDF menu (v1.13.1) */
+.pdf-menu{position:relative;display:inline-block}
+.pdf-menu>summary{list-style:none;cursor:pointer}
+.pdf-menu>summary::-webkit-details-marker{display:none}
+.pdf-menu .pdf-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:70;width:330px;background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;box-shadow:var(--sh-lg);padding:6px}
+.pdf-menu .pdf-pop button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:8px;padding:9px 11px;cursor:pointer;font:inherit;color:var(--text)}
+.pdf-menu .pdf-pop button:hover{background:var(--surface-3)}
+.pdf-menu .pdf-pop b{display:block;font-size:13.5px}
+.pdf-menu .pdf-pop span{display:block;font-size:12px;color:var(--text-3);margin-top:2px;line-height:1.35}
+.pdf-cover small{display:block;font-weight:500;color:var(--text-3);margin-top:6px;text-align:center}

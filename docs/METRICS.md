@@ -157,3 +157,10 @@ Category column (hidden by default where space is tight).
   the other, KPI cards as boxes, charts as images, lists and tables as text tables with their colours (rows as filtered
   on screen), header (firm, page, time) and "Page x of y" on every page. Built in the browser (`static/pdf.js` with the
   vendored jsPDF + AutoTable) — nothing leaves the server.
+
+## PDF (v1.13.1)
+**PDF ▾** on the Overview, Insights, Payroll leave sheet, Punch exceptions and Locations: *This page* (every tab, rows
+as filtered on screen) or *Full report* (cover + contents, then Overview, Insights, Payroll leave sheet, Review queue,
+Punch exceptions, Locations, Reconciliation). Charts are drawn again at print size; ranked lists print everyone on them
+with their total; short columns are sized to their content; screen-only hints are left out. The Overview's top row has
+three cards (Leave deductions, Unapplied leave, Exceptions to review) — the attendance rate is under the Attendance tab.

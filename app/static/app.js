@@ -235,7 +235,7 @@
           const hit = inGroup && (!s || li.dataset.q.includes(s));
           if (hit) { matched++; total += parseFloat(li.dataset.v) || 0; }
           const ok = hit && (s || !n || matched <= n);
-          li.hidden = !ok; if (ok) shown++;
+          li.hidden = !ok; li.dataset.match = hit ? "1" : "0"; if (ok) shown++;
         });
         if (none) none.hidden = shown > 0;
         if (cnt) cnt.textContent = shown;
@@ -362,16 +362,21 @@
     const ch = new Chart(el, cfg); H.charts[id] = ch; return ch;
   };
 
-  // ---------- PDF of the page (charts, cards, tables) — built in the browser, nothing leaves the server ----------
+  // ---------- PDF: this page, or the full report of the month — built in the browser, nothing leaves the server ----------
+  // menu (ui.pdf_menu): [data-pdf="title"] = this page, every tab; [data-pdf-full="2026-10"] = all report pages
   document.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-pdf]"); if (!b) return;
+    const b = e.target.closest("[data-pdf],[data-pdf-full]"); if (!b) return;
     e.preventDefault();
-    if (b.classList.contains("is-busy")) return;
-    const html = b.innerHTML; b.classList.add("is-busy"); b.innerHTML = html.replace(/(<\/svg>)?\s*[^<]*$/, (m, svg) => (svg || "") + " Preparing…");
-    const done = () => { b.classList.remove("is-busy"); b.innerHTML = html; };
+    const menu = b.closest(".pdf-menu"), sum = menu ? menu.querySelector("summary") : b;
+    if (menu) menu.open = false;
+    if (sum.classList.contains("is-busy")) return;
+    const html = sum.innerHTML; sum.classList.add("is-busy"); sum.innerHTML = H.esc("Preparing PDF…");
+    const done = () => { sum.classList.remove("is-busy"); sum.innerHTML = html; };
     const load = (src) => new Promise((ok, bad) => { if (document.querySelector(`script[src="${src}"]`)) return ok(); const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => bad(new Error("could not load " + src)); document.head.appendChild(s); });
     const v = window.HSCO_ASSET_V || "";
     load("/static/vendor/jspdf.umd.min.js").then(() => load("/static/vendor/jspdf.plugin.autotable.min.js")).then(() => load("/static/pdf.js?v=" + v))
-      .then(() => H.pdf(b.dataset.pdf || document.title)).catch((err) => { console.error(err); H.toast("The PDF could not be made: " + err.message); }).finally(done);
+      .then(() => (b.dataset.pdfFull ? H.pdfFull(b.dataset.pdfFull, b.dataset.label) : H.pdf(b.dataset.pdf || document.title)))
+      .catch((err) => { console.error(err); H.toast("The PDF could not be made: " + err.message); }).finally(done);
   });
+  document.addEventListener("click", (e) => { document.querySelectorAll(".pdf-menu[open]").forEach((m) => { if (!m.contains(e.target)) m.open = false; }); });
 })();

@@ -8,7 +8,7 @@
     <div class="sub">Overview · {{ k.headcount }} employees · {{ ui.status_badge(period) }}</div></div>
   <div class="actions">
     <a class="btn sec" href="/exports/{{ key }}.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Excel</a>
-    <button class="btn sec" type="button" data-pdf="Overview {{ period.label }}" title="Every tab of this page — cards, charts and tables — as a PDF">{{ ui.icon('file-down','sm') }} PDF</button>
+    {{ ui.pdf_menu('Overview ' ~ period.label, period.key, period.label) }}
   </div>
 </div>
 
@@ -25,16 +25,13 @@
   {% endfor %}</div></div></div>
 {% endif %}
 
-<div class="kpis">
+<div class="kpis k3">
   {{ ui.kpi('Leave deductions', k.deduction_employees, 'calendar-days', 'bad' if k.deduction_employees else '', '/periods/' ~ key ~ '?f=deduction',
        ui.delta(k.deduction_employees, pk.deduction_employees if pk else none) or 'people with a leave deduction (hours or WFH)', 'people · ' ~ (k.deduction_days|n) ~ ' days',
        tip='People who lose leave this month: ½ day per ' ~ (policy.shortfall_block_hours|n) ~ ' h short of the required hours (exempt groups excepted) plus ' ~ (policy.wfh_excess_deduction_days|n) ~ ' day per WFH day above ' ~ (policy.wfh_limit_days|n) ~ ' not approved. Days = their total deduction.') }}
   {{ ui.kpi('Unapplied leave (absence)', k.absent_days|n, 'calendar-x', 'bad' if k.absent_days else '', '/periods/' ~ key ~ '?f=absent',
        ui.delta(k.absent_days, pk.absent_days if pk else none) or 'days absent without leave applied', 'days · ' ~ k.absent_people ~ (' person' if k.absent_people == 1 else ' people'),
        tip='Working days marked absent (greytHR “A”) with no leave applied, in half days. Leave, comp-off and loss of pay (counted as leave) are not included.') }}
-  {{ ui.kpi('Attendance rate', (k.attendance_rate|n(1)) ~ '%', 'circle-check', '', none,
-       ui.delta(k.attendance_rate, pk.attendance_rate if pk else none, True, '%') or 'days present ÷ working days',
-       tip='Days present ÷ (week days − holidays) for everyone in the muster. Present includes WFH and on-duty days.') }}
   {{ ui.kpi('Exceptions to review', nav_open, 'list-checks', 'warn' if nav_open else 'good', '/flags?period=' ~ key,
        (wf.flags_reviewed ~ ' of ' ~ wf.flags_total ~ ' reviewed') if wf else 'high & medium flags',
        tip='Only “WFH above monthly limit” and “Group not set” wait for a review; every other exception is reviewed automatically.') }}

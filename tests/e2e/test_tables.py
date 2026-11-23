@@ -383,6 +383,7 @@ def test_overview_click_through_info_group_filter_and_pdf(page):
     assert box.locator("[data-tl-of]").inner_text() == str(box.locator(f"li[data-g='{g}']").count())
     # PDF of every tab
     with pg.expect_download(timeout=60000) as dl:
+        pg.click(".pdf-menu summary")
         pg.click("[data-pdf]")
     pages, text = _pdf(dl.value.path())
     assert pages >= 3 and "Needs attention" in text and "Daily attendance" in text and "By group" in text
@@ -399,11 +400,35 @@ def test_insights_and_sheet_pdf_and_group_drill(page):
     assert pg.inner_text("#drill-h").startswith("Group ") and pg.locator("#drill-t tbody tr").count() >= 1
     pg.keyboard.press("Escape")
     with pg.expect_download(timeout=60000) as dl:
+        pg.click(".pdf-menu summary")
         pg.click("[data-pdf]")
     text = _pdf(dl.value.path())[1]
     assert "Employee scorecard" in text and "Who was where, every day" in text and "Groups compared" in text
     pg.goto(pg.base + "/periods/2026-10")
     with pg.expect_download(timeout=60000) as dl:
+        pg.click(".pdf-menu summary")
         pg.click("[data-pdf]")
     text = _pdf(dl.value.path())[1]
     assert "Payroll leave sheet" in text and "Asha Rao" in text and "Total" in text
+
+
+def test_full_report_pdf_has_every_report_with_contents(page):
+    """v1.13.1: PDF → Full report = cover with contents + every report page of the month, each starting on its own
+    page; charts drawn completely; ranked lists print everyone; no screen-only hints."""
+    pg = page
+    pg.goto(pg.base + "/?period=2026-10")
+    assert pg.locator(".kpis.k3 > .kpi").count() == 3 and "Attendance rate" not in pg.inner_text(".kpis")
+    with pg.expect_download(timeout=120000) as dl:
+        pg.click(".pdf-menu summary")
+        pg.click("[data-pdf-full]")
+    assert dl.value.suggested_filename.startswith("HSCO Full report October 2026")
+    pages, text = _pdf(dl.value.path())
+    names = ["Overview", "Insights", "Payroll leave sheet", "Review queue", "Punch exceptions", "Locations", "Reconciliation"]
+    assert "Contents" in text and all(n in text for n in names)
+    assert pages >= len(names) + 1 and f"Page 2 of {pages}" in text
+    for h in ("Daily attendance", "Employee scorecard", "Who was where, every day", "Groups compared", "By group",
+              "Day by day", "By employee", "Sign-ins", "By place", "By person"):
+        assert h in text, h
+    assert "click" not in text.lower() and "LOP" not in text and "Missing punch" not in text
+    assert "1\"" not in text                                   # a unit attribute escaped into the total (fixed)
+    assert pg.locator("iframe").count() == 0 and pg.locator(".pdf-cover").count() == 0

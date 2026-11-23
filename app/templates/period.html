@@ -11,7 +11,7 @@
     <div class="sub">{{ period.label }} · {{ ui.status_badge(period) }}{% if period.finalised_by %} <span class="muted small">by {{ period.finalised_by }} on {{ period.finalised_at|dmy }}</span>{% endif %}</div></div>
   <div class="actions">
     <a class="btn sec" href="/exports/{{ period.key }}.xlsx">{{ ui.icon('download','sm') }} Excel for payroll</a>
-    <button class="btn sec" type="button" data-pdf="Payroll leave sheet {{ period.label }}" title="The rows and columns shown below, as a PDF">{{ ui.icon('file-down','sm') }} PDF</button>
+    {{ ui.pdf_menu('Payroll leave sheet ' ~ period.label, period.key, period.label) }}
     {% if can_hr and period.status == 'DRAFT' %}
     <form method="post" action="/periods/{{ period.key }}/recompute" class="inline">{{ ui.csrf_field() }}<button class="btn ghost" title="Recalculate after changes">{{ ui.icon('refresh-cw','sm') }} Recompute</button></form>
     <form method="post" action="/periods/{{ period.key }}/finalise" class="inline" data-confirm="Finalise {{ period.label }}? Imports and corrections will be locked until an admin re-opens the month.">{{ ui.csrf_field() }}<button class="btn">{{ ui.icon('lock','sm') }} Finalise for payroll</button></form>

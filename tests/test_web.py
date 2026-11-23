@@ -2011,6 +2011,8 @@ def test_overview_click_through_totals_info_and_pdf(loaded):
     assert 'data-flag="UNAUTHORISED_ABSENCE"' in html and 'href="/periods/2026-10?f=fl-UNAUTHORISED_ABSENCE"' in html
     assert "Unapplied leave (absence)" in html and "Unauthorised" not in html and "Missing punch" not in html
     assert html.count('class="info-i"') >= 25 and 'data-pdf="Overview October 2026"' in html
+    assert 'data-pdf-full="2026-10"' in html and 'class="pdf-menu"' in html
+    assert "Attendance rate" not in html.split('class="kpis k3"')[1].split("</div>\n\n")[0]       # card removed (owner)
     assert 'class="tl-grp"' in html and "data-tl-sum" in html and 'id="loc-shares"' in html and 'id="wfh-over"' in html
     assert "By category" not in html and ">By group" in html
     sheet = c.get("/periods/2026-10?f=fl-UNAUTHORISED_ABSENCE").text
@@ -2036,3 +2038,11 @@ def test_excel_without_lop_missing_punches_or_categories(loaded):
     bs = [r for r in wb["Board Summary"].iter_rows(values_only=True)]
     assert any(r[0] == "Total" for r in bs) and not any(r[0] == "By category" for r in bs)
     assert any(r[0] == "Unapplied leave (absence) days" for r in bs)
+
+
+def test_pages_may_be_framed_only_by_the_app_itself(loaded):
+    """The full-report PDF lays the report pages out in a hidden frame of the app: framing by the app itself is
+    allowed, by any other site not (v1.13.1, was DENY)."""
+    r = loaded.get("/?period=2026-10")
+    assert r.headers["x-frame-options"] == "SAMEORIGIN"
+    assert "frame-ancestors 'self'" in r.headers["content-security-policy"]

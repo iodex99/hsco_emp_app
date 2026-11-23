@@ -9,7 +9,7 @@
     <div class="sub">{{ period.label }} · {{ k.headcount }} employees · unapplied leave, punctuality, hours, leave used and retention — each person scored against the firm</div></div>
   <div class="actions">
     <a class="btn sec" href="/exports/{{ key }}.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Excel</a>
-    <button class="btn sec" type="button" data-pdf="Insights {{ period.label }}" title="Every tab of this page — cards, charts and tables — as a PDF">{{ ui.icon('file-down','sm') }} PDF</button>
+    {{ ui.pdf_menu('Insights ' ~ period.label, period.key, period.label) }}
   </div>
 </div>
 

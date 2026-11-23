@@ -16,7 +16,9 @@ from app.web import templates
 from app import __version__ as VERSION  # noqa: E402
 
 CSP = ("default-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-       "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; form-action 'self'")
+       "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'self'; form-action 'self'")
+# frame-ancestors / X-Frame-Options 'self' (v1.13.1, was none / DENY): the full-report PDF lays out the app's own pages in a
+# hidden frame; no other site may frame the app
 
 
 class SecurityHeaders:
@@ -39,7 +41,7 @@ class SecurityHeaders:
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
                 h = list(message.get("headers", []))
-                h += [(b"x-content-type-options", b"nosniff"), (b"x-frame-options", b"DENY"),
+                h += [(b"x-content-type-options", b"nosniff"), (b"x-frame-options", b"SAMEORIGIN"),
                       (b"referrer-policy", b"same-origin"),
                       (b"permissions-policy", b"geolocation=(), camera=(), microphone=()"),
                       (b"content-security-policy", CSP.encode())]

@@ -241,3 +241,10 @@ re-import.
   days count as leave. **Missing punches** and **present without any punch** are no longer reported.
 - **OTHERS**: employees whose group is OTHERS are left out of the app completely (Rules & calendars → *Groups ignored by
   the app* to change the list). Employees → "N employees in OTHERS are ignored · Show them".
+
+## PDF (v1.13.1)
+Click **PDF ▾** (next to Excel) on the Overview, Insights, Payroll leave sheet, Punch exceptions or Locations:
+- **This page** — every tab of the page, with the filters / search you set on screen.
+- **Full report** — everything for the month in one file: a cover with contents (click a line to jump there), then the
+  Overview, Insights, Payroll leave sheet, Review queue, Punch exceptions, Locations and Reconciliation. It takes about
+  10 seconds; the page shows "Preparing the PDF…" meanwhile. The PDF is made in your browser — nothing leaves the server.

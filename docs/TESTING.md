@@ -281,3 +281,12 @@ page streams — no extra test package): pages, sections, "Page 1 of", no "LOP".
 Real data (copy of October): every Overview / Insights interaction above, Overview PDF 8 pages / Insights 10 pages
 (rendered and checked page by page: KPI boxes, side-by-side lists, coloured heatmap, scorecard with totals), no console
 errors.
+
+## v1.13.1 — PDF rebuilt, full report
+Every PDF was generated the way a user does (menu click) at 1366×768, 1920×1080 and 1280×720 on a copy of the real
+October data and every page rendered to an image and checked (full report 113 pages; Overview 14, Insights 9, payroll
+sheet 3, Punch exceptions 43, Locations 36): charts complete, no orphan headings / notes, lists complete with totals,
+no wrapped dates, colours kept, no screen hints, footer "Page x of y" on every page, contents page numbers correct.
+`tests/e2e/test_tables.py::test_full_report_pdf_has_every_report_with_contents` downloads the full report and reads it
+back (every report and section, page count, no hints / LOP / missing punch / escaped units); the Overview has three
+KPI cards; `test_web::test_pages_may_be_framed_only_by_the_app_itself` (SAMEORIGIN / frame-ancestors 'self').
