@@ -276,7 +276,8 @@ sheet `?f=fl-CODE` chip; "i" count; PDF scripts served locally), `test_excel_wit
 existing tests updated for the new wording, columns (payroll sheet column 28 = Category) and attention weights.
 Browser (`tests/e2e/test_tables.py`): Needs-attention → panel with the same count → payroll sheet filtered to exactly
 them; "i" tooltip; click a daily bar → "Present — Thu 1 Oct 2026" with a total equal to the bar; group filter on a ranked
-list; Overview / Insights / payroll-sheet PDFs downloaded and read back (pypdf): pages, sections, "Page 1 of", no "LOP".
+list; Overview / Insights / payroll-sheet PDFs downloaded and read back (standard library: zlib-decompressed
+page streams — no extra test package): pages, sections, "Page 1 of", no "LOP".
 Real data (copy of October): every Overview / Insights interaction above, Overview PDF 8 pages / Insights 10 pages
 (rendered and checked page by page: KPI boxes, side-by-side lists, coloured heatmap, scorecard with totals), no console
 errors.

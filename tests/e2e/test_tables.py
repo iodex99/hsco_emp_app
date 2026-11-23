@@ -324,10 +324,25 @@ def test_bulk_review_legend_filter_and_flag_links(page):
     assert len(pg.query_selector_all("#fl tbody tr")) == 0 and n_rev >= 2
 
 
+def _pdf(path):
+    """(pages, text) of a PDF made by jsPDF, with the standard library only (zlib-compressed content streams)."""
+    import zlib
+    raw = open(path, "rb").read()
+    assert raw.startswith(b"%PDF")
+    pages = len(re.findall(rb"/Type /Page[^s]", raw))
+    text = []
+    for m in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", raw, re.S):
+        try:
+            data = zlib.decompress(m.group(1))
+        except zlib.error:
+            data = m.group(1)
+        text += [t.decode("latin-1") for t in re.findall(rb"\(((?:[^()\\]|\\.)*)\)\s*Tj", data)]
+    return pages, " ".join(text)
+
+
 def test_overview_click_through_info_group_filter_and_pdf(page):
     """v1.13: every chart bar / attention type opens exactly the people behind it; 'i' explains a figure; ranked lists
     filter by group with a total; the page downloads as a multi-page PDF built in the browser."""
-    import pypdf
     pg = page
     pg.goto(pg.base + "/?period=2026-10")
     # needs attention → the people with that exception, then the payroll sheet filtered to them
@@ -369,17 +384,14 @@ def test_overview_click_through_info_group_filter_and_pdf(page):
     # PDF of every tab
     with pg.expect_download(timeout=60000) as dl:
         pg.click("[data-pdf]")
-    path = dl.value.path()
-    pdf = pypdf.PdfReader(str(path))
-    text = " ".join(p.extract_text() for p in pdf.pages)
-    assert len(pdf.pages) >= 3 and "Needs attention" in text and "Daily attendance" in text and "By group" in text
+    pages, text = _pdf(dl.value.path())
+    assert pages >= 3 and "Needs attention" in text and "Daily attendance" in text and "By group" in text
     assert "Page 1 of" in text and "Unapplied leave" in text and "LOP" not in text
     assert dl.value.suggested_filename.startswith("HSCO Overview October 2026")
     assert pg.locator(".pdf-cover").count() == 0 and not pg.evaluate("document.body.classList.contains('pdf-all')")
 
 
 def test_insights_and_sheet_pdf_and_group_drill(page):
-    import pypdf
     pg = page
     pg.goto(pg.base + "/insights?period=2026-10#groups")
     pg.locator("#gc tr[data-grp]").first.click()
@@ -388,10 +400,10 @@ def test_insights_and_sheet_pdf_and_group_drill(page):
     pg.keyboard.press("Escape")
     with pg.expect_download(timeout=60000) as dl:
         pg.click("[data-pdf]")
-    text = " ".join(p.extract_text() for p in pypdf.PdfReader(str(dl.value.path())).pages)
+    text = _pdf(dl.value.path())[1]
     assert "Employee scorecard" in text and "Who was where, every day" in text and "Groups compared" in text
     pg.goto(pg.base + "/periods/2026-10")
     with pg.expect_download(timeout=60000) as dl:
         pg.click("[data-pdf]")
-    text = " ".join(p.extract_text() for p in pypdf.PdfReader(str(dl.value.path())).pages)
+    text = _pdf(dl.value.path())[1]
     assert "Payroll leave sheet" in text and "Asha Rao" in text and "Total" in text
