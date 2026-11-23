@@ -12,6 +12,8 @@ Owner: "remove 2fa completely from the app".
 - Update: the stored 2FA secrets, recovery codes and email codes are deleted, and the email-server settings (incl. its
   password) are dropped — recorded in the audit log (*Two-step verification removed*). Python packages PyOTP,
   qrcode and webauthn are no longer needed.
+- Test only: the update test's "Updated to …" check failed once on GitHub (the page's own reload after an update
+  can land just after the test resets it); it now retries up to 3 times.
 
 ## 1.9.2 — 2026-11-20 — installer: Remote Desktop first
 Owner: "they use RDP, so the user will access it via RDP only … also, when I start the app on my PC it opens a command
