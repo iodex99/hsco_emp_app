@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from app.engine.compute import MONTH_OVERRIDABLE
-from app.engine.model import B_ABSENT, B_COMPOFF, B_LEAVE, B_LOP, B_PRESENT, HOLIDAY, WEEKLY_OFF, WORKDAY
+from app.engine.model import B_ABSENT, B_COMPOFF, B_LEAVE, B_PRESENT, HOLIDAY, WEEKLY_OFF, WORKDAY
 from app.models import (
     DayOverrideRow, Employee, MonthOverrideRow, MonthResult, MusterRow, Period,
 )
@@ -56,14 +56,21 @@ def periods_index(c: Ctx = Depends(viewer)):
 
 
 @router.get("/periods/{key}", response_class=HTMLResponse)
-def period_results(key: str, c: Ctx = Depends(viewer)):
+def period_results(key: str, f: str = "", c: Ctx = Depends(viewer)):
+    """?f=<chip> pre-selects a quick filter; f=fl-<FLAG CODE> (from the Overview's "Needs attention") shows only the
+    people with that exception (v1.13)."""
     p = get_p(c, key)
     if p.computed_at is None:
         from app.routes.pages import pending_month
         return pending_month(c, p)
     rows = MX.results_for(c.db, p, with_days=False)
     policy = get_policy(c.db)
-    return render(c, "period.html", period=p, rows=rows, policy=policy)
+    flag_emps: dict = {}
+    for r in rows:
+        for x in MX.live_flags(r.flags):            # (retired codes of older finalised months never shown)
+            flag_emps.setdefault(x["code"], []).append(r.emp_no)
+    return render(c, "period.html", period=p, rows=rows, policy=policy, request_f=f, flag_emps=flag_emps,
+                  flag_labels=MX.FLAG_LABELS)
 
 
 @router.post("/periods/{key}/recompute")
@@ -146,7 +153,7 @@ def drill(key: str, emp_no: str, c: Ctx = Depends(viewer)):
                   day_types=[WORKDAY, WEEKLY_OFF, HOLIDAY], policy=get_policy(c.db),
                   status_codes=sorted(get_policy(c.db).status_map.keys()),
                   status_meaning=get_policy(c.db).status_map,
-                  sc=INS.employee_scorecard(INS.insights(c.db, p, with_matrix=False), emp_no))
+                  sc=INS.employee_scorecard(INS.insights(c.db, p, with_matrix=False), emp_no), retired=MX.RETIRED_FLAGS)
 
 
 @router.post("/periods/{key}/employee/{emp_no}/day-override")

@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.13.0 — 2026-11-23 — no LOP, "Unapplied leave (absence)", OTHERS ignored, click-through, totals, "i", PDF
+Owner: "remove LOP completely / Unauthorised absence shall be renamed to unapplied leave (absence) everywhere / … when
+the user clicks on any of the field, it shall show those employees properly filtered out / employees with the group
+OTHERS shall be exempted from the app … they dont concern us / missing punches and present without any punch to be
+removed from everywhere / … tables … filter by group (multiple selection) / bar graph … besides the date, need to show
+the day … everywhere / pie chart … can be represented in a much better way … how many WFH instances … from which
+employees and how many were over limit / by group & category: only keep one table for group … heading 'by group' /
+when clicked on these bars, shall show the data of those exact filtered out employees … across the app / wherever …
+give 'total' / an 'i' button … how it is calculated / one more option 'PDF' … all the colored charts, tables, cards".
+- **LOP removed**: LOP / LWP = leave (column G, unchanged figures); no LOP column, KPI, chip, flag or setting.
+- **Unapplied leave (absence)** replaces "unauthorised absence" (and Insights' "unplanned absence") everywhere.
+- **OTHERS ignored**: Settings → *Groups ignored by the app* (default OTHERS) — such employees are never calculated,
+  listed, counted, searched or exported; Employees page shows how many and can list them.
+- **Missing punches / present without any punch removed** everywhere (flags, counts, lists, chips, calendar, Excel,
+  Punch exceptions, attention score — its 10 points moved to unapplied leave +5 and hours +5).
+- **Click-through**: Overview *Needs attention* types open exactly those people with the detail (and can filter the payroll
+  sheet to them); every chart bar / segment and every By-group row opens the people behind it (searchable, filter by
+  group, CSV, total); trend / history charts open the clicked month.
+- **Chart tooltips** name the day ("Thu 9 Oct 2026"), show every series and the total; single-series bars show the share.
+- **Work location**: the doughnut became a ranked bar list (punches, share, people, total); the WFH card shows WFH days,
+  people who worked from home, people over the limit (and days over) and every WFH person with an "over" badge.
+- **By group** only (category tables removed on the Overview, Insights and in the Excel).
+- **Group filter** (several groups) and a **total** on every ranked list; totals added to tables that lacked them.
+- **"i" explanations** on KPIs, cards, tabs and figures (Overview, Insights, payroll sheet, employee page, Punch
+  exceptions, Locations, Review queue, Reconciliation, Downloads).
+- **PDF** next to Excel (Overview, Insights, Payroll leave sheet, Punch exceptions, Locations): every tab, coloured
+  charts, cards and tables, A4 landscape with page numbers — made in the browser (vendored jsPDF 2.5.2 + AutoTable
+  3.8.4, MIT), nothing leaves the server.
+- Calculation rules version 12 (draft months recalculated once after the update).
+
 ## 1.12.1 — 2026-11-23 — place names missing on a fresh install (fix)
 Owner: "the location package basically the name of the locations is not showing on the client side instance".
 - Cause: Install.cmd copied the app with `robocopy /XD data`, which skips **every** folder called `data` — including

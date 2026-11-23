@@ -89,3 +89,13 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
   person (holidays by category only since v1.9).
 - **Named places removed** (owner, v1.6.2): "we are using locations from the package" — no Settings Locations tab; the
   office check that depended on named offices went with it; shared-phone check kept.
+
+## Owner requests, 23-Nov-2026 (v1.13)
+Remove LOP completely; rename "Unauthorised absence" to "Unapplied leave (absence)" everywhere; clicking a Needs-attention
+type shows those employees; employees with group OTHERS are not considered anywhere; "missing punches" and "present
+without any punch" removed everywhere; ranked tables get a multi-select group filter; bar tooltips show the weekday,
+everywhere; replace the location pie chart and show WFH instances, who, and who is over the limit; "By group" only;
+clicking bars shows exactly those employees, across the app; totals wherever applicable; an "i" on every tab / table /
+card explaining the calculation; a PDF export next to Excel with all coloured charts, tables and cards.
+Decision (developer): LOP / LWP days are counted as **leave** (as HR's manual MIS and the app's default already did), so
+no payroll figure changes.

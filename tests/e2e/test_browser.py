@@ -102,9 +102,9 @@ def test_full_browser_journey(server):
 
         # ---- overview: checklist, KPIs, tabbed charts
         page.goto(base + "/")
-        page.wait_for_selector("canvas#cLoc", state="attached")
+        page.wait_for_selector("#loc-shares li[data-loc]", state="attached")       # v1.13: ranked list, not a doughnut
         n_charts = page.evaluate("Object.keys(Chart.instances || {}).length")
-        assert n_charts >= 5, errors
+        assert n_charts >= 4, errors
         assert page.is_visible("text=Month-end checklist")
         page.screenshot(path=str(OUT / "03_dashboard.png"), full_page=True)
         page.click("#dash-tabs [data-tab=punct]")

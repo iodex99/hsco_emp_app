@@ -85,7 +85,7 @@ def test_real_month_end_to_end(client):
 
     # --- dashboard + flags + drill-down on real data
     html = c.get("/?period=2026-10").text
-    assert "October 2026" in html and "Over WFH limit" in html
+    assert "October 2026" in html and "Over the limit" in html and "LOP" not in html
     assert c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT").text.count("data-wfh=\"") == 2      # HS179, HS195 (v1.6.4 off days; v1.7.4 closed Saturdays: HS016)
     for e in ("HS001", "HS068", "HS207", "PC006"):
         assert c.get(f"/periods/2026-10/employee/{e}").status_code == 200
@@ -190,4 +190,4 @@ def test_real_categories_and_holiday_lists(client):
     assert "2026-10-02" in conf and "HSCO (Carlyle)" in conf and "Mahatma Gandhi Jayanti" in conf
     assert "No holiday list yet" in st and "HSCO (CDTIPL) (6)" in st and "HSCO (Delhi) (2)" in st
     ins = c.get("/insights?period=2026-10").text
-    assert "Categories compared" in ins and "HSCO (Carlyle)" in ins
+    assert "Categories compared" not in ins and "HSCO (Carlyle)" in ins          # groups only (v1.13); category column stays

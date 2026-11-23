@@ -97,10 +97,10 @@ def _save_policy(c: Ctx, form):
                 return redirect("/settings#policy", f"'{key}' must be a number.")
     data["office_open_saturdays"] = sorted({int(x) for x in form.get("office_open_saturdays", "").replace(" ", "").split(",")
                                             if x.isdigit() and 1 <= int(x) <= 5})
-    for key in ("exempt_groups", "metrics_exclude_groups", "wfh_location_types", "wfh_deduction_exempt_groups"):
+    for key in ("exempt_groups", "metrics_exclude_groups", "wfh_location_types", "wfh_deduction_exempt_groups",
+                "ignored_groups"):
         data[key] = [x.strip() for x in form.get(key, "").split(",") if x.strip()]
     data["wfh_location_types"] = [x.lower() for x in data["wfh_location_types"]]
-    data["lop_bucket"] = form.get("lop_bucket", "leave")
     data["wfh_method"] = form.get("wfh_method", "distinct_days")
     data["persistent_late_basis"] = form.get("persistent_late_basis", "very_late")
     data["late_sitting_after"] = form.get("late_sitting_after", "21:00")

@@ -1,7 +1,7 @@
 """Browser tests for the table toolkit (app/static/table.js) on a live server with synthetic data.
 
 Fixture employees (tests/fixtures/make_fixtures.py): T001 BSS (0.5 d deduction), T002 ATA (1 d), T003 Partner (exempt),
-T004 Article (WFH 4 → 1 d deduction for WFH over the limit, very late), T005 BSS (1 absent, LOP), T006 Offshore (joined 13-Oct-2026).
+T004 Article (WFH 4 → 1 d deduction for WFH over the limit, very late), T005 BSS (1 unapplied leave, 1 LOP = leave), T006 Offshore (joined 13-Oct-2026).
 """
 import csv
 import io
@@ -116,7 +116,7 @@ def test_payroll_sheet_search_filter_sort_group_columns_views_csv(page):
     assert "Group" in pg.inner_text(f"{bar(pg)} .tt-active") and "BSS" in pg.inner_text(f"{bar(pg)} .tt-active")
 
     # numeric filter stacks (AND)
-    add_filter(pg, "Absent")
+    add_filter(pg, "Unapplied leave")
     pg.select_option(".tt-pop .tt-op", "gte")
     pg.fill(".tt-pop .tt-v", "1")
     pg.click(".tt-pop [data-done]")
@@ -124,7 +124,7 @@ def test_payroll_sheet_search_filter_sort_group_columns_views_csv(page):
     pg.screenshot(path="test-results/tables_filters.png")
 
     # remove one chip, then the URL keeps state across a reload
-    pg.click(f"{bar(pg)} .tt-chip:has-text('Absent') .tt-x")
+    pg.click(f"{bar(pg)} .tt-chip:has-text('Unapplied leave') .tt-x")
     assert sorted(visible_ids(pg)) == ["T001", "T005"]
     assert "t_res=" in pg.url
     pg.reload()
@@ -322,3 +322,76 @@ def test_bulk_review_legend_filter_and_flag_links(page):
     pg.click("#bulk-reopen")
     pg.wait_for_selector(".toast:has-text('re-opened')")
     assert len(pg.query_selector_all("#fl tbody tr")) == 0 and n_rev >= 2
+
+
+def test_overview_click_through_info_group_filter_and_pdf(page):
+    """v1.13: every chart bar / attention type opens exactly the people behind it; 'i' explains a figure; ranked lists
+    filter by group with a total; the page downloads as a multi-page PDF built in the browser."""
+    import pypdf
+    pg = page
+    pg.goto(pg.base + "/?period=2026-10")
+    # needs attention → the people with that exception, then the payroll sheet filtered to them
+    a = pg.locator("#attn [data-flag]").first
+    n = int(re.search(r"\d+", a.locator("xpath=..").locator(".r").inner_text()).group())
+    a.click()
+    pg.wait_for_selector("#drill.open")
+    assert pg.locator("#drill-t tbody tr").count() == n
+    code = a.get_attribute("data-flag")
+    pg.click("#drill a.btn")
+    pg.wait_for_url(re.compile(r"f=fl-" + code))
+    pg.wait_for_selector("[data-table-for='#res'] .tt-count")
+    assert len(visible_ids(pg)) == n and pg.locator(f".chip.on[data-chip='fl-{code}']").count() == 1
+    # "i": hover shows how it is calculated
+    pg.goto(pg.base + "/?period=2026-10")
+    pg.locator(".kpi .info-i").first.hover()
+    assert "leave" in pg.inner_text(".tip-pop").lower()
+    # daily chart: tooltip names the day, a click lists who was present that day
+    pg.locator("#cDaily").scroll_into_view_if_needed()
+    pg.wait_for_timeout(200)
+    pos = pg.evaluate("""() => { const ch = HSCO.charts.cDaily, r = ch.canvas.getBoundingClientRect();
+        const i = ch.data.datasets[0].data.findIndex((v) => v > 0), el = ch.getDatasetMeta(0).data[i];
+        return {x: r.left + el.x, y: r.top + (el.y + el.base) / 2, n: ch.data.datasets[0].data[i]}; }""")
+    pg.mouse.click(pos["x"], pos["y"])
+    pg.wait_for_selector("#drill.open")
+    assert re.search(r"Present — (Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d+ Oct 2026", pg.inner_text("#drill-h"))
+    total = float(pg.inner_text("#drill-t tfoot td[data-sum]"))
+    assert total == pos["n"]
+    pg.keyboard.press("Escape")
+    # ranked list: filter by one group → only that group, footer counts and totals them
+    pg.click("#dash-tabs [data-tab=hours]")
+    box = pg.locator("section[data-pane=hours] [data-toplist]:has(.tl-grp)").first
+    box.locator(".tl-grp summary").click()
+    g = box.locator(".tl-grp input[type=checkbox]").first.get_attribute("value")
+    box.locator(".tl-grp input[type=checkbox]").first.check()
+    shown = box.locator("li[data-q]:visible")
+    assert shown.count() >= 1 and all(x == g for x in shown.evaluate_all("els => els.map(e => e.dataset.g)"))
+    assert box.locator("[data-tl-of]").inner_text() == str(box.locator(f"li[data-g='{g}']").count())
+    # PDF of every tab
+    with pg.expect_download(timeout=60000) as dl:
+        pg.click("[data-pdf]")
+    path = dl.value.path()
+    pdf = pypdf.PdfReader(str(path))
+    text = " ".join(p.extract_text() for p in pdf.pages)
+    assert len(pdf.pages) >= 3 and "Needs attention" in text and "Daily attendance" in text and "By group" in text
+    assert "Page 1 of" in text and "Unapplied leave" in text and "LOP" not in text
+    assert dl.value.suggested_filename.startswith("HSCO Overview October 2026")
+    assert pg.locator(".pdf-cover").count() == 0 and not pg.evaluate("document.body.classList.contains('pdf-all')")
+
+
+def test_insights_and_sheet_pdf_and_group_drill(page):
+    import pypdf
+    pg = page
+    pg.goto(pg.base + "/insights?period=2026-10#groups")
+    pg.locator("#gc tr[data-grp]").first.click()
+    pg.wait_for_selector("#drill.open")
+    assert pg.inner_text("#drill-h").startswith("Group ") and pg.locator("#drill-t tbody tr").count() >= 1
+    pg.keyboard.press("Escape")
+    with pg.expect_download(timeout=60000) as dl:
+        pg.click("[data-pdf]")
+    text = " ".join(p.extract_text() for p in pypdf.PdfReader(str(dl.value.path())).pages)
+    assert "Employee scorecard" in text and "Who was where, every day" in text and "Groups compared" in text
+    pg.goto(pg.base + "/periods/2026-10")
+    with pg.expect_download(timeout=60000) as dl:
+        pg.click("[data-pdf]")
+    text = " ".join(p.extract_text() for p in pypdf.PdfReader(str(dl.value.path())).pages)
+    assert "Payroll leave sheet" in text and "Asha Rao" in text and "Total" in text

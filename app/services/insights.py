@@ -23,12 +23,12 @@ UNPLANNED = AS.UNPLANNED
 HOURS_BUCKETS = [(0, 4, "< 4 h"), (4, 6, "4–6 h"), (6, 7, "6–7 h"), (7, 8, "7–8 h"), (8, 8.5, "8–8.5 h"),
                  (8.5, 9, "8.5–9 h"), (9, 10, "9–10 h"), (10, 11, "10–11 h"), (11, 99, "11 h +")]
 WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-# attention score weights (sum 100) — see METRICS.md
-WEIGHTS = {"absence": 25, "punctuality": 20, "utilisation": 20, "regularisation": 15, "wfh": 10, "missing": 10}
+# attention score weights (sum 100) — see METRICS.md. v1.13: missing punches removed (owner); its 10 points went to
+# unapplied leave (+5) and hours (+5)
+WEIGHTS = {"absence": 30, "punctuality": 20, "utilisation": 25, "regularisation": 15, "wfh": 10}
 ABSENCE_FULL_DAYS = 10        # unplanned absence days in 12 months that give the full absence part of the score
-PART_LABELS = {"absence": "Unplanned absence (12 months)", "punctuality": "Late arrivals",
-               "utilisation": "Hours below required", "regularisation": "Regularisations", "wfh": "WFH over the limit",
-               "missing": "Missing punches"}
+PART_LABELS = {"absence": "Unapplied leave (absence), 12 months", "punctuality": "Late arrivals",
+               "utilisation": "Hours below required", "regularisation": "Regularisations", "wfh": "WFH over the limit"}
 
 
 def _pct(a: float, b: float) -> Optional[float]:
@@ -107,7 +107,8 @@ def insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
 def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
     policy = get_policy(db)
     res = list(db.scalars(select(MonthResult).where(MonthResult.period_id == period.id).order_by(MonthResult.emp_no)))
-    emps = {e.emp_no: e for e in db.scalars(select(Employee))}
+    from app.services.metrics import scoped_employees
+    emps = scoped_employees(db, policy)                    # ignored groups (OTHERS) left out (v1.13)
     y, m = period.year, period.month
     month_end = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
     excl = set(policy.metrics_exclude_groups)
@@ -130,7 +131,9 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
     # ---------------------------------------------------------------- per-employee scorecard
     rows = []
     arrivals = Counter()                       # (weekday, half-hour bucket) -> count
+    arrivals_who = defaultdict(Counter)        # "Mon|09:30" -> {emp_no: days}   (drill-down, v1.13)
     hours_hist = Counter()
+    hours_who = defaultdict(Counter)
     for r in res:
         d = r.data
         e = emps.get(r.emp_no)
@@ -178,7 +181,6 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
             "wfh_days": d.get("wfh_days") or 0, "wfh_pct": _pct(d.get("wfh_days") or 0, len(present) or workdays),
             "regularised_days": d.get("regularised_days") or 0,
             "regularisation_pct": _pct(d.get("regularised_days") or 0, len(present)),
-            "missing_punch_days": d.get("missing_punch_days") or 0,
             "extra_days": d.get("extra_days") or 0, "compoff_earned": d.get("compoff_earned") or 0,
             "deduction_days": d.get("deduction_days") or 0,
             "leave_used_fy": round(fy_leave.get(r.emp_no, 0) + (d.get("pl_days") or 0), 1),
@@ -191,12 +193,15 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
             for x in with_in:
                 h, mi = map(int, x["in"].split(":"))
                 wd = x["wd"] if isinstance(x.get("wd"), int) else date.fromisoformat(x["date"]).weekday()
-                arrivals[(wd, "< 08:00" if h < 8 else "13:00 +" if h >= 13 else f"{h:02d}:{(mi // 30) * 30:02d}")] += 1
+                b_ = "< 08:00" if h < 8 else "13:00 +" if h >= 13 else f"{h:02d}:{(mi // 30) * 30:02d}"
+                arrivals[(wd, b_)] += 1
+                arrivals_who[f"{WD[wd]}|{b_}"][r.emp_no] += 1
             for x in worked:
                 h = x["work_min"] / 60
                 for lo, hi, lab in HOURS_BUCKETS:
                     if lo <= h < hi:
                         hours_hist[lab] += 1
+                        hours_who[lab][r.emp_no] += 1
                         break
 
     beh = [x for x in rows if x["behaviour"]]
@@ -239,7 +244,6 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         "late_sitting_days": int(tot("late_sitting_days", beh)),
         "wfh_pct": _pct(tot("wfh_days"), tot("present_days")),
         "regularisation_pct": _pct(tot("regularised_days", beh), tot("present_days", beh)),
-        "missing_punch_pct": _pct(tot("missing_punch_days", beh), tot("present_days", beh)),
         "leave_used_fy_pct": _pct(tot("leave_used_fy"), policy.annual_leave_days * len(rows)),
         "attrition_pct": round(100 * len(exits12) / avg_hc, 1),
         "exits_12m": len(exits12), "joiners_12m": len(joins12),
@@ -249,9 +253,9 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         "fy_label": f"FY {fy}-{str(fy + 1)[-2:]}",
     }
 
-    # ---------------------------------------------------------------- group / category comparison
+    # ---------------------------------------------------------------- group comparison (v1.13: groups only)
     groups = _compare(rows, "group")
-    categories = _compare(rows, "category")
+    firm = _compare([dict(x, group="All") for x in rows], "group")
 
     # ---------------------------------------------------------------- arrival heatmap & hours histogram
     buckets = sorted({b for _, b in arrivals}, key=lambda b: "00" if b.startswith("<") else "99" if "+" in b else b)
@@ -261,8 +265,19 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
 
     out = {
         "period": {"key": period.key, "label": period.label},
-        "kpis": kpis, "rows": rows, "groups": groups, "categories": categories, "arrival": arrival,
+        "kpis": kpis, "rows": rows, "groups": groups, "firm": firm[0] if firm else None, "arrival": arrival,
         "hours_hist": [{"bucket": lab, "count": hours_hist.get(lab, 0)} for _, _, lab in HOURS_BUCKETS],
+        "top": {
+            "absence_month": [{"emp_no": x["emp_no"], "name": x["name"], "group": x["group"], "value": x["unplanned_days"],
+                               "sub": f"{x['group']} · {x['unplanned_spells']} spell{'s' if x['unplanned_spells'] != 1 else ''}"}
+                              for x in sorted(rows, key=lambda x: (-x["unplanned_days"], x["name"])) if x["unplanned_days"]],
+            "absence_12m": [{"emp_no": x["emp_no"], "name": x["name"], "group": x["group"], "value": x["absence_12m_days"],
+                             "sub": f"{x['group']} · {x['absence_12m_spells']} spell{'s' if x['absence_12m_spells'] != 1 else ''}"
+                                    f" in {x['absence_12m_months']} month{'s' if x['absence_12m_months'] != 1 else ''}"}
+                            for x in sorted(rows, key=lambda x: (-x["absence_12m_days"], x["name"])) if x["absence_12m_days"]],
+        },
+        "drill": {"hours": {k: [[e, n] for e, n in c.most_common()] for k, c in hours_who.items()},
+                  "arrival": {k: [[e, n] for e, n in c.most_common()] for k, c in arrivals_who.items()}},
         "weights": WEIGHTS,
         "trend": insight_trend(db, period, hist, hist_ids),
     }
@@ -280,7 +295,6 @@ def _attention(row: dict, policy) -> dict:
         "regularisation": min(1.0, (row["regularised_days"] or 0) / max(1, policy.persistent_regularisation_days * 2))
         if row["behaviour"] else 0,
         "wfh": min(1.0, max(0.0, (row["wfh_days"] - policy.wfh_limit_days) / max(1, policy.wfh_limit_days * 2))),
-        "missing": min(1.0, (row["missing_punch_days"] or 0) / 5) if row["behaviour"] else 0,
     }
     score = round(sum(parts[k] * w for k, w in WEIGHTS.items()))
     top = sorted(((parts[k] * w, k) for k, w in WEIGHTS.items()), reverse=True)
@@ -300,8 +314,8 @@ def _state(dd: dict) -> str:
         return "XW" if dd.get("extra") else "OFF"
     if "absent" in b:
         return "A"
-    if "lop" in b:
-        return "LOP"
+    if "lop" in b:                    # months calculated before v1.13: loss of pay shows as leave
+        return "L"
     if b[0] == b[1] == "leave":
         return "L"
     if b[0] == b[1] == "compoff":
@@ -331,7 +345,7 @@ def matrix(res: list[MonthResult]) -> dict:
             for c in cells)})
     return {"dates": dates, "weekdays": [WD[date.fromisoformat(d).weekday()] for d in dates], "rows": out,
             "legend": [("P", "Present", "p"), ("T", "Late", "t"), ("W", "WFH", "w"), ("½", "Half leave", "h"),
-                       ("L", "Leave", "l"), ("C", "Comp-off", "c"), ("A", "Absent", "a"), ("X", "Loss of pay", "x"),
+                       ("L", "Leave", "l"), ("C", "Comp-off", "c"), ("A", "Unapplied leave (absence)", "a"),
                        ("O", "Weekly off", "o"), ("H", "Holiday", "y"), ("E", "Worked off-day", "e")]}
 
 
@@ -392,7 +406,7 @@ def insight_trend(db: Session, period: Period, hist: Optional[list] = None, pids
 
 _SC_KEYS = [("attendance_pct", "Attendance", "%", True), ("punctuality_pct", "On-time arrivals", "%", True),
             ("utilisation_pct", "Hours vs required", "%", True), ("avg_hours", "Average day (h)", "", True),
-            ("absence_pct", "Unplanned absence", "%", False), ("absence_12m_days", "Unplanned absence days (12 m)", "", False),
+            ("absence_pct", "Unapplied leave (absence)", "%", False), ("absence_12m_days", "Unapplied leave days (12 m)", "", False),
             ("wfh_pct", "WFH share of days", "%", False), ("regularisation_pct", "Regularised days", "%", False),
             ("long_days", "Long days (≥ 2 h over)", "", None), ("attention", "Attention score", "", False)]
 

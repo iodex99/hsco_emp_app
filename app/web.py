@@ -83,7 +83,7 @@ def _asset_version() -> str:
     import hashlib
     from app.config import APP_DIR
     h = hashlib.sha1()
-    for n in ("app.css", "app.js", "table.js", "icons.svg"):
+    for n in ("app.css", "app.js", "table.js", "pdf.js", "icons.svg"):
         try:
             h.update((APP_DIR / "static" / n).read_bytes())
         except OSError:

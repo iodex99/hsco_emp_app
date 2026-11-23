@@ -25,9 +25,13 @@ def _is_mobile(s) -> bool:
 
 
 def report(db: Session, period: Period) -> dict:
+    from app.services.scope import ignored_emp_nos
+    skip = ignored_emp_nos(db)                         # ignored groups (OTHERS) never shown (v1.13)
     names = {e.emp_no: e.name for e in db.scalars(select(Employee))}
+    groups = {e.emp_no: e.group or "" for e in db.scalars(select(Employee))}
     computed = set(db.scalars(select(MonthResult.emp_no).where(MonthResult.period_id == period.id)))
-    sw = list(db.scalars(select(SwipeRow).where(SwipeRow.period_id == period.id).order_by(SwipeRow.ts)))
+    sw = [s for s in db.scalars(select(SwipeRow).where(SwipeRow.period_id == period.id).order_by(SwipeRow.ts))
+          if s.emp_no not in skip]
     mobile = [s for s in sw if _is_mobile(s)]
     shared = LC.shared_devices(mobile)
     rows, by_place, by_person = [], {}, defaultdict(Counter)
@@ -56,7 +60,8 @@ def report(db: Session, period: Period) -> dict:
             tags.append("rejected")
         if s.lat is None:
             tags.append("nogps")
-        rows.append({"ts": s.ts, "emp_no": s.emp_no, "name": names.get(s.emp_no, s.emp_no), "type": lt or "—",
+        rows.append({"ts": s.ts, "emp_no": s.emp_no, "name": names.get(s.emp_no, s.emp_no), "group": groups.get(s.emp_no, ""),
+                     "type": lt or "—",
                      "swipe_type": s.swipe_type or "", "place": place, "note": s.note or "", "reason": s.reason or "",
                      "device": s.device or "", "approval": s.approval or "", "lat": s.lat, "lon": s.lon,
                      "office_tag": office_tag,
@@ -83,7 +88,7 @@ def report(db: Session, period: Period) -> dict:
                       "main_type": b["types"].most_common(1)[0][0],
                       "notes": "; ".join(n for n, _ in b["notes"].most_common(3))} for b in by_place.values()),
                     key=lambda x: -x["count"])
-    people = sorted(({"emp_no": e, "name": names.get(e, e), "href": f"/periods/{period.key}/employee/{e}" if e in computed
+    people = sorted(({"emp_no": e, "name": names.get(e, e), "group": groups.get(e, ""), "href": f"/periods/{period.key}/employee/{e}" if e in computed
                       else _only(period, e), **{k: c.get(k, 0) for k in ("sign_ins", "gps", "client", "wfh", "onduty",
                                                                              "office_tagged", "permission",
                                                                              "shared", "rejected")},

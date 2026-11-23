@@ -318,3 +318,26 @@ when it is present it also re-names, at every start, swipes in any month whose `
 coordinates — SQLite `GLOB '*[A-Za-z]*'`), deletes GeoCache rows that hold coordinates, and recalculates touched draft
 months. `Namer` never caches a coordinate fallback. Settings gets `geo_ok = geo.SRC.exists()`. Installer copy:
 `robocopy /XD <full paths of top-level folders> __pycache__` and a check for the gazetteer.
+
+## v1.13 — scope, click-through, PDF
+- `services/scope.py`: `ignored_emp_nos(db)` / `employees(db)` / `is_ignored(group)` from `policy.ignored_groups`
+  (case-insensitive). Used by `services/compute.compute_period` (muster, swipes and employees filtered before the
+  engine), `metrics.scoped_employees` (KPIs, people movement, tenure, Excel), `insights`, `locations.report`, the
+  locations workbook, `/api/employees`, `/employees` (`?ignored=1` lists only them), reconciliation.
+- Engine: `B_LOP` is retired (BUCKETS without it; `_bucket` and `policy_from_json` read a stored `lop` as `leave`);
+  `EmployeeMonth.lop_days / missing_punch_days / no_punch_present_days` and `DayDetail.is_missing_punch` removed;
+  `Policy.lop_bucket` removed, `Policy.ignored_groups` added. RULES_VERSION 12. `metrics.RETIRED_FLAGS` /
+  `live_flags()` hide LOP / MISSING_PUNCHES / PRESENT_WITHOUT_PUNCH of months finalised earlier.
+- Drill-down data: `period_metrics` returns `who` {emp: [name, group]}, `person_rows`, `wfh_people` and
+  `drill` {daily: {date: {present|leave|absent|wfh: [[emp, days]]}}, loc, late_wd, in_time, tenure}; `insights` returns
+  `drill` {hours, arrival} and `top` {absence_month, absence_12m}; Insights page JSON adds `who` and `people`.
+- Front end (`static/app.js`): `HSCO.drill({title, sub, cols, rows, who, href, link})` — a drawer with a data-table
+  (search, Filter → Group, sort, CSV, totals); `HSCO.chart(id, cfg)` accepts `dates` (day tooltips), `total` (stacked
+  footer), `share`, `drill(index, datasetIndex)` (clicked bar / segment); charts kept in `HSCO.charts`. "i": macro
+  `ui.info(text)` / `ui.kpi(…, tip=)` + one floating tooltip (hover, focus, tap; never follows the link it sits in).
+  Ranked lists: `ui.toplist` adds `data-g` / `data-v`, a group menu (`details.tl-grp`) and a total footer.
+- PDF: `[data-pdf="title"]` buttons; `app.js` loads `vendor/jspdf.umd.min.js`, `vendor/jspdf.plugin.autotable.min.js`
+  and `static/pdf.js` on first use. `pdf.js` shows every tab (`body.pdf-all`, behind a cover), draws charts at 2× and walks
+  `main.content`: page header, KPI / mini boxes, card titles, charts as PNG (side by side when the screen shows them side
+  by side), ranked lists (side by side when short), tables via AutoTable with each cell's background / text colour, totals
+  rows; text limited to Western European characters (→, ≥, − … spelled out). Header / footer / "Page x of y" added last.

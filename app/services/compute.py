@@ -85,7 +85,7 @@ def _serialize_day(dd: M.DayDetail) -> dict:
                     "device": s.device} for s in dd.swipes],
         "locs": dd.location_types, "late_min": dd.late_min,
         "late": dd.is_late, "very_late": dd.is_very_late, "early": dd.is_early_exit, "short": dd.is_short_day,
-        "late_sit": dd.is_late_sitting, "missing": dd.is_missing_punch, "regularised": dd.is_regularised,
+        "late_sit": dd.is_late_sitting, "regularised": dd.is_regularised,
         "wfh": dd.is_wfh, "partial_wfh": dd.is_partial_wfh, "wfh_closed": dd.wfh_office_closed, "rh": dd.is_rh,
         "extra": dd.is_extra_work, "co_earned": dd.compoff_earned,
         "sandwich": dd.is_sandwich, "mobile_office": dd.mobile_office_swipes, "overridden": dd.overridden,
@@ -97,7 +97,9 @@ def compute_period(db: Session, period: Period) -> dict:
     """Calculate one month. Months are independent (no balance carries forward), so nothing else is touched."""
     policy = get_policy(db)
     y, m = period.year, period.month
-    emps_db = {e.emp_no: e for e in db.scalars(select(Employee)).all()}
+    from app.services.scope import ignored_emp_nos
+    skip = ignored_emp_nos(db, policy)                 # ignored groups (OTHERS): never calculated (v1.13)
+    emps_db = {e.emp_no: e for e in db.scalars(select(Employee)).all() if e.emp_no not in skip}
     cal_days, default_cal, cal_opt, cal_loaded = calendars_for_month(db, y, m)
     from app.services import categories as CAT
     cats = CAT.by_key(db)
@@ -111,11 +113,12 @@ def compute_period(db: Session, period: Period) -> dict:
     # plain rows, not ORM objects (thousands per month)
     muster = [M.MusterDay(*r) for r in db.execute(
         select(MusterRow.emp_no, MusterRow.day, MusterRow.s1, MusterRow.s2, MusterRow.in_time, MusterRow.out_time,
-               MusterRow.work_min, MusterRow.shift, MusterRow.name).where(MusterRow.period_id == period.id))]
+               MusterRow.work_min, MusterRow.shift, MusterRow.name).where(MusterRow.period_id == period.id))
+              if r[0] not in skip]
     swipes = [M.Swipe(*r[:8], *(x or "" for x in r[8:])) for r in db.execute(
         select(SwipeRow.emp_no, SwipeRow.ts, SwipeRow.door, SwipeRow.location_type, SwipeRow.swipe_type, SwipeRow.lat,
                SwipeRow.lon, SwipeRow.place, SwipeRow.note, SwipeRow.reason, SwipeRow.approval, SwipeRow.device,
-               SwipeRow.device_id).where(SwipeRow.period_id == period.id))]
+               SwipeRow.device_id).where(SwipeRow.period_id == period.id)) if r[0] not in skip]
     d_ovr = [M.DayOverride(o.emp_no, o.day, o.day_type or None, o.s1 or None, o.s2 or None, o.work_min, o.reason)
              for o in db.scalars(select(DayOverrideRow).where(DayOverrideRow.period_id == period.id))]
     m_ovr: dict = {}

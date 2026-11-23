@@ -29,16 +29,16 @@ B_PRESENT = "present"
 B_ABSENT = "absent"
 B_LEAVE = "leave"
 B_COMPOFF = "compoff"
-B_LOP = "lop"
+B_LOP = "lop"          # retired (v1.13, owner "remove LOP completely"): only in months calculated before v1.13
 B_OFF = "off"
-BUCKETS = (B_PRESENT, B_ABSENT, B_LEAVE, B_COMPOFF, B_LOP, B_OFF)
+BUCKETS = (B_PRESENT, B_ABSENT, B_LEAVE, B_COMPOFF, B_OFF)
 
 DEFAULT_STATUS_MAP = {
     "P": B_PRESENT, "WFH": B_PRESENT, "OD": B_PRESENT, "WO-P": B_PRESENT,
     "A": B_ABSENT,
     "PL": B_LEAVE, "CL": B_LEAVE, "SL": B_LEAVE, "EL": B_LEAVE, "ML": B_LEAVE, "L": B_LEAVE,
     "COF": B_COMPOFF, "CO": B_COMPOFF,
-    "LOP": B_LOP, "LWP": B_LOP,
+    "LOP": B_LEAVE, "LWP": B_LEAVE,   # loss of pay is leave granted in greytHR (v1.13: no separate LOP)
     "OFF": B_OFF, "H": B_OFF, "WO": B_OFF,
     "RH": B_OFF,          # restricted holiday the person took — an earned holiday (v1.12, see engine RH_CODES)
 }
@@ -54,7 +54,6 @@ class Policy:
     deduction_per_block_days: float = 0.5
     shortfall_grace_hours: float = 0.0
     exempt_groups: tuple = ("Partner", "SS", "Article", "Trainee")
-    lop_bucket: str = "leave"             # 'leave' or 'absent' for MIS columns G/H (HR used leave 3 of 4 times)
     status_map: dict = field(default_factory=lambda: dict(DEFAULT_STATUS_MAP))
     comp_off_min_hours: float = 5.0
     wfh_limit_days: float = 2.0
@@ -77,6 +76,9 @@ class Policy:
     min_daily_hours: float = 7.0
     late_sitting_after: time = time(21, 0)
     metrics_exclude_groups: tuple = ("Partner",)
+    # employee groups the app ignores completely (owner, v1.13: "OTHERS … they dont concern us") — no results, no
+    # metrics, no lists; their rows in uploads are kept but never used. Compared case-insensitively.
+    ignored_groups: tuple = ("OTHERS",)
     default_shift_start: time = time(10, 0)
     default_shift_end: time = time(18, 30)
     shift_overrides: dict = field(default_factory=dict)   # shift name -> (start, end)
@@ -170,7 +172,6 @@ class DayDetail:
     is_early_exit: bool = False
     is_short_day: bool = False
     is_late_sitting: bool = False
-    is_missing_punch: bool = False
     is_regularised: bool = False
     is_wfh: bool = False
     is_partial_wfh: bool = False
@@ -200,7 +201,6 @@ class EmployeeMonth:
     total_hours: float = 0
     extra_days: float = 0
     extra_hours: float = 0
-    no_punch_present_days: int = 0
     required_hours: float = 0
     actual_hours: float = 0
     balance_hours: float = 0
@@ -212,7 +212,6 @@ class EmployeeMonth:
     pl_days: float = 0
     cof_days: float = 0
     unauth_absent_days: float = 0
-    lop_days: float = 0
     present_halves_days: float = 0
     hours_per_day: float = 8.5
     # behaviour metrics
@@ -222,7 +221,6 @@ class EmployeeMonth:
     early_exit_days: int = 0
     short_days: int = 0
     late_sitting_days: int = 0
-    missing_punch_days: int = 0
     regularised_days: int = 0
     permission_swipes: int = 0
     partial_wfh_days: int = 0

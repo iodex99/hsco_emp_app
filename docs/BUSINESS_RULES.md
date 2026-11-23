@@ -38,7 +38,7 @@ with the default shown. Engine code: `app/engine/compute.py` (pure functions, un
      *Holiday for several categories*, or a holiday-file row whose Category cell names several categories.
    - Result: `WORKDAY`, `WEEKLY_OFF` or `HOLIDAY`.
 2. **Status** per session half (0.5 day each) from greytHR code via a mapping table (Settings → Status codes):
-   `P→present`, `A→absent`, `PL/CL/SL/EL/ML→leave`, `COF→compoff`, `LOP→lop`, `OFF/H→off`, `WFH/OD→present`.
+   `P→present`, `A→absent` (= unapplied leave), `PL/CL/SL/EL/ML→leave`, `LOP/LWP→leave` (v1.13), `COF→compoff`, `OFF/H→off`, `WFH/OD→present`.
    Unknown codes: present if work minutes > 0, else absent (flagged `UNKNOWN_STATUS`).
    If a pattern/calendar override makes a muster `OFF`/`H` day a `WORKDAY`: present if worked, else absent (flag).
 3. **Day override** (manual, with reason) can set day type, either session status and/or work minutes.
@@ -48,8 +48,8 @@ with the default shown. Engine code: `app/engine/compute.py` (pure functions, un
 |---|---|---|
 | `total_week_days` | E | days with type WORKDAY or HOLIDAY |
 | `holidays` | F | days with type HOLIDAY |
-| `leave_days` | G | leave + compoff (+ LOP, default) halves on WORKDAYs (split: `pl_days`, `cof_days`, `lop_days`) |
-| `absent_days` | H | absent halves on WORKDAYs (`unauth_absent_days`); `LOP` bucket setting `leave` (default — HR did this 3 of 4 times) or `absent` |
+| `leave_days` | G | leave (incl. LOP / LWP) + compoff halves on WORKDAYs (split: `pl_days`, `cof_days`) |
+| `absent_days` | H | absent (`A`) halves on WORKDAYs = **unapplied leave (absence)** (`unauth_absent_days`). v1.13: no LOP bucket / setting any more |
 | `days_present` | I = M | E − F − G − H |
 | `wfh_days` | J | see §6 |
 | `total_hours` | K/O | Σ work minutes (all days) ÷ 60 |
@@ -118,7 +118,7 @@ Computed on WORKDAYs with a present first session; groups in `metrics_exclude_gr
   Basis `late` (> grace) is available in Settings.
 - **Early exit**: last‑out < shift end − 15 min on full present days.
 - **Short day**: work < **7 h** on full present days. **Late sitting**: out after **21:00**.
-- **Missing punch**: present day with one swipe only / in without out.
+- ~~Missing punch~~ / ~~present without any punch~~: removed in v1.13 (owner) — not counted, flagged or shown.
 - **Regularisation**: day with a `Permission` swipe or with muster in/out times that match no swipe.
   Persistent ≥ **3** per month.
 - **Mobile sign‑in at "Office"**: possible biometric bypass (count).
@@ -126,7 +126,7 @@ Computed on WORKDAYs with a present first session; groups in `metrics_exclude_gr
 - **Present without punch**: a present working day with in/out times in greytHR but no swipe at all, for someone who
   does punch on other days (Oct: HS158 18 days, HS207 15 days). HR disallowed such a day for HS197.
 - **Auto attendance**: present all month with no punches (partners) — only evaluated when a swipe file was imported.
-- **No attendance** all month; unauthorised absence ≥ 1; leave balance negative.
+- **No attendance** all month; unapplied leave (absence) ≥ 1; leave balance negative.
 - Data quality: group not set, employee in muster but not master, DOJ missing, unknown status codes.
 
 ## 8. People movement
@@ -218,3 +218,16 @@ Engine `RH_CODES`; independent of the editable status-code list (no "unknown sta
 Only **WFH above monthly limit** and **Group not set** (`workflow.REVIEW_CODES`). Every other flag is reviewed
 automatically: it is still raised and shown (employee page, Overview, Excel *Flags* = "Reviewed automatically") but
 never waits in the review queue and is not counted as open.
+
+## v1.13 (owner, 23-Nov-2026)
+- **No LOP.** greytHR's LOP / LWP days count as leave taken (MIS column G, as HR's manual sheet did). There is no LOP
+  column, KPI, flag, chip or setting any more; a status list saved earlier with `=lop` reads as `leave`. Figures that
+  were already shown under G are unchanged (the default "LOP under Leaves" setting was in use).
+- **Unapplied leave (absence)** is the name for absence without leave applied (greytHR `A`) everywhere — pages, flags,
+  Excel (payroll sheet column Y, Board Summary, Flags), Insights (formerly "unplanned absence").
+- **Ignored groups** (`policy.ignored_groups`, default `OTHERS`, Settings → Groups ignored by the app, compared without
+  regard to case): employees in these groups are not calculated and appear in no page, list, count, search, chart, PDF
+  or Excel (`services/scope.py`). Uploads may contain them — their rows are stored but never used; changing the
+  employee's group (or the setting) brings them back at the next calculation. Employees page: "N ignored · Show them".
+- **Missing punches** and **present without any punch** are removed everywhere (counts, flags, chips, lists, calendar
+  marks, Excel columns, attention score). Calculation rules version 12 (draft months recalculated once).

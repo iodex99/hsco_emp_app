@@ -22,12 +22,13 @@
     <div class="row">{{ num('hours_per_day') }}{{ num('shortfall_block_hours', 'Each started block = one deduction.') }}{{ num('deduction_per_block_days') }}</div>
     <div class="row">{{ num('shortfall_grace_hours', 'Shortfall up to this is ignored. Policy: none.') }}
       <div class="field"><label>Groups never deducted for hours shortfall</label><input name="exempt_groups" value="{{ pol.exempt_groups|join(', ') }}"><div class="help">Comma separated, exactly as in the employee group. WFH over the limit has its own list below.</div></div></div>
+    <div class="row"><div class="field"><label>Groups ignored by the app</label><input name="ignored_groups" value="{{ pol.ignored_groups|join(', ') }}"><div class="help">Employees in these groups (e.g. OTHERS) are left out completely — not calculated, listed, counted or exported, even when an upload contains them. Upper / lower case doesn't matter.</div></div></div>
   </div></div>
   <div class="form-sec"><div><h3>Leave &amp; comp-off</h3><p>Leave balances are kept in greytHR — this app does not
     calculate them. Paid leave per year is used only for "annual leave used" in Insights.</p></div><div>
     <div class="row">{{ num('annual_leave_days') }}{{ num('fy_start_month', '4 = April') }}</div>
-    <div class="row">{{ num('comp_off_min_hours', 'Hours on a weekly-off / holiday to earn one comp-off.') }}
-      <div class="field"><label>Loss of pay (LOP) shows under</label><select name="lop_bucket"><option value="leave" {{ 'selected' if pol.lop_bucket=='leave' }}>Leaves taken (column G)</option><option value="absent" {{ 'selected' if pol.lop_bucket=='absent' }}>Days absent (column H)</option></select></div></div>
+    <div class="row">{{ num('comp_off_min_hours', 'Hours on a weekly-off / holiday to earn one comp-off.') }}</div>
+    <p class="help" style="margin-top:0">Loss of pay (LOP / LWP in greytHR) counts as leave taken — there is no separate LOP. Absent without leave applied is shown as <b>Unapplied leave (absence)</b>.</p>
   </div></div>
   <div class="form-sec"><div><h3>Work from home</h3><p>Counted only on each person's own working days. Each WFH day above the limit is flagged and takes the set amount of leave — for everyone except the groups listed here (or a month exception).</p></div><div>
     <div class="row">{{ num('wfh_limit_days') }}{{ num('wfh_excess_deduction_days', 'e.g. 0.5 = half a day of leave for every WFH day above the limit; 0 = flag only.') }}</div>
@@ -54,7 +55,7 @@
   </div></div>
   <div class="form-sec"><div><h3>greytHR status codes</h3><p>What each code means. Unknown codes are treated as present if hours were worked.</p></div><div>
     <div class="field"><textarea name="status_map" rows="8" class="mono">{% for k, v in pol.status_map.items() %}{{ k }}={{ v }}
-{% endfor %}</textarea><div class="help">One per line: CODE=present | absent | leave | compoff | lop | off</div></div>
+{% endfor %}</textarea><div class="help">One per line: CODE=present | absent | leave | compoff | off. <b>absent</b> = unapplied leave (absence); LOP / LWP = leave.</div></div>
   </div></div>
 </fieldset></div>
 {% if can_admin %}<div class="hd sticky-save" style="border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end"><span class="small muted" style="margin-right:auto">Saving recalculates every draft month.</span><button class="btn">Save rules</button></div>{% endif %}

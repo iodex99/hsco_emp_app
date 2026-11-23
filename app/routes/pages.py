@@ -78,8 +78,14 @@ def insights_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     if p.computed_at is None:
         return pending_month(c, p)
     data = INS.insights(c.db, p)
-    chart = {"hours_hist": data["hours_hist"], "groups": data["groups"], "categories": data.get("categories", []),
-             "trend": data["trend"]}
+    chart = {"key": p.key, "label": p.label, "hours_hist": data["hours_hist"], "groups": data["groups"],
+             "trend": data["trend"], "drill": data["drill"],
+             "who": {x["emp_no"]: [x["name"], x["group"]] for x in data["rows"]},
+             # per person, for "who is behind this group" (Groups chart): attendance, on time, hours vs required,
+             # unapplied leave %
+             "people": [[x["emp_no"], x["attendance_pct"], x["punctuality_pct"], x["utilisation_pct"], x["absence_pct"]]
+                        for x in data["rows"]],
+             "arrival": data["arrival"]}
     return render(c, "insights.html", period=p, I=data, chart=chart, policy=get_policy(c.db))
 
 
@@ -103,7 +109,8 @@ def api_employees(c: Ctx = Depends(viewer)):
     if latest is not None:
         res = {r.emp_no: r for r in c.db.scalars(select(MonthResult).where(MonthResult.period_id == latest.id))}
     out = []
-    for e in c.db.scalars(select(Employee).order_by(Employee.name)):
+    from app.services.scope import employees as scoped
+    for e in scoped(c.db, order=Employee.name):                    # ignored groups (OTHERS) are not searchable
         parts = (e.name or e.emp_no).split()
         r = res.get(e.emp_no)
         out.append({"emp_no": e.emp_no, "name": e.name or e.emp_no, "group": e.group,

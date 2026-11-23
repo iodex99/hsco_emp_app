@@ -59,7 +59,9 @@ def policy_from_json(d: dict) -> Policy:
         elif f.name == "shift_overrides":
             v = {name: (_t(a), _t(b)) for name, (a, b) in (v or {}).items()}
         elif f.name == "status_map":
-            v = {str(k).upper(): str(b) for k, b in (v or {}).items()} or dict(DEFAULT_STATUS_MAP)
+            # "lop" was a bucket until v1.13 (owner: remove LOP completely) — loss of pay now counts as leave
+            v = ({str(k).upper(): ("leave" if str(b) == "lop" else str(b)) for k, b in (v or {}).items()}
+                 or dict(DEFAULT_STATUS_MAP))
         elif isinstance(cur, bool):
             v = bool(v)
         elif isinstance(cur, int) and not isinstance(cur, bool):

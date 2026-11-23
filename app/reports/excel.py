@@ -25,7 +25,7 @@ AMBER = PatternFill("solid", fgColor="FFE5B4")
 GREEN = PatternFill("solid", fgColor="D4EDDA")
 GREY = PatternFill("solid", fgColor="EEF1F5")
 THIN = Border(bottom=Side(style="thin", color="D0D7E2"))
-TEXT_COLS = {1, 2, 3, 4, 19, 28, 29}   # payroll sheet columns holding imported text (never formulas)
+TEXT_COLS = {1, 2, 3, 4, 19, 27, 28}   # payroll sheet columns holding imported text (never formulas)
 SEV_FILL = {"critical": RED, "high": AMBER, "medium": PatternFill("solid", fgColor="FFF7D6"), "info": GREY}
 
 
@@ -69,7 +69,7 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
     from app.services import locations as LOC
     org = get_general(db)
     L = LOC.report(db, period)
-    emps = {e.emp_no: e for e in db.scalars(select(Employee))}
+    emps = MX.scoped_employees(db)
     names = {k: e.name for k, e in emps.items()}
     mobile = {(r["emp_no"], r["ts"]): r for r in L["rows"]}
     kind = lambda t: {"astra": "Biometric", "mobile sign in": "Mobile", "permission": "Permission"}.get((t or "").strip().lower(), t or "")  # noqa: E731
@@ -77,7 +77,11 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
     ws = wb.active
     ws.title = "Punches"
     rows = []
+    from app.services.scope import ignored_emp_nos
+    skip = ignored_emp_nos(db)
     for s in db.scalars(select(SwipeRow).where(SwipeRow.period_id == period.id).order_by(SwipeRow.ts, SwipeRow.emp_no)):
+        if s.emp_no in skip:                        # ignored groups (OTHERS, v1.13)
+            continue
         r = mobile.get((s.emp_no, s.ts))
         if r:
             rows.append([s.ts, s.emp_no, names.get(s.emp_no, s.emp_no), kind(r["swipe_type"]) or "Mobile",
@@ -210,8 +214,8 @@ def build_workbook(db: Session, period: Period) -> bytes:
              "Total Days Worked", "Hours Required", "Total Hours Present (decimal)", "Off-day / holiday hours (excluded)",
              "Actual Hours Worked", "Shortfall / Excess", "Remark",
              "Hours / Day", "Exempt (hours)", "Deduction Days", "PL Taken", "Comp-off Taken",
-             "Unauthorised Absent", "LOP (approved)", "Comp-off Earned", "Flags", "Category"]
-    widths = [10, 24, 9, 9, 8, 8, 8, 8, 8, 6, 10, 8, 8, 9, 10, 10, 10, 10, 34, 7, 7, 10, 7, 8, 9, 7, 8, 40, 20]
+             "Unapplied Leave (Absence)", "Comp-off Earned", "Flags", "Category"]
+    widths = [10, 24, 9, 9, 8, 8, 8, 8, 8, 6, 10, 8, 8, 9, 10, 10, 10, 10, 34, 7, 7, 10, 7, 8, 11, 8, 40, 20]
     _title(ws, org, title, len(heads))
     HR_ = 5
     _header(ws, HR_, heads, widths)
@@ -232,11 +236,11 @@ def build_workbook(db: Session, period: Period) -> bytes:
             # hours part (0 when exempt or waived for the month: column U not "No") + WFH part (row without it when the person is not deducted
             # for WFH: Partner-type group or a month exception)
             22: f'=IF(U{i}<>"No",0,IF(-R{i}>{grace},CEILING(ROUND(-R{i},4)/{blk},1)*{per_blk},0))' + _wfh_term(d, i, pol),
-            23: d.get("pl_days"), 24: d.get("cof_days"), 25: d.get("unauth_absent_days"), 26: d.get("lop_days"),
-            27: d.get("compoff_earned"),
-            28: "; ".join(MX.FLAG_LABELS.get(f["code"], f["code"]) for f in r.flags
+            23: d.get("pl_days"), 24: d.get("cof_days"), 25: d.get("unauth_absent_days"),
+            26: d.get("compoff_earned"),
+            27: "; ".join(MX.FLAG_LABELS.get(f["code"], f["code"]) for f in MX.live_flags(r.flags)
                           if f["severity"] in ("critical", "high", "medium")),
-            29: (r.category or "") + (f" + {d['additional_category']}" if d.get("additional_category") else ""),
+            28: (r.category or "") + (f" + {d['additional_category']}" if d.get("additional_category") else ""),
         }
         if (r.emp_no, "required_hours") in ovr:
             vals[14] = d["required_hours"]
@@ -263,7 +267,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
     ws.conditional_formatting.add(f"J{HR_ + 1}:J{last}", CellIsRule(operator="greaterThan", formula=[str(pol.wfh_limit_days)], fill=AMBER))
     tr = last + 2
     ws.cell(row=tr, column=2, value="TOTAL").font = Font(bold=True)
-    for col in (5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 22, 23, 24, 25, 26, 27):
+    for col in (5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 22, 23, 24, 25, 26):
         L = get_column_letter(col)
         ws.cell(row=tr, column=col, value=f"=SUBTOTAL(9,{L}{HR_ + 1}:{L}{last})").font = Font(bold=True)
     ws.cell(row=tr + 2, column=1, value="Yellow cells = manual override (hover for reason). Formulas are live: edit E–H, "
@@ -326,11 +330,11 @@ def build_workbook(db: Session, period: Period) -> bytes:
           ("Avg in-time", k["avg_in_time"]), ("Avg out-time", k["avg_out_time"]),
           ("Employees with leave deduction", k["deduction_employees"]), ("Total deduction days", k["deduction_days"]),
           ("Paid leave days taken", k["leave_days"]), ("Comp-off days taken", k["compoff_days"]),
-          ("Unauthorised absent days", k["absent_days"]), ("LOP days", k["lop_days"]),
+          ("Unapplied leave (absence) days", k["absent_days"]),
           ("WFH days", k["wfh_days"]), (f"Employees over WFH limit ({pol.wfh_limit_days:g})", k["wfh_over_limit"]),
           ("Late arrivals (days)", k["late_days"]), ("Persistently late employees", k["persistent_late"]),
           ("Regularised days", k["regularised_days"]), ("Persistent regularisation employees", k["persistent_regularisation"]),
-          ("Missing-punch days", k["missing_punch_days"]), ("Off-day / holiday working days", k["extra_days"]),
+          ("Off-day / holiday working days", k["extra_days"]),
           ("Comp-offs earned (≥ 5 h)", k["compoff_earned"]), ("Excess hours (sum)", k["excess_hours"]),
           ("Shortfall hours (sum)", k["shortfall_hours"]), ("Late-sitting days (after 21:00)", k["late_sitting_days"])]
     _header(ws, 5, ["Metric", "Value"], [44, 14])
@@ -339,26 +343,25 @@ def build_workbook(db: Session, period: Period) -> bytes:
         _put(ws, i, 2, b, text=True)
     r0 = 6 + len(kp) + 2
     ws.cell(row=r0, column=1, value="By group").font = Font(bold=True, size=12)
-    gh = ["Group", "Headcount", "Present days", "PL", "Comp-off", "Absent", "LOP", "WFH", "Late days", "Regularised",
-          "Deduction days", "Employees deducted", "Hours vs required %"]
+    gh = ["Group", "Headcount", "Present days", "PL", "Comp-off", "Unapplied leave (absence)", "WFH", "Late days",
+          "Regularised", "Deduction days", "Employees deducted", "Hours vs required %"]
     for i, h in enumerate(gh, start=1):
         c = ws.cell(row=r0 + 1, column=i, value=h)
         c.fill, c.font = HDR, HFONT
     for j, g in enumerate(m["groups"], start=r0 + 2):
         for i, key in enumerate(["group", "headcount", "days_present", "pl_days", "cof_days", "unauth_absent_days",
-                                 "lop_days", "wfh_days", "late_days", "regularised_days", "deduction_days",
+                                 "wfh_days", "late_days", "regularised_days", "deduction_days",
                                  "deduction_emps", "hours_vs_required_pct"], start=1):
             _put(ws, j, i, g.get(key), text=True)
-    r1 = r0 + 2 + len(m["groups"]) + 2
-    ws.cell(row=r1, column=1, value="By category").font = Font(bold=True, size=12)
-    for i, h in enumerate(["Category"] + gh[1:], start=1):
-        c = ws.cell(row=r1 + 1, column=i, value=h)
-        c.fill, c.font = HDR, HFONT
-    for j, g in enumerate(m.get("categories", []), start=r1 + 2):
-        for i, key in enumerate(["group", "headcount", "days_present", "pl_days", "cof_days", "unauth_absent_days",
-                                 "lop_days", "wfh_days", "late_days", "regularised_days", "deduction_days",
-                                 "deduction_emps", "hours_vs_required_pct"], start=1):
-            _put(ws, j, i, g.get(key), text=True)
+    if m["groups"]:                                       # total row (v1.13)
+        jt = r0 + 2 + len(m["groups"])
+        _put(ws, jt, 1, "Total").font = Font(bold=True)
+        for i, key in enumerate(["headcount", "days_present", "pl_days", "cof_days", "unauth_absent_days", "wfh_days",
+                                 "late_days", "regularised_days", "deduction_days", "deduction_emps"], start=2):
+            c = _put(ws, jt, i, round(sum(g.get(key) or 0 for g in m["groups"]), 2))
+            c.font = Font(bold=True)
+        act, req = sum(g.get("actual_hours") or 0 for g in m["groups"]), sum(g.get("required_hours") or 0 for g in m["groups"])
+        _put(ws, jt, 12, round(100 * act / req, 1) if req else None).font = Font(bold=True)
     for i in range(3, 14):
         ws.column_dimensions[get_column_letter(i)].width = 12
 
@@ -465,12 +468,11 @@ def build_workbook(db: Session, period: Period) -> bytes:
     for r in res:
         d = r.data
         rows.append([r.emp_no, r.name, r.group, r.category, d.get("regularised_days"), d.get("permission_swipes"),
-                     d.get("missing_punch_days"), d.get("no_punch_present_days"), "Yes" if d.get("auto_attendance") else "",
-                     d.get("total_swipes")])
+                     "Yes" if d.get("auto_attendance") else "", d.get("total_swipes")])
     rows.sort(key=lambda x: -(x[4] or 0))
-    _table(ws, 5, ["Employee No", "Name", "Group", "Category", "Regularised days", "Permission swipes", "Missing-punch days",
-                   "Present with no punch", "Auto attendance", "Total swipes"], rows, [10, 24, 9, 18, 12, 12, 12, 12, 10, 10],
-           org, f"Regularisation & punch integrity — {period.label}")
+    _table(ws, 5, ["Employee No", "Name", "Group", "Category", "Regularised days", "Permission swipes",
+                   "Auto attendance", "Total swipes"], rows, [10, 24, 9, 18, 12, 12, 10, 10],
+           org, f"Regularisation — {period.label}")
 
     # punch exceptions, day by day (same list as the Punch exceptions page)
     from app.services.exceptions import month_exceptions
@@ -484,12 +486,12 @@ def build_workbook(db: Session, period: Period) -> bytes:
              x["in"], x["out"], round(x["work_min"] / 60, 2) if x["work_min"] else None, x["punches"], x["reason"],
              x["remark"], x["status"], "Yes" if x["overridden"] else "", x["notes"]] for x in X["rows"]],
            [11, 6, 10, 24, 9, 18, 40, 7, 7, 7, 40, 24, 24, 10, 9, 50], org,
-           f"Punch exceptions — {period.label} (missing / incorrect punches, regularisations, WFH, late / early / short, "
-           f"absence, off-day work)")
+           f"Punch exceptions — {period.label} (incorrect punches, regularisations, WFH, late / early / short, "
+           f"unapplied leave, off-day work)")
     for row in ws.iter_rows(min_row=6, max_col=1):
         row[0].number_format = "dd-mmm-yyyy"
     ws = wb.create_sheet("Exceptions by Employee")
-    keys = ["missing", "nopunch", "edited", "permission", "rejected", "wfh", "wfh_over", "wfh_closed", "wfh_offday", "wfh_leave", "very_late",
+    keys = ["edited", "permission", "rejected", "wfh", "wfh_over", "wfh_closed", "wfh_offday", "wfh_leave", "very_late",
             "early", "short", "absent", "offday_work"]
     _table(ws, 5, ["Employee No", "Name", "Group", "Category"] + [X["labels"][k] for k in keys] + ["WFH deduction (days)"],
            [[pp["emp_no"], pp["name"], pp["group"], pp.get("category", "")] + [pp[k] or None for k in keys]
@@ -511,32 +513,25 @@ def build_workbook(db: Session, period: Period) -> bytes:
     rows = [[r["emp_no"], r["name"], r["group"], r.get("category", ""), r["location"], r["tenure_m"], r["attention"],
              ", ".join(r["attention_why"]), r["attendance_pct"], r["absence_pct"], r["absence_12m_days"], r["absence_12m_spells"],
              r["punctuality_pct"], r["avg_in"], r["avg_hours"], r["utilisation_pct"], r["balance_hours"], r["long_days"],
-             r["late_sitting_days"], r["wfh_days"], r["regularised_days"], r["missing_punch_days"], r["leave_used_fy"]]
+             r["late_sitting_days"], r["wfh_days"], r["regularised_days"], r["leave_used_fy"]]
             for r in sorted(ins["rows"], key=lambda x: -x["attention"])]
     _table(ws, 6, ["Emp No", "Name", "Group", "Category", "Location", "Tenure (months)", "Attention (0-100)", "Main reasons",
-                   "Attendance %", "Unplanned absence %", "Unplanned absence days (12 m)", "Absence spells (12 m)", "On time %", "Avg first punch",
-                   "Avg day (h)", "Hours vs required %", "Balance (h)", "Long days", "Late sitting", "WFH days",
-                   "Regularised", "Missing punch", f"Leave used {ik['fy_label']}"],
+                   "Attendance %", "Unapplied leave (absence) %", "Unapplied leave days (12 m)", "Absence spells (12 m)", "On time %",
+                   "Avg first punch", "Avg day (h)", "Hours vs required %", "Balance (h)", "Long days", "Late sitting", "WFH days",
+                   "Regularised", f"Leave used {ik['fy_label']}"],
            rows, [10, 24, 9, 18, 10] + [11] * 20, org, f"Employee scorecard — {period.label}")
     ws.cell(row=4, column=1, value=(
-        f"Firm: unplanned absence {ik['absenteeism_pct']}% · on time {ik['punctuality_pct']}% · hours vs required "
+        f"Firm: unapplied leave (absence) {ik['absenteeism_pct']}% · on time {ik['punctuality_pct']}% · hours vs required "
         f"{ik['utilisation_pct']}% · attrition (12 m) {ik['attrition_pct']}%. "
-        "Attention = unplanned absence (12 m) 25 + punctuality 20 + hours 20 + regularisation 15 + WFH 10 + missing punches 10."))
+        "Attention = unapplied leave (12 m) 30 + punctuality 20 + hours 25 + regularisation 15 + WFH 10."))
     ws.freeze_panes = "C7"
     ws2 = wb.create_sheet("Groups Compared")
-    _table(ws2, 5, ["Group", "People", "Attendance %", "Unplanned absence %", "On time %", "Hours vs required %",
-                    "Avg day (h)", "WFH share %", "Regularised %", "Unplanned absence days (12 m)", "Avg attention", "Deduction days"],
+    _table(ws2, 5, ["Group", "People", "Attendance %", "Unapplied leave (absence) %", "On time %", "Hours vs required %",
+                    "Avg day (h)", "WFH share %", "Regularised %", "Unapplied leave days (12 m)", "Avg attention", "Deduction days"],
            [[g["group"], g["headcount"], g["attendance_pct"], g["absenteeism_pct"], g["punctuality_pct"],
              g["utilisation_pct"], g["avg_hours"], g["wfh_pct"], g["regularisation_pct"], g["absence_12m_days"],
              g["attention_avg"], g["deduction_days"]] for g in ins["groups"]], [12] + [13] * 11, org,
            f"Groups compared — {period.label}")
-    ws3 = wb.create_sheet("Categories Compared")
-    _table(ws3, 5, ["Category", "People", "Attendance %", "Unplanned absence %", "On time %", "Hours vs required %",
-                    "Avg day (h)", "WFH share %", "Regularised %", "Unplanned absence days (12 m)", "Avg attention", "Deduction days"],
-           [[g["group"], g["headcount"], g["attendance_pct"], g["absenteeism_pct"], g["punctuality_pct"],
-             g["utilisation_pct"], g["avg_hours"], g["wfh_pct"], g["regularisation_pct"], g["absence_12m_days"],
-             g["attention_avg"], g["deduction_days"]] for g in ins.get("categories", [])], [22] + [13] * 11, org,
-           f"Categories compared — {period.label}")
 
     ws = wb.create_sheet("People Movement")
     _title(ws, org, f"People movement — {period.label}", 6)
@@ -569,7 +564,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
     for r in res:
         for dd in r.days:
             tags = [t for t, on in (("LATE", dd.get("late")), ("EARLY", dd.get("early")), ("SHORT", dd.get("short")),
-                                    ("MISSING PUNCH", dd.get("missing")), ("REGULARISED", dd.get("regularised")),
+                                    ("REGULARISED", dd.get("regularised")),
                                     ("WFH", dd.get("wfh")), ("OFF-DAY WORK", dd.get("extra")),
                                     ("COMP-OFF EARNED", dd.get("co_earned")), ("OVERRIDE", dd.get("overridden"))) if on]
             rows.append([r.emp_no, r.name, date.fromisoformat(dd["date"]), dd["wd"],
@@ -611,7 +606,9 @@ def build_workbook(db: Session, period: Period) -> bytes:
         ("Comp-off", f"Earned for ≥ {pol.comp_off_min_hours:g} h on a weekly-off / holiday"),
         ("WFH limit", f"{pol.wfh_limit_days:g} days per month ({pol.wfh_method.replace('_', ' ')})"),
         ("Late arrival", f"First-in more than {pol.late_grace_min} min after shift start (information only)"),
-        ("LOP in MIS columns", f"Counted under {'Leaves (G)' if pol.lop_bucket == 'leave' else 'Absent (H)'}"),
+        ("Loss of pay", "LOP / LWP in greytHR counts as leave taken (Leaves, G) — there is no separate LOP (v1.13)"),
+        ("Unapplied leave (absence)", "Absent on a working day without leave applied (greytHR A) — column H"),
+        ("Ignored groups", (", ".join(pol.ignored_groups) or "none") + " — not in any sheet"),
         ("Leave balances", "Kept in greytHR — not calculated by the app. The deduction days (column V) are what to "
                            "take from leave."),
         ("Source", "greytHR Muster (day status & hours), Swipe Details (punches/locations), DOJ report, app master data"),
@@ -634,7 +631,6 @@ def build_workbook(db: Session, period: Period) -> bytes:
                                                       if (r.data or {}).get("deduction_days")), 2)),
         ("of which WFH over the limit (days)", round(sum((r.data or {}).get("wfh_deduction_days") or 0 for r in res
                                                          if (r.data or {}).get("deduction_days")), 2)),
-        ("LOP days (approved in greytHR)", round(sum((r.data or {}).get("lop_days") or 0 for r in res), 2)),
         ("Open exceptions (not reviewed)", open_flags),
         ("Manual corrections", len(corr)),
     ])
@@ -652,15 +648,14 @@ SHEET_GUIDE = [
     ("Comp-off Ledger", NAVY, "Comp-off earned and taken per person this month."),
     ("Corrections", NAVY, "Every manual correction included in these figures, with the reason, who and when."),
     ("Flags", NAVY, "Exceptions found by the app: WFH above the limit and Group not set need a review (open first); the rest are reviewed automatically."),
-    ("Punch Exceptions", "C77700", "Day by day: missing / incorrect punches, regularisations, WFH, late, early, short, absence."),
+    ("Punch Exceptions", "C77700", "Day by day: incorrect punches, regularisations, WFH, late, early, short, unapplied leave."),
     ("Exceptions by Employee", "C77700", "The same exceptions counted per person."),
-    ("Regularisation & Punches", "C77700", "Regularised days, permission swipes, missing punches per person."),
+    ("Regularisation & Punches", "C77700", "Regularised days and permission swipes per person."),
     ("Late & Punctuality", "C77700", "Late arrivals, early exits, short days, late sitting (information only)."),
     ("WFH & Locations", "C77700", "WFH days (limit), client / on-duty days, biometric vs mobile punches."),
-    ("Board Summary", "2E7D32", "Firm-level figures for partners, by group and by category."),
+    ("Board Summary", "2E7D32", "Firm-level figures for partners, and by group."),
     ("Scorecard", "2E7D32", "Per person: attention score and its reasons, attendance, punctuality, hours, leave used."),
     ("Groups Compared", "2E7D32", "Groups side by side."),
-    ("Categories Compared", "2E7D32", "Categories (holiday list & working pattern) side by side."),
     ("People Movement", "2E7D32", "Joiners, exits, possible exits, anniversaries."),
     ("Reconciliation", "2E7D32", "App vs the manual MIS sheet, employee by employee."),
     ("Daily Detail", "7A869A", "Every person, every day: status, in / out, hours, places, tags, notes."),

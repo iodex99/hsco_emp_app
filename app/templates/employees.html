@@ -5,6 +5,8 @@
 {% set active = emps|rejectattr('dol')|selectattr('is_active')|list %}
 <div class="ph"><div><h1>Employees</h1><div class="sub">{{ active|length }} active · {{ emps|length - active|length }} left{% if latest %} · figures from {{ latest.label }}{% endif %}</div></div>
   <div class="actions">{% if can_hr %}<a class="btn sec" href="/exports/templates/employee_master.xlsx">{{ ui.icon('download','sm') }} Export master</a><a class="btn" href="/employees/new">{{ ui.icon('user-plus','sm') }} Add employee</a>{% endif %}</div></div>
+{% if showing_ignored %}<div class="alert">{{ ui.icon('eye-off') }}<span>These {{ emps|length }} employee{{ 's are' if emps|length != 1 else ' is' }} in an ignored group ({{ ignored_groups|join(', ') }}) — not calculated, counted or exported anywhere. Change an employee's group to bring them back. <a href="/employees">Back to everyone else</a></span></div>
+{% elif n_ignored %}<p class="small muted" style="margin:-6px 0 12px">{{ ui.icon('eye-off','sm') }} {{ n_ignored }} employee{{ 's' if n_ignored != 1 }} in {{ ignored_groups|join(', ') }} {{ 'are' if n_ignored != 1 else 'is' }} ignored by the app and not listed. <a href="/employees?ignored=1">Show them</a></p>{% endif %}
 {% set nogroup = emps|rejectattr('group')|list %}{% set nocat = emps|rejectattr('dol')|rejectattr('category')|list %}
 {% if nogroup and can_hr %}<div class="alert warn">{{ ui.icon('triangle-alert') }}<span><b>{{ nogroup|length }} employee{{ 's' if nogroup|length > 1 }} without a group</b> — exemptions can't apply to them. Use the “No group” filter below.</span></div>{% endif %}
 <div class="card flush">

@@ -119,16 +119,22 @@ def test_offday_hours_excluded_and_compoff():
     assert r.compoff_earned == 1  # only the 6-hour day qualifies (>= 5 h)
 
 
-def test_leave_absent_lop_buckets():
-    rows = month(statuses={6: "PL", 7: "A", 8: "LOP", 9: "COF"})
+def test_leave_absent_and_loss_of_pay_counts_as_leave():
+    """v1.13 (owner: "remove LOP completely"): LOP / LWP days are leave; A = unapplied leave (absence)."""
+    rows = month(statuses={6: "PL", 7: "A", 8: "LOP", 9: "COF", 12: "LWP"})
     r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, [], POL)
-    assert (r.pl_days, r.unauth_absent_days, r.lop_days, r.cof_days) == (1, 1, 1, 1)
-    assert r.leave_days == 3          # PL + COF + LOP (default lop_bucket = leave)
+    assert (r.pl_days, r.unauth_absent_days, r.cof_days) == (3, 1, 1)
+    assert not hasattr(r, "lop_days")
+    assert r.leave_days == 4          # PL + LOP + LWP + COF
     assert r.absent_days == 1
-    assert r.days_present == 23 - 1 - 3 - 1
-    r2 = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, [], Policy(lop_bucket="absent"))
-    assert (r2.leave_days, r2.absent_days) == (2, 2)
-    assert any(f[0] == "UNAUTHORISED_ABSENCE" for f in r.flags)
+    assert r.days_present == 23 - 1 - 4 - 1
+    flags = {f[0]: f[2] for f in r.flags}
+    assert "unapplied leave" in flags["UNAUTHORISED_ABSENCE"] and "LOP" not in flags
+    # a status list saved before v1.13 still saying "lop" reads as leave
+    old = Policy(status_map={**POL.status_map, "LOP": "lop"})
+    assert compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, [], old).leave_days == 4
+    from app.services.settings import policy_from_json
+    assert policy_from_json({"status_map": {"LOP": "lop", "A": "absent"}}).status_map == {"LOP": "leave", "A": "absent"}
 
 
 def test_half_day_leave():
@@ -334,7 +340,7 @@ def test_one_off_holiday_in_a_category_list():
     assert TH.split("HSCO (Mum), HSCO (Delhi); hsco (mum)|HSCO (CBV)") == ["HSCO (Mum)", "HSCO (Delhi)", "HSCO (CBV)"]
 
 
-def test_missing_punch_and_regularisation():
+def test_regularisation_and_no_missing_punch_flags():
     rows = month()
     sw = []
     for r_ in rows:
@@ -344,7 +350,8 @@ def test_missing_punch_and_regularisation():
                 sw.append(Swipe("E1", r_.out_time, "hasmukhshah", "", "Astra"))
     sw.append(Swipe("E1", datetime(2026, 10, 9, 13, 0), "", "", "Permission"))
     r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, sw, POL)
-    assert r.missing_punch_days == 2
+    assert not hasattr(r, "missing_punch_days")                  # removed everywhere (owner, v1.13)
+    assert not any(f[0] in ("MISSING_PUNCHES", "PRESENT_WITHOUT_PUNCH") for f in r.flags)
     assert r.permission_swipes == 1
     assert r.regularised_days >= 3  # 2 days whose out-time has no swipe + 1 permission day
 
@@ -361,8 +368,8 @@ def test_auto_attendance_detected():
             sw += [Swipe("E1", r_.in_time, "hasmukhshah", "", "Astra"), Swipe("E1", r_.out_time, "hasmukhshah", "", "Astra")]
     r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, sw, POL)
     assert not r.auto_attendance
-    assert r.no_punch_present_days == 2
-    assert any(f[0] == "PRESENT_WITHOUT_PUNCH" for f in r.flags)
+    assert not any(f[0] == "PRESENT_WITHOUT_PUNCH" for f in r.flags)     # no longer raised (v1.13)
+    assert not any("no punch recorded" in n for dd in r.days for n in dd.notes)
 
 
 def test_new_joinee_and_exit():

@@ -492,3 +492,45 @@ a.is-busy{pointer-events:none;opacity:.7}
 .sticky-save{position:sticky;bottom:0;z-index:5;background:var(--surface);box-shadow:0 -6px 12px rgba(16,24,40,.06)}
 .ex-punches{min-width:190px}
 td.nowrap,th.nowrap{white-space:nowrap}
+
+/* v1.13 — "i" explanations, people panel, ranked-list group filter, clickable charts, horizontal share bars */
+.info-i{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--border-strong);color:var(--text-3);
+  font:italic 600 10.5px/1 Georgia,"Times New Roman",serif;cursor:help;flex-shrink:0;vertical-align:middle;margin-left:4px;background:var(--surface);user-select:none}
+.info-i:hover,.info-i:focus{border-color:var(--brand);color:var(--brand);outline:none;box-shadow:0 0 0 3px var(--brand-50)}
+.tip-pop{position:absolute;z-index:90;max-width:320px;background:#101828;color:#fff;font-size:12.5px;line-height:1.45;padding:9px 11px;border-radius:8px;
+  box-shadow:var(--sh-lg);pointer-events:none;white-space:pre-line}
+.card>.hd h2{display:flex;align-items:center;gap:2px}
+.tabs button .info-i{margin-left:6px}
+.drawer.wide{width:min(760px,100vw)}
+.drawer .dh h2{display:flex;align-items:center;gap:6px}
+.chartbox.clickable canvas{cursor:pointer}
+.click-hint{font-size:11.5px;color:var(--text-4);display:inline-flex;align-items:center;gap:4px}
+.tl-grp{position:relative;flex-shrink:0}
+.tl-grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 9px;font-size:13px;border:1px solid var(--border-strong);
+  border-radius:8px;background:var(--surface);color:var(--text-2);white-space:nowrap}
+.tl-grp>summary::-webkit-details-marker{display:none}
+.tl-grp.on>summary{border-color:var(--brand);color:var(--brand-700);background:var(--brand-50)}
+.tl-grp .tl-menu{position:absolute;right:0;top:36px;z-index:40;min-width:200px;max-height:300px;overflow:auto;background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;box-shadow:var(--sh-lg);padding:8px}
+.tl-grp .tl-menu label{display:flex;gap:8px;align-items:center;padding:5px 6px;border-radius:6px;font-size:13px;cursor:pointer}
+.tl-grp .tl-menu label:hover{background:var(--surface-3)}
+.tl-grp .tl-menu label .muted{margin-left:auto;font-size:12px}
+.tl-grp .tl-menu .tl-gact{display:flex;gap:6px;border-top:1px solid var(--border);margin-top:6px;padding-top:6px}
+.tl-foot b{color:var(--text-2)}
+.shares{list-style:none;margin:0;padding:0}
+.shares li{display:grid;grid-template-columns:minmax(120px,1.1fr) 2fr auto;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer}
+.shares li:last-child{border-bottom:0}
+.shares li:hover .sb>i{filter:brightness(.92)}
+.shares .sl{font-size:13px;font-weight:500;color:var(--text-2);display:flex;align-items:center;gap:8px;min-width:0}
+.shares .sl i{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.shares .sb{height:10px;border-radius:999px;background:var(--surface-3);overflow:hidden}
+.shares .sb>i{display:block;height:100%;border-radius:999px}
+.shares .sv{font-size:13px;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.shares .sv small{color:var(--text-3);margin-left:6px}
+.shares li.tot{cursor:default;font-weight:600}
+.attn-link{color:var(--text);font-weight:500}
+.attn-link:hover{color:var(--brand)}
+tr.tfoot-firm td{background:var(--surface-2);font-weight:600}
+/* PDF export: every tab laid out while the PDF is drawn, behind a cover */
+.pdf-all .pane{display:block!important}
+.pdf-cover{position:fixed;inset:0;z-index:200;background:rgba(245,246,248,.96);display:grid;place-items:center;font-weight:600;color:var(--text-2)}

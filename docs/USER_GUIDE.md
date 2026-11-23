@@ -23,7 +23,7 @@ unlock it on the Users page).
   phones; see it by place or by person. Available as soon as the swipe export is imported — no need to wait for
   month end.
 - Press **/** anywhere to find an employee; use the **month switcher** (top right) to change month.
-- On an employee's page, click **legend items** under the calendar (several at once) to show only those days, e.g. Late + Missing punch.
+- On an employee's page, click **legend items** under the calendar (several at once) to show only those days, e.g. Late + Regularised.
 - In the **Review queue**, tick several rows (or the header box for all shown) and use the bar at the bottom to mark them reviewed in one go. *Review queue →* on an employee's Flags card shows only that person.
 - On an employee's page, **click a calendar day** to see its punches and correct it; the left/right arrow keys move
   to the previous/next employee.
@@ -57,14 +57,14 @@ unlock it on the Users page).
    A file dated well in the future is refused — check the year in the file.
    **Imported the wrong month by mistake?** An admin can delete a draft month: Payroll leave sheet → bin icon → give a
    reason and type the month name.
-3. **Review queue**: work through the exceptions (shortfall deductions, unauthorised absence, WFH over limit,
-   present-without-punch). Mark each one reviewed; pick a reason or type a note.
+3. **Review queue**: work through the two kinds of exception that need a review (WFH above the monthly limit, Group
+   not set). Mark each one reviewed; pick a reason or type a note.
 4. Click an employee to open the **drill-down**: calendar, every punch with place, flags, leave this month. Correct if needed:
-   - *Click the day* in the calendar: change day type, session status (P, A, PL, COF, LOP…) or hours.
+   - *Click the day* in the calendar: change day type, session status (P, A, PL, COF…) or hours.
    - *Corrections tab, Adjust a figure*: e.g. grant an exception (Exempt this month = yes), set required hours, override
      deduction days, or a remark. **A reason is mandatory**; everything is in the Audit log and highlighted in Excel.
 5. **Payroll leave sheet** → *Finalise for payroll* (locks the month) → **Download Excel** for payroll.
-   Columns E–S mirror the old MIS sheet; extra columns give deduction days, PL / comp-off / LOP taken and comp-off
+   Columns E–S mirror the old MIS sheet; extra columns give deduction days, leave / comp-off / unapplied leave and comp-off
    earned. Leave balances stay in greytHR — apply the deduction days there.
 6. Partners and the board use the app itself (give them the *viewer* role): Overview, Insights, Locations and every
    drill-down, with sorting, filters and CSV on every table.
@@ -140,14 +140,15 @@ The app backs itself up every day (Settings → Security & system → *Backups &
 extra copy, e.g. before month-end). Ask IT to also copy the app's data folder to another drive regularly.
 
 ## Ranked lists on the Overview
-Every list (late, regularisations, missing punches, absence, WFH, hours) includes everyone it applies to. Choose
+Every list (late, regularisations, unapplied leave, WFH, hours) includes everyone it applies to. Choose
 **Top 5 / 10 / 20 / All** (remembered for all lists) or type a name or employee number in the list's search box; the
-number on the left is the person's real rank.
+number on the left is the person's real rank. *All groups* ▾ keeps only the groups you tick; the footer totals the people
+matching (v1.13).
 
 ## Punch exceptions
-Sidebar → **Punch exceptions**: every day someone has a missing or incorrect punch, a regularisation, WFH (over the
-limit, on a day off), was more than an hour late, left early, had a short day, was absent or worked a day off — one
-row per person and day with all issues, punches and reasons. Click a chip (e.g. *Missing punch*) to see only those;
+Sidebar → **Punch exceptions**: every day someone has an incorrect punch (times changed, rejected sign-in), a regularisation, WFH (over the
+limit, on a day off), was more than an hour late, left early, had a short day, had unapplied leave or worked a day off — one
+row per person and day with all issues, punches and reasons. Click a chip (e.g. *Regularisation request*) to see only those;
 click a row to open that person's day and correct it. *By employee* gives the counts per person. The same lists are
 in the payroll Excel (*Punch Exceptions*, *Exceptions by Employee*).
 
@@ -185,7 +186,7 @@ template was removed: leave balances are kept in greytHR.)
 
 ## Leave balances (v1.9)
 The app does not keep leave or comp-off balances — greytHR does. Each month it gives the **leave deduction** to apply
-(hours shortfall + WFH over the limit), and shows PL, comp-off, LOP and absence as marked in greytHR. The employee page
+(hours shortfall + WFH over the limit), and shows leave (incl. LOP), comp-off and unapplied leave as marked in greytHR. The employee page
 → *Leave & comp-off* shows this month's leave, the deduction split and comp-off earned / taken.
 
 ## Opening the app (v1.9.2)
@@ -202,7 +203,7 @@ a finalised month (re-open it first).
 ## Review queue (v1.12)
 Only two kinds of exception wait for you: **WFH above monthly limit** (approve extra WFH or mark reviewed) and
 **Group not set** (set the group on the employee's page, then mark reviewed). Everything else — hours shortfall,
-lateness, missing punches, … — is reviewed automatically; you still see it on each employee's page and in the Excel.
+lateness, regularisations, … — is reviewed automatically; you still see it on each employee's page and in the Excel.
 To waive someone's hours-shortfall deduction: their page → *Leave & comp-off* → **Waive**.
 
 ## Restricted holidays (RH)
@@ -219,3 +220,24 @@ left untouched with a MOVED.txt note; delete it once you are happy.
 Rules & calendars → *Place names*: a red warning means the built-in map of India is missing on the server (installs
 before v1.12.1). Install the update from the banner; after the restart every punch gets its place name — nothing to
 re-import.
+
+## What's new in v1.13 — find the people behind every number
+- **Click a number to see who.** On the Overview click a *Needs attention* type, any bar of a chart (a day of *Daily
+  attendance* and its colour, a half hour of *First punch*, a weekday, a tenure band), a row of *Where people punched*
+  or of *By group*; on Insights a bar of *Length of the working day* or *Groups side by side*, a number of *When people
+  arrive* or a row of *Groups compared*. A panel lists exactly those people with their figure — search it, Filter →
+  Group, sort, download CSV; the total is at the bottom. *Needs attention* also offers "Show these people on the payroll
+  leave sheet". Trend charts open the month you click.
+- **Hover a bar** for the date with its weekday (e.g. "Thu 9 Oct 2026"), every series and the total.
+- **"i"** next to a figure or title explains how it is calculated — hover it, or tap it on a touch screen.
+- **Ranked lists** (late, regularisations, WFH, hours, comp-offs, unapplied leave): *All groups* ▾ to keep one or
+  several groups; the footer shows how many match and their total.
+- **PDF** next to *Excel* on the Overview, Insights, Payroll leave sheet, Punch exceptions and Locations: every tab of the
+  page in one file (charts in colour, cards, lists and tables as shown — filters you set are kept), A4 landscape with
+  page numbers. It is made in your browser; nothing is sent anywhere.
+- **Work location**: where people punched as a ranked list (punches, share, people); the WFH card counts WFH days, the
+  people who worked from home and who is over the limit — *Everyone* / *Over the limit*.
+- **Wording**: absence without leave applied is now **Unapplied leave (absence)**. **LOP is gone** — greytHR's LOP / LWP
+  days count as leave. **Missing punches** and **present without any punch** are no longer reported.
+- **OTHERS**: employees whose group is OTHERS are left out of the app completely (Rules & calendars → *Groups ignored by
+  the app* to change the list). Employees → "N employees in OTHERS are ignored · Show them".

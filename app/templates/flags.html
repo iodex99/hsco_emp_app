@@ -19,7 +19,7 @@
 {% endif %}
 
 <div class="flags-grid">
-  <div class="card flag-types"><div class="hd"><h2>By type</h2></div><div class="bd" style="padding:8px">
+  <div class="card flag-types"><div class="hd"><h2>By type {{ ui.info('Only two kinds of exception wait for a review: WFH above the monthly limit (approve the extra days or mark reviewed) and Group not set (set the group on the employee’s page). Everything else is reviewed automatically.') }}</h2></div><div class="bd" style="padding:8px">
     <a class="nav-item {{ 'on' if not code }}" href="{{ base }}&show={{ show }}">All types<span class="r">{{ rows|selectattr('actionable')|list|length }}</span></a>
     {% for g in summary if g.severity != 'info' %}
     <a class="nav-item {{ 'on' if code == g.code }}" href="{{ base }}&code={{ g.code }}&show={{ show }}">

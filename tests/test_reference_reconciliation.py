@@ -108,9 +108,8 @@ def test_behaviour_metrics_on_real_data(run):
     b, res = run
     wfh_over = sorted(e for e, r in res.items() if r.wfh_days > 2)
     assert wfh_over == ["HS179", "HS195"]          # HS020/HS045/HS093: their extra WFH was on off days
-    assert sum(r.missing_punch_days for r in res.values()) > 0
+    # v1.13 (owner): "missing punches" and "present without any punch" are no longer counted or flagged
+    assert not any(f[0] in ("MISSING_PUNCHES", "PRESENT_WITHOUT_PUNCH", "LOP") for r in res.values() for f in r.flags)
     assert res["HS079"].days_present == 0 and any(f[0] == "NO_ATTENDANCE" for f in res["HS079"].flags)
     assert res["HS001"].auto_attendance  # partner: present all month, no punches
-    assert res["HS055"].missing_punch_days >= 15  # one punch a day; greytHR auto-fills 10:00-18:30
-    assert res["HS158"].no_punch_present_days == 18 and res["HS207"].no_punch_present_days == 15
     assert res["HS001"].late_days == 0   # partners excluded from behaviour metrics

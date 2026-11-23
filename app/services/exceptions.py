@@ -1,5 +1,5 @@
-"""Punch & attendance exceptions for a month (docs/METRICS.md "Exceptions"): every employee-day with a missing or
-incorrect punch, a regularisation, WFH (over the limit / on a day off), late / early / short day, absence, off-day
+"""Punch & attendance exceptions for a month (docs/METRICS.md "Exceptions"): every employee-day with an incorrect
+punch (times changed, rejected sign-in), a regularisation, WFH (over the limit / on a day off), late / early / short day, absence, off-day
 work — one row per employee-day with all its issues, plus a per-employee summary.
 
 Built only from the stored day detail (MonthResult.days) and the policy, so it always matches the payroll figures
@@ -13,10 +13,9 @@ from app.models import Period
 from app.services.metrics import results_for
 from app.services.settings import get_policy
 
-# key, label, badge class, group ("punch" = missing / incorrect punch, "reg", "wfh", "time", "att")
+# key, label, badge class, group ("punch" = incorrect punch, "reg", "wfh", "time", "att"). v1.13 (owner): "missing
+# punch" and "present without any punch" removed everywhere.
 TYPES = [
-    ("missing", "Missing punch", "b-bad", "punch"),
-    ("nopunch", "Present, no punch", "b-bad", "punch"),
     ("edited", "In/out changed (no matching punch)", "b-warn", "punch"),
     ("rejected", "Rejected sign-in", "b-warn", "punch"),
     ("mobile_office", "Phone sign-in tagged 'Office'", "b-grey", "punch"),
@@ -29,7 +28,7 @@ TYPES = [
     ("very_late", "Late > 1 h", "b-bad", "time"),      # lateness under an hour: Insights / Overview, not here
     ("early", "Early exit", "b-warn", "time"),
     ("short", "Short day", "b-warn", "time"),
-    ("absent", "Absent / LOP", "b-bad", "att"),
+    ("absent", "Unapplied leave (absence)", "b-bad", "att"),
     ("offday_work", "Worked on a day off", "b-grey", "att"),
 ]
 LABELS = {k: lbl for k, lbl, _c, _g in TYPES}
@@ -51,10 +50,6 @@ def day_issues(dd: dict, wfh_types: set, auto_attendance: bool = False) -> list[
     notes = " ".join(dd.get("notes") or [])
     work = dd.get("type") == "WORKDAY"
     if not auto_attendance:
-        if dd.get("missing"):
-            keys.append("missing")
-        if "no punch recorded" in notes:
-            keys.append("nopunch")
         perm = any((s.get("type") or "").lower() == "permission" for s in sw)
         if perm:
             keys.append("permission")
@@ -76,7 +71,7 @@ def day_issues(dd: dict, wfh_types: set, auto_attendance: bool = False) -> list[
         keys.append("early")
     if dd.get("short"):
         keys.append("short")
-    if work and ("absent" in (dd.get("b1"), dd.get("b2")) or "lop" in (dd.get("b1"), dd.get("b2"))):
+    if work and "absent" in (dd.get("b1"), dd.get("b2")):
         keys.append("absent")
     if dd.get("extra") and "wfh_offday" not in keys:
         keys.append("offday_work")
@@ -123,12 +118,12 @@ def month_exceptions(db: Session, period: Period) -> dict:
                            "auto": auto,
                            "wfh_days": d.get("wfh_days") or 0, "wfh_deduction": d.get("wfh_deduction_days") or 0,
                            "href": f"/periods/{period.key}/employee/{r.emp_no}", **per,
-                           "punch_issues": per["missing"] + per["nopunch"] + per["edited"] + per["rejected"]})
+                           "punch_issues": per["edited"] + per["rejected"]})
     rows.sort(key=lambda x: (x["date"], x["name"]))
     people.sort(key=lambda p: (-p["punch_issues"], -p["permission"], p["name"]))
     return {"rows": rows, "people": people, "counts": counts, "types": TYPES, "labels": LABELS, "classes": CLASSES,
             "wfh_limit": pol.wfh_limit_days,
-            "kpis": {"punch_days": sum(1 for x in rows if {"missing", "nopunch", "edited", "rejected"} & set(x["issues"])),
+            "kpis": {"punch_days": sum(1 for x in rows if {"edited", "rejected"} & set(x["issues"])),
                      "punch_people": sum(1 for p in people if p["punch_issues"]),
                      "regularisations": counts["permission"] + counts["edited"],
                      "reg_people": sum(1 for p in people if p["permission"] or p["edited"]),

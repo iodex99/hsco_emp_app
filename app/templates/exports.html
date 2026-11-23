@@ -9,7 +9,7 @@
   <div class="card"><div class="bd"><div class="person" style="gap:14px;align-items:flex-start"><span class="logo" style="background:var(--brand-50);color:var(--brand)">{{ ui.icon('map-pin') }}</span>
     <div><h2 style="font-size:15px">Punches &amp; locations</h2><p class="small muted" style="margin:4px 0 0">Every punch of the month with where it was made — place name from the GPS coordinates, the employee's remark, permission reason, phone — plus by-place and by-person sheets. Available as soon as the swipe export is imported, before month end.</p></div></div></div></div>
 </div>
-<div class="card flush"><div class="hd"><h2>By month</h2></div><div class="bd"><table>
+<div class="card flush"><div class="hd"><h2>By month {{ ui.info('The payroll workbook (every sheet) and the punches & locations workbook of each month. The Overview, Insights, payroll sheet, Punch exceptions and Locations pages also download as PDF.') }}</h2></div><div class="bd"><table>
 <thead><tr><th>Month</th><th>Status</th><th class="right">Download</th></tr></thead><tbody>
 {% for p in all_periods if p.computed_at or p.id in signin_ids %}<tr><td class="strong">{{ p.label }}</td><td>{% if p.computed_at %}{{ ui.status_badge(p) }}{% else %}<span class="badge b-grey">not calculated yet</span>{% endif %}</td>
 <td class="right">{% if p.computed_at %}<a class="btn sm sec" href="/exports/{{ p.key }}.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Payroll sheet + board metrics (.xlsx)</a>{% endif %}

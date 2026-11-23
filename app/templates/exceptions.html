@@ -5,19 +5,23 @@
 {% set k = X.kpis %}{% set key = period.key %}
 <div class="ph">
   <div><h1>Punch exceptions</h1>
-    <div class="sub">{{ period.label }} · missing and incorrect punches, regularisations, work from home, late by over an hour, early exits, short days — day by day</div></div>
-  <div class="actions"><a class="btn" href="/exports/{{ key }}.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Payroll Excel (incl. this list)</a></div>
+    <div class="sub">{{ period.label }} · incorrect punches, regularisations, work from home, late by over an hour, early exits, short days, unapplied leave — day by day</div></div>
+  <div class="actions"><a class="btn" href="/exports/{{ key }}.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Payroll Excel (incl. this list)</a>
+    <button class="btn sec" type="button" data-pdf="Punch exceptions {{ period.label }}" title="Both tabs, rows as filtered, as a PDF">{{ ui.icon('file-down','sm') }} PDF</button></div>
 </div>
 
 <div class="kpis">
-  {{ ui.kpi('Missing / incorrect punches', k.punch_days, 'triangle-alert', 'bad' if k.punch_days else 'good', none, k.punch_people ~ ' people · days with a missing punch, no punch, changed times or a rejected sign-in') }}
-  {{ ui.kpi('Regularisations', k.regularisations, 'pencil', 'warn' if k.regularisations else '', none, k.reg_people ~ ' people · permission requests + times changed in greytHR') }}
-  {{ ui.kpi('Work from home', k.wfh, 'house', '', none, (k.wfh_over ~ ' days over the limit of ' ~ (X.wfh_limit|n) ~ ' (' ~ k.wfh_over_people ~ ' people)') ~ ((' · ' ~ k.wfh_offday ~ ' on days off, not counted') if k.wfh_offday else '')) }}
+  {{ ui.kpi('Incorrect punches', k.punch_days, 'triangle-alert', 'bad' if k.punch_days else 'good', none, k.punch_people ~ ' people · days with in/out times changed or a rejected sign-in',
+       tip='Days where greytHR’s in / out time has no matching punch (changed by hand) or a sign-in was rejected. People on automatic attendance are not checked.') }}
+  {{ ui.kpi('Regularisations', k.regularisations, 'pencil', 'warn' if k.regularisations else '', none, k.reg_people ~ ' people · permission requests + times changed in greytHR',
+       tip='Days with a permission (regularisation) request plus days whose in / out time was changed in greytHR.') }}
+  {{ ui.kpi('Work from home', k.wfh, 'house', '', none, (k.wfh_over ~ ' days over the limit of ' ~ (X.wfh_limit|n) ~ ' (' ~ k.wfh_over_people ~ ' people)') ~ ((' · ' ~ k.wfh_offday ~ ' on days off, not counted') if k.wfh_offday else ''),
+       tip='WFH days counted for the limit; days after the ' ~ (X.wfh_limit|n) ~ 'th of a person are “over the limit”. WFH on weekly offs / holidays is off-day work and not counted.') }}
 </div>
 
 <div class="tabs" data-tabs id="ex-tabs">
-  <button class="on" data-tab="days">Day by day <span class="n">{{ X.rows|length }}</span></button>
-  <button data-tab="people">By employee <span class="n">{{ X.people|length }}</span></button>
+  <button class="on" data-tab="days">Day by day <span class="n">{{ X.rows|length }}</span> {{ ui.info('One row per employee and day with all its issues. Use the chips to show one kind of issue.') }}</button>
+  <button data-tab="people">By employee <span class="n">{{ X.people|length }}</span> {{ ui.info('The same issues counted per person, with totals at the bottom.') }}</button>
 </div>
 
 <section class="pane on" data-pane="days"><div class="card flush">
@@ -41,16 +45,15 @@
     <td class="small ex-punches" data-v="{{ r.punches }}">{{ r.punches or '—' }}{% if r.n_punches == 1 %} <span class="muted">(1 punch)</span>{% endif %}</td>
     <td class="small">{% if r.reason %}<span class="tag">{{ r.reason }}</span> {% endif %}{{ r.remark }}</td>
     <td class="small">{{ r.status }}</td><td class="small muted">{{ r.notes }}</td></tr>
-  {% else %}<tr><td colspan="13">{% call ui.empty('No exceptions this month', 'Every day has a clean pair of punches.', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
-  </tbody></table></div></div></div>
-  <p class="small muted mt-s">{{ ui.icon('info','sm') }} One row per employee and day with all its issues. Click a row to open that day (punches, places, and the correction form). Partners on automatic attendance are not checked for punches.</p>
+  {% else %}<tr><td colspan="13">{% call ui.empty('No exceptions this month', 'Nothing unusual on any day.', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
+  </tbody>{% if X.rows %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#ex">{{ X.rows|length }}</span> days</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="num" data-sum data-dec="0" data-unit=" h"></td><td></td><td></td><td></td><td></td></tr></tfoot>{% endif %}</table></div></div></div>
+  <p class="small muted mt-s">{{ ui.icon('info','sm') }} One row per employee and day with all its issues. Click a row to open that day (punches, places, and the correction form). People on automatic attendance are not checked for punches.</p>
 </section>
 
 <section class="pane" data-pane="people"><div class="card flush">
   <div data-table-for="#exp"></div>
   <div class="bd"><div class="tw" style="max-height:70vh"><table id="exp" class="compact" data-table data-csv="punch-exceptions-by-employee-{{ key }}">
   <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="cat" data-type="enum">Category</th>
-    <th data-key="missing" data-type="num" class="num">Missing punch</th><th data-key="nopunch" data-type="num" class="num" title="Present, no punch at all">No punch</th>
     <th data-key="edited" data-type="num" class="num" title="In/out changed in greytHR with no matching punch">Times changed</th>
     <th data-key="permission" data-type="num" class="num" title="Regularisation (permission) requests">Regularisation req.</th>
     <th data-key="rejected" data-type="num" class="num">Rejected</th>
@@ -61,16 +64,16 @@
     <th data-key="wfh_leave" data-type="num" class="num" title="WFH sign-in on a day of full leave / absence (not counted — check the day)">WFH on leave day</th>
     <th data-key="very_late" data-type="num" class="num">Late &gt; 1 h</th>
     <th data-key="early" data-type="num" class="num">Early exit</th><th data-key="short" data-type="num" class="num">Short day</th>
-    <th data-key="absent" data-type="num" class="num">Absent / LOP</th><th data-key="offday" data-type="num" class="num">Worked day off</th></tr></thead><tbody>
+    <th data-key="absent" data-type="num" class="num">Unapplied leave</th><th data-key="offday" data-type="num" class="num">Worked day off</th></tr></thead><tbody>
   {% for p in X.people %}<tr data-href="{{ p.href }}">
     <td data-v="{{ p.name }}" data-csv="{{ p.name }} ({{ p.emp_no }})">{{ ui.person(p.name, p.emp_no) }}{% if p.auto %} <span class="tag" title="Automatic attendance: punches not checked">auto</span>{% endif %}</td><td class="small">{{ p.group }}</td><td class="small">{{ p.category }}</td>
-    {% for f in ('missing', 'nopunch', 'edited', 'permission', 'rejected', 'wfh', 'wfh_over') %}<td class="num {{ 'neg' if f in ('missing', 'nopunch', 'wfh_over') and p[f] }}" data-v="{{ p[f] }}">{{ p[f] or '' }}</td>{% endfor %}
+    {% for f in ('edited', 'permission', 'rejected', 'wfh', 'wfh_over') %}<td class="num {{ 'neg' if f == 'wfh_over' and p[f] }}" data-v="{{ p[f] }}">{{ p[f] or '' }}</td>{% endfor %}
     <td class="num {{ 'neg' if p.wfh_deduction }}" data-v="{{ p.wfh_deduction }}">{{ (p.wfh_deduction|n ~ ' d') if p.wfh_deduction else '' }}</td>
     {% for f in ('wfh_closed', 'wfh_offday', 'wfh_leave', 'very_late', 'early', 'short', 'absent', 'offday_work') %}<td class="num" data-v="{{ p[f] }}">{{ p[f] or '' }}</td>{% endfor %}</tr>
-  {% else %}<tr><td colspan="19">{% call ui.empty('Nothing to show', '', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="17">{% call ui.empty('Nothing to show', '', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
   </tbody>
   {% if X.people %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#exp">{{ X.people|length }}</span> people</td><td></td><td></td>
-    {% for i in range(16) %}<td class="num" data-sum{{ ' data-unit=" d"' if i == 7 }}></td>{% endfor %}</tr></tfoot>{% endif %}
+    {% for i in range(14) %}<td class="num" data-sum{{ ' data-unit=" d"' if i == 5 }}></td>{% endfor %}</tr></tfoot>{% endif %}
   </table></div></div></div>
 </section>
 {% endblock %}

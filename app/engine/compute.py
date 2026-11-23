@@ -14,7 +14,7 @@ from typing import Iterable, Optional
 
 from .model import (
     RH_CODES,
-    B_ABSENT, B_COMPOFF, B_LEAVE, B_LOP, B_OFF, B_PRESENT, HOLIDAY, P_ALL_SAT_OFF, P_CUSTOM, P_MUSTER,
+    B_ABSENT, B_COMPOFF, B_LEAVE, B_OFF, B_PRESENT, HOLIDAY, P_ALL_SAT_OFF, P_CUSTOM, P_MUSTER,
     P_STD_FIRST_SAT, P_SUN_ONLY, WEEKLY_OFF, WORKDAY, DayDetail, DayOverride, Employee, EmployeeMonth,
     REJECTED_APPROVALS, MusterDay, Policy, Swipe,
 )
@@ -110,7 +110,7 @@ def _bucket(code: str, policy: Policy, worked: bool) -> str:
     b = policy.status_map.get(code)
     if b is None:
         return B_PRESENT if worked else B_ABSENT
-    return b
+    return B_LEAVE if b == "lop" else b          # (a status list saved before v1.13 may still say "lop")
 
 
 def _mins(t: Optional[datetime]) -> Optional[int]:
@@ -130,7 +130,7 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
 # 11 = v1.12.0: greytHR status RH = an earned (restricted) holiday: no absence, no comp-off for work that day.
 # 10 = v1.9.0: holidays only by category (no per-employee calendar, no location / group / person targeting); leave
 #      balances are not calculated (no ledger, salary deduction or payroll LOP).
-RULES_VERSION = 11
+RULES_VERSION = 12
 
 
 def office_closed_saturday(d: date, policy: Policy) -> bool:
@@ -242,7 +242,7 @@ def compute_employee_month(
                 b2 = B_PRESENT if worked else B_ABSENT
         else:
             b1 = b2 = B_OFF
-            if _bucket(s1, policy, worked) in (B_LEAVE, B_COMPOFF, B_LOP) or _bucket(s2, policy, worked) in (B_LEAVE, B_COMPOFF, B_LOP):
+            if _bucket(s1, policy, worked) in (B_LEAVE, B_COMPOFF) or _bucket(s2, policy, worked) in (B_LEAVE, B_COMPOFF):
                 notes.append("Leave recorded on a non-working day — ignored")
 
         sw = swipes_by_day.get(d, [])
@@ -289,13 +289,10 @@ def compute_employee_month(
             dd.compoff_earned = work_min >= policy.comp_off_min_hours * 60 and not dd.is_rh
             if dd.is_rh and work_min >= policy.comp_off_min_hours * 60:
                 notes.append("Worked on a restricted holiday (RH) — no comp-off")
-        if day_type == WORKDAY and B_PRESENT in (b1, b2) and m.in_time and not sw and swipes:
-            dd.notes.append("Marked present but no punch recorded this day")
         res.days.append(dd)
 
     # ---------- monthly aggregation ----------
     halves = defaultdict(float)
-    lop_as_absent = policy.lop_bucket == "absent"
     for dd in res.days:
         if dd.day_type in (WORKDAY, HOLIDAY):
             res.total_week_days += 1
@@ -313,10 +310,9 @@ def compute_employee_month(
     res.pl_days = halves[B_LEAVE]
     res.cof_days = halves[B_COMPOFF]
     res.unauth_absent_days = halves[B_ABSENT]
-    res.lop_days = halves[B_LOP]
     res.present_halves_days = halves[B_PRESENT]
-    res.leave_days = res.pl_days + res.cof_days + (0 if lop_as_absent else res.lop_days)
-    res.absent_days = res.unauth_absent_days + (res.lop_days if lop_as_absent else 0)
+    res.leave_days = res.pl_days + res.cof_days
+    res.absent_days = res.unauth_absent_days
 
     # WFH
     if policy.wfh_method == "swipes_half":
@@ -444,7 +440,7 @@ def _behaviour(res: EmployeeMonth, emp: Employee, policy: Policy, enabled: bool,
         start, end = parse_shift(dd.shift, policy)
         in_t = dd.in_time or (dd.swipes[0].ts if dd.swipes else None)
         out_t = dd.out_time or (dd.swipes[-1].ts if len(dd.swipes) > 1 else None)
-        # regularisation / missing punch (evidence based on swipes)
+        # regularisation (evidence based on swipes)
         perm = any(s.swipe_type.lower() == "permission" for s in dd.swipes)
         if any_swipes and dd.in_time:
             mins = {s.ts.replace(second=0, microsecond=0) for s in dd.swipes}
@@ -452,9 +448,6 @@ def _behaviour(res: EmployeeMonth, emp: Employee, policy: Policy, enabled: bool,
         else:
             unmatched = False
         dd.is_regularised = perm or bool(unmatched)
-        if (dd.b1 == B_PRESENT or dd.b2 == B_PRESENT) and dd.day_type == WORKDAY and any_swipes:
-            if len(dd.swipes) == 1 or (dd.in_time and not dd.out_time):
-                dd.is_missing_punch = True
         if not enabled:
             continue
         if present1 and in_t:
@@ -483,7 +476,7 @@ def _behaviour(res: EmployeeMonth, emp: Employee, policy: Policy, enabled: bool,
     # sandwich: leave/absence on a workday adjacent to an off/holiday
     by_date = {dd.day: dd for dd in res.days}
     for dd in res.days:
-        if dd.day_type == WORKDAY and (dd.b1 in (B_LEAVE, B_ABSENT, B_LOP) or dd.b2 in (B_LEAVE, B_ABSENT, B_LOP)):
+        if dd.day_type == WORKDAY and (dd.b1 in (B_LEAVE, B_ABSENT) or dd.b2 in (B_LEAVE, B_ABSENT)):
             prev_ = by_date.get(dd.day - timedelta(days=1))
             next_ = by_date.get(dd.day + timedelta(days=1))
             if (prev_ and prev_.day_type != WORKDAY) or (next_ and next_.day_type != WORKDAY):
@@ -491,14 +484,12 @@ def _behaviour(res: EmployeeMonth, emp: Employee, policy: Policy, enabled: bool,
                 res.sandwich_count += 1
 
     res.auto_attendance = swipes_loaded and present_days > 0 and synthetic == present_days
-    res.no_punch_present_days = 0 if res.auto_attendance else synthetic
     res.late_days = sum(dd.is_late for dd in res.days)
     res.very_late_days = sum(dd.is_very_late for dd in res.days)
     res.avg_late_min = round(sum(late_mins) / len(late_mins), 1) if late_mins else 0
     res.early_exit_days = sum(dd.is_early_exit for dd in res.days)
     res.short_days = sum(dd.is_short_day for dd in res.days)
     res.late_sitting_days = sum(dd.is_late_sitting for dd in res.days)
-    res.missing_punch_days = sum(dd.is_missing_punch for dd in res.days)
     res.regularised_days = 0 if res.auto_attendance else sum(dd.is_regularised for dd in res.days)
     res.avg_in_min = round(sum(in_mins) / len(in_mins), 1) if in_mins else None
     res.avg_out_min = round(sum(out_mins) / len(out_mins), 1) if out_mins else None
@@ -518,7 +509,7 @@ def _flags(res: EmployeeMonth, emp: Employee, policy: Policy, flags: list) -> No
     elif res.shortfall_hours > 0 and str((res.overrides or {}).get("shortfall_waived") or "").lower() == "true":
         add("SHORTFALL_EXEMPT", SEV_INFO, f"{res.shortfall_hours:.2f} h short — deduction waived this month")
     if res.unauth_absent_days:
-        add("UNAUTHORISED_ABSENCE", SEV_HIGH, f"{res.unauth_absent_days:g} day(s) absent without approved leave")
+        add("UNAUTHORISED_ABSENCE", SEV_HIGH, f"{res.unauth_absent_days:g} day(s) of unapplied leave (absent, no leave applied)")
     if res.wfh_days > policy.wfh_limit_days:
         add("WFH_OVER_LIMIT", SEV_HIGH, f"{res.wfh_days:g} WFH days (limit {policy.wfh_limit_days:g})"
             + (f" — {min(res.wfh_approved_days, res.wfh_excess_days):g} extra approved by manager / partner"
@@ -532,18 +523,12 @@ def _flags(res: EmployeeMonth, emp: Employee, policy: Policy, flags: list) -> No
             f"(late > {policy.late_grace_min} min on {res.late_days} days, avg {res.avg_late_min:.0f} min)")
     if res.regularised_days >= policy.persistent_regularisation_days:
         add("PERSISTENT_REGULARISATION", SEV_MEDIUM, f"{res.regularised_days} regularised days")
-    if res.missing_punch_days >= 2:
-        add("MISSING_PUNCHES", SEV_MEDIUM, f"{res.missing_punch_days} days with a missing punch")
     if res.mobile_office_swipes:
         add("MOBILE_AT_OFFICE", SEV_INFO, f"{res.mobile_office_swipes} mobile sign-ins tagged 'Office' (biometric bypass?)")
     if res.late_sitting_days >= 5:
         add("LATE_SITTING", SEV_INFO, f"Worked past {policy.late_sitting_after:%H:%M} on {res.late_sitting_days} days")
     if res.sandwich_count >= 2:
         add("SANDWICH_PATTERN", SEV_INFO, f"{res.sandwich_count} leave/absence days adjacent to weekends/holidays")
-    if res.no_punch_present_days:
-        add("PRESENT_WITHOUT_PUNCH", SEV_MEDIUM, f"{res.no_punch_present_days} day(s) marked present with no punch at all")
-    if res.lop_days:
-        add("LOP", SEV_INFO, f"{res.lop_days:g} loss-of-pay day(s)")
     if res.auto_attendance:
         add("AUTO_ATTENDANCE", SEV_INFO, "No punches — attendance auto-marked in greytHR")
     if not emp.group:

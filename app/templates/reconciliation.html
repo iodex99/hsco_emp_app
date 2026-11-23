@@ -9,12 +9,12 @@
 {% set diffrows = r.rows|selectattr('diffs')|list %}
 <div class="kpis">
   {{ ui.kpi('Identical employees', r.matched ~ ' / ' ~ r.compared, 'circle-check', 'good' if r.matched == r.compared else '', none, (((r.matched / r.compared * 100)|round|int ~ '% match on every column') ~ ((' · ' ~ r.rule_only ~ ' more differ only by an app rule') if r.rule_only else '')) if r.compared else '') }}
-  {{ ui.kpi('Employees with a difference', diffrows|length, 'git-compare', 'warn' if diffrows else 'good') }}
+  {{ ui.kpi('Employees with a difference', diffrows|length, 'git-compare', 'warn' if diffrows else 'good', tip='Employees with at least one figure different from the manual MIS sheet.') }}
   {{ ui.kpi('Only in one source', r.rows|rejectattr('in_app')|list|length + r.rows|rejectattr('in_manual')|list|length, 'users') }}
   {{ ui.kpi('greytHR week-days wrong', r.summary_diffs|length, 'triangle-alert', 'warn' if r.summary_diffs else '') }}
 </div>
 <div class="alert">{{ ui.icon('info') }}<span>A difference usually means a manual decision in your sheet. Make it permanent on the employee's page (working pattern, hours per day, exemption) or record it as a month adjustment — then it shows here as a match.</span></div>
-<div class="card flush"><div class="hd"><h2>Differences</h2></div><div data-table-for="#rc"></div><div class="bd"><div class="tw"><table id="rc" data-table data-csv="reconciliation-{{ period.key }}" class="compact">
+<div class="card flush"><div class="hd"><h2>Differences {{ ui.info('Each employee’s figures in the app against the manual MIS sheet uploaded for the month. A difference with a rule explained is expected (the app applies a rule HR did not).') }}</h2></div><div data-table-for="#rc"></div><div class="bd"><div class="tw"><table id="rc" data-table data-csv="reconciliation-{{ period.key }}" class="compact">
 <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="col" data-type="enum">Column</th><th class="num" data-key="manual" data-type="num">Manual sheet</th><th class="num" data-key="app" data-type="num">App</th><th class="num" data-key="diff" data-type="num">Difference</th><th data-key="mrem" data-type="text">Manual remark</th><th data-key="arem" data-type="text">App remark</th></tr></thead><tbody>
 {% for x in r.rows %}
  {% for df in x.diffs %}<tr class="click" data-href="/periods/{{ period.key }}/employee/{{ x.emp_no }}"><td data-v="{{ x.name }}" data-csv="{{ x.name }} ({{ x.emp_no }})">{{ ui.person(x.name, x.emp_no) }}</td>
@@ -25,7 +25,7 @@
 </tbody></table></div></div></div>
 {% endif %}
 {% if r.has_summary %}
-<div class="card flush"><div class="hd"><h2>greytHR Summary vs app</h2><span class="sub">greytHR's "Total Week Days" ignores worked 1st Saturdays and special patterns</span></div><div data-table-for="#rcs"></div><div class="bd"><div class="tw" style="max-height:420px"><table id="rcs" class="compact" data-table data-csv="greythr-vs-app-{{ period.key }}">
+<div class="card flush"><div class="hd"><h2>greytHR Summary vs app {{ ui.info('greytHR’s Attendance Summary “Total Week Days” against the app’s, per employee.') }}</h2><span class="sub">greytHR's "Total Week Days" ignores worked 1st Saturdays and special patterns</span></div><div data-table-for="#rcs"></div><div class="bd"><div class="tw" style="max-height:420px"><table id="rcs" class="compact" data-table data-csv="greythr-vs-app-{{ period.key }}">
 <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="col" data-type="enum">Column</th><th class="num" data-key="g" data-type="num">greytHR</th><th class="num" data-key="a" data-type="num">App</th></tr></thead><tbody>
 {% for x in r.summary_diffs %}<tr class="click" data-href="/periods/{{ period.key }}/employee/{{ x.emp_no }}"><td data-v="{{ x.name }}">{{ ui.person(x.name, x.emp_no) }}</td><td>{{ x.field }}</td><td class="num">{{ x.greythr|n }}</td><td class="num">{{ x.app|n }}</td></tr>
 {% else %}<tr><td colspan="4" class="muted">No differences.</td></tr>{% endfor %}</tbody></table></div></div></div>

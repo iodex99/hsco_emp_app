@@ -13,7 +13,7 @@ from app.services import categories as CAT
 from app.services import metrics as MX
 from app.services.audit import audit
 from app.services.compute import compute_period
-from app.services.settings import get_general
+from app.services.settings import get_general, get_policy
 from app.web import Ctx, hr, redirect, render, viewer
 
 router = APIRouter()
@@ -25,8 +25,12 @@ FIELDS = ("name", "group", "location", "category", "additional_category", "depar
 
 
 @router.get("/employees", response_class=HTMLResponse)
-def employees(c: Ctx = Depends(viewer)):
-    emps = c.db.scalars(select(Employee).order_by(Employee.emp_no)).all()
+def employees(ignored: int = 0, c: Ctx = Depends(viewer)):
+    from app.services.scope import ignored_emp_nos
+    skip = ignored_emp_nos(c.db)
+    allx = c.db.scalars(select(Employee).order_by(Employee.emp_no)).all()
+    # ignored groups (OTHERS, v1.13) are not part of the app; ?ignored=1 lists only them (to check / correct a group)
+    emps = [e for e in allx if (e.emp_no in skip) == bool(ignored)]
     last = {}
     latest = c.db.scalar(select(Period).where(Period.computed_at.is_not(None)).order_by(Period.year.desc(), Period.month.desc()))
     if latest:
@@ -36,7 +40,8 @@ def employees(c: Ctx = Depends(viewer)):
     cats = CAT.by_key(c.db)
     dcal = CAT.default_calendar_id(c.db)
     eff = {e.emp_no: CAT.effective(e, cats, dcal) for e in emps}
-    return render(c, "employees.html", emps=emps, last=last, latest=latest, patterns=PATTERNS, cals=cals, eff=eff)
+    return render(c, "employees.html", emps=emps, last=last, latest=latest, patterns=PATTERNS, cals=cals, eff=eff,
+                  n_ignored=len(skip), showing_ignored=bool(ignored), ignored_groups=get_policy(c.db).ignored_groups)
 
 
 @router.get("/employees/new", response_class=HTMLResponse)

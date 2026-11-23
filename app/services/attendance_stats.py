@@ -5,7 +5,7 @@ few numbers instead of decoding the full day detail (~20 KB per employee-month).
 """
 from __future__ import annotations
 
-UNPLANNED = ("absent", "lop")
+UNPLANNED = ("absent", "lop")   # "lop": months calculated before v1.13 only
 STATS_VERSION = 1
 
 

@@ -18,19 +18,16 @@ FLAG_LABELS = {
     "NO_ATTENDANCE": "No attendance all month",
     "SHORTFALL_DEDUCTION": "Hours shortfall → leave deduction",   # hours part only (v1.6.7)
     "SHORTFALL_EXEMPT": "Shortfall but exempt",
-    "UNAUTHORISED_ABSENCE": "Unauthorised absence",
+    "UNAUTHORISED_ABSENCE": "Unapplied leave (absence)",
     "WFH_OVER_LIMIT": "WFH above monthly limit",
     "PERSISTENT_LATE": "Often more than 1 h late",
     "PERSISTENT_REGULARISATION": "Persistent regularisation",
-    "MISSING_PUNCHES": "Repeated missing punches",
     "MOBILE_AT_OFFICE": "Mobile sign-in tagged 'Office'",
     "OFF_SITE_OFFICE": "Tagged 'Office' but not at an office",
     "SHARED_DEVICE": "Phone used to sign in for several people",
     "LATE_SITTING": "Frequent late sitting",
     "SANDWICH_PATTERN": "Leave adjacent to weekends/holidays",
-    "LOP": "Loss of pay",
     "AUTO_ATTENDANCE": "Auto attendance (no punches)",
-    "PRESENT_WITHOUT_PUNCH": "Present without any punch",
     "GROUP_NOT_SET": "Group not set",
     "DOJ_MISSING": "Date of joining missing",
     "NEW_JOINEE": "New joinee",
@@ -45,6 +42,19 @@ FLAG_LABELS = {
     "COMPOFF_OVERDRAWN": "Comp-off overdrawn",
 }
 SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "info": 3}
+# flags no longer raised (owner, v1.13: LOP removed; "missing punches" and "present without any punch" removed
+# everywhere) — months finalised before still carry them in their stored results: never shown or counted
+RETIRED_FLAGS = frozenset({"LOP", "MISSING_PUNCHES", "PRESENT_WITHOUT_PUNCH"})
+
+
+def live_flags(flags) -> list:
+    return [f for f in (flags or []) if f.get("code") not in RETIRED_FLAGS]
+
+
+def scoped_employees(db: Session, policy=None) -> dict:
+    """{emp_no: Employee} without the ignored groups (OTHERS, v1.13)."""
+    from app.services.scope import employees
+    return {e.emp_no: e for e in employees(db, policy)}
 
 
 def hm(minutes: Optional[float]) -> str:
@@ -65,7 +75,7 @@ def results_for(db: Session, period: Period, with_days: bool = True) -> list[Mon
 def compute_kpis(db: Session, period: Period, policy=None, res=None, emps=None) -> dict:
     policy = policy or get_policy(db)
     res = res if res is not None else results_for(db, period, with_days=False)
-    emps = emps if emps is not None else {e.emp_no: e for e in db.scalars(select(Employee))}
+    emps = emps if emps is not None else scoped_employees(db, policy)
     y, m = period.year, period.month
     month_start = date(y, m, 1)
     month_end = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
@@ -84,14 +94,15 @@ def compute_kpis(db: Session, period: Period, policy=None, res=None, emps=None) 
         "leave_days": tot("pl_days"),
         "compoff_days": tot("cof_days"),
         "absent_days": tot("unauth_absent_days"),
-        "lop_days": tot("lop_days"),
+        "absent_people": sum(1 for d in D if d.get("unauth_absent_days")),
         "wfh_days": tot("wfh_days"),
         "wfh_over_limit": sum(1 for d in D if (d.get("wfh_days") or 0) > policy.wfh_limit_days),
+        "wfh_people": sum(1 for d in D if (d.get("wfh_days") or 0) > 0),
+        "wfh_over_days": round(sum(max(0.0, (d.get("wfh_days") or 0) - policy.wfh_limit_days) for d in D), 1),
         "late_days": sum(d.get("late_days", 0) for d in behaviour),
         "persistent_late": sum(1 for d in behaviour if is_persistent_late(d.get("late_days", 0), d.get("very_late_days", 0), policy)),
         "regularised_days": sum(d.get("regularised_days", 0) for d in behaviour),
         "persistent_regularisation": sum(1 for d in behaviour if d.get("regularised_days", 0) >= policy.persistent_regularisation_days),
-        "missing_punch_days": sum(d.get("missing_punch_days", 0) for d in behaviour),
         "extra_days": tot("extra_days"),
         "compoff_earned": tot("compoff_earned"),
         "total_hours": tot("actual_hours"),
@@ -119,7 +130,7 @@ def _breakdown(D: list[dict], by: str) -> list[dict]:
     for d in D:
         c = groups[d.get(by) or "(not set)"]
         c["headcount"] += 1
-        for k in ("days_present", "pl_days", "cof_days", "unauth_absent_days", "lop_days", "wfh_days", "late_days",
+        for k in ("days_present", "pl_days", "cof_days", "unauth_absent_days", "wfh_days", "late_days",
                   "regularised_days", "deduction_days", "actual_hours", "required_hours", "extra_days"):
             c[k] += d.get(k) or 0
         c["deduction_emps"] += 1 if d.get("deduction_days") else 0
@@ -131,21 +142,32 @@ def _breakdown(D: list[dict], by: str) -> list[dict]:
     return rows
 
 
+WD_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def _ranked(c: Counter) -> list:
+    """[[emp_no, value], …] highest first — who is behind one bar of a chart (the page opens it as a list)."""
+    return [[k, round(v, 2)] for k, v in sorted(c.items(), key=lambda x: (-x[1], x[0]))]
+
+
+def loc_label(s: dict) -> str:
+    return s.get("loc") or ("Office (biometric)" if (s.get("type") or "").lower() == "astra" else s.get("type") or "Other")
+
+
 def period_metrics(db: Session, period: Period) -> dict:
     policy = get_policy(db)
     res = results_for(db, period)
-    emps = {e.emp_no: e for e in db.scalars(select(Employee))}
-    y, m = period.year, period.month
+    emps = scoped_employees(db, policy)
     D = [r.data for r in res]
     kpis = compute_kpis(db, period, policy, res, emps)
     prev = previous_period(db, period)
     prev_kpis = compute_kpis(db, prev, policy, None, emps) if prev and prev.computed_at else None
 
-    # flags
+    # flags (retired codes of months finalised before v1.13 are left out)
     flag_counts = Counter()
     flag_rows = []
     for r in res:
-        for f in r.flags:
+        for f in live_flags(r.flags):
             flag_counts[(f["code"], f["severity"])] += 1
             flag_rows.append({"emp_no": r.emp_no, "name": r.name, "group": r.group, **f})
     flag_rows.sort(key=lambda f: (SEV_ORDER.get(f["severity"], 9), f["code"], f["emp_no"]))
@@ -153,36 +175,55 @@ def period_metrics(db: Session, period: Period) -> dict:
                     for (c, s), n in sorted(flag_counts.items(), key=lambda x: (SEV_ORDER.get(x[0][1], 9), -x[1]))]
 
     group_rows = _breakdown(D, "group")
-    category_rows = _breakdown(D, "category")
 
-    # location mix
-    loc_mix = Counter()
-    late_by_wd = Counter()
-    in_hist = Counter()
+    # charts, and who is behind every bar (drill-down, v1.13)
+    loc_mix, loc_who = Counter(), defaultdict(Counter)
+    late_by_wd, late_who = Counter(), defaultdict(Counter)
+    in_hist, in_who = Counter(), defaultdict(Counter)
     daily = defaultdict(lambda: Counter())
+    daily_who = defaultdict(lambda: defaultdict(Counter))
+    excl = set(policy.metrics_exclude_groups)
     for r in res:
-        if r.group in set(policy.metrics_exclude_groups):
+        if r.group in excl:
             continue
         for dd in r.days:
             for s in dd.get("swipes", []):
-                loc_mix[s["loc"] or ("Office (biometric)" if s["type"].lower() == "astra" else s["type"] or "Other")] += 1
+                lab = loc_label(s)
+                loc_mix[lab] += 1
+                loc_who[lab][r.emp_no] += 1
             if dd.get("late"):
                 late_by_wd[dd["wd"]] += 1
+                late_who[dd["wd"]][r.emp_no] += 1
             if dd.get("in") and dd["type"] == "WORKDAY" and dd["b1"] == "present":
                 h, mi = map(int, dd["in"].split(":"))
                 bucket = f"{h:02d}:{(mi // 30) * 30:02d}"
                 in_hist[bucket] += 1
-            dc = daily[dd["date"]]
+                in_who[bucket][r.emp_no] += 1
+            dc, dw = daily[dd["date"]], daily_who[dd["date"]]
             if dd["type"] == "WORKDAY":
                 for b in (dd["b1"], dd["b2"]):
+                    b = "leave" if b in ("compoff", "lop") else b      # chart series: present / leave / absent
                     dc[b] += 0.5
+                    dw[b][r.emp_no] += 0.5
                 if dd.get("wfh"):
                     dc["wfh"] += 1
+                    dw["wfh"][r.emp_no] += 1
                 if dd.get("late"):
                     dc["late"] += 1
-    wd_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
     people = movement(db, period, emps)
+    who = {r.emp_no: [r.name, r.group or ""] for r in res}
+    for k in ("tenure_who",):
+        for rows in people[k].values():
+            for e, _v in rows:
+                if e not in who and e in emps:
+                    who[e] = [emps[e].name or e, emps[e].group or ""]
+    wfh_people = sorted(({"emp_no": d["emp_no"], "name": d["name"], "group": d.get("group") or "",
+                          "value": round(d.get("wfh_days") or 0, 2),
+                          "over": round(max(0.0, (d.get("wfh_days") or 0) - policy.wfh_limit_days), 2),
+                          "approved": d.get("wfh_approved_days") or 0, "deduction": d.get("wfh_deduction_days") or 0}
+                         for d in D if (d.get("wfh_days") or 0) > 0), key=lambda x: (-x["value"], x["name"]))
+    loc_total = sum(loc_mix.values())
     return {
         "period": {"key": period.key, "label": period.label, "status": period.status},
         "kpis": kpis,
@@ -191,14 +232,29 @@ def period_metrics(db: Session, period: Period) -> dict:
         "flag_summary": flag_summary,
         "flags": flag_rows,
         "groups": group_rows,
-        "categories": category_rows,
-        "location_mix": [{"label": k, "count": v} for k, v in loc_mix.most_common()],
-        "late_by_weekday": [{"wd": w, "count": late_by_wd.get(w, 0)} for w in wd_order],
+        "location_mix": [{"label": k, "count": v, "people": len(loc_who[k]),
+                          "pct": round(100 * v / loc_total, 1) if loc_total else 0} for k, v in loc_mix.most_common()],
+        "late_by_weekday": [{"wd": w, "count": late_by_wd.get(w, 0)} for w in WD_ORDER],
         "in_time_hist": [{"bucket": k, "count": in_hist[k]} for k in sorted(in_hist)],
-        "daily": [{"date": k, **{kk: round(vv, 1) for kk, vv in v.items()}} for k, v in sorted(daily.items())],
-        "people": people,
+        "daily": [{"date": k, "wd": WD_ORDER[date.fromisoformat(k).weekday()],
+                   **{kk: round(vv, 1) for kk, vv in v.items()}} for k, v in sorted(daily.items())],
+        "people": {k: v for k, v in people.items() if k != "tenure_who"},
         "top": top_lists(D, policy),
+        "wfh_people": wfh_people,
         "trend": trend(db),
+        "who": who,
+        # per person, for "who is in this group" (By group rows): present, leave, comp-off, unapplied leave, WFH, late
+        # days, regularised days, deduction days
+        "person_rows": [[d["emp_no"], d.get("days_present") or 0, d.get("pl_days") or 0, d.get("cof_days") or 0,
+                         d.get("unauth_absent_days") or 0, d.get("wfh_days") or 0, d.get("late_days") or 0,
+                         d.get("regularised_days") or 0, d.get("deduction_days") or 0] for d in D],
+        "drill": {
+            "daily": {d: {b: _ranked(c) for b, c in v.items()} for d, v in daily_who.items()},
+            "loc": {k: _ranked(c) for k, c in loc_who.items()},
+            "late_wd": {k: _ranked(c) for k, c in late_who.items()},
+            "in_time": {k: _ranked(c) for k, c in in_who.items()},
+            "tenure": people["tenure_who"],
+        },
     }
 
 
@@ -213,7 +269,6 @@ def top_lists(D: list[dict], policy) -> dict:
         "late": pick(beh, "very_late_days", minv=1),
         "wfh": pick(D, "wfh_days", minv=policy.wfh_limit_days + 0.001),
         "regularised": pick(beh, "regularised_days", minv=1),
-        "missing_punch": pick(beh, "missing_punch_days", minv=1),
         "absent": pick(D, "unauth_absent_days", minv=0.5),
         "excess_hours": pick(D, "balance_hours", minv=0.01),
         "shortfall": [{"emp_no": d["emp_no"], "name": d["name"], "group": d.get("group", ""),
@@ -257,21 +312,29 @@ def movement(db: Session, period: Period, emps: dict) -> dict:
         "recent_joiners": [row(e) for e in recent],
         "headcount_by_group": dict(sorted(headcount_by_group.items())),
         "tenure_buckets": _tenure(emps, month_end),
+        "tenure_who": _tenure(emps, month_end, who=True),
     }
 
 
-def _tenure(emps: dict, asof: date) -> list[dict]:
+def _tenure(emps: dict, asof: date, who: bool = False):
+    """Active employees by length of service; who=True: {bucket: [[emp_no, years], …]} (chart drill-down)."""
     b = Counter()
+    w = defaultdict(list)
     order = ["< 6 months", "6-12 months", "1-3 years", "3-5 years", "5-10 years", "10+ years", "unknown"]
     for e in emps.values():
         if e.dol or not e.is_active:
             continue
         if not e.doj:
             b["unknown"] += 1
+            w["unknown"].append([e.emp_no, None])
             continue
         yrs = (asof - e.doj).days / 365.25
-        b[order[0] if yrs < .5 else order[1] if yrs < 1 else order[2] if yrs < 3 else order[3] if yrs < 5
-          else order[4] if yrs < 10 else order[5]] += 1
+        k = (order[0] if yrs < .5 else order[1] if yrs < 1 else order[2] if yrs < 3 else order[3] if yrs < 5
+             else order[4] if yrs < 10 else order[5])
+        b[k] += 1
+        w[k].append([e.emp_no, round(yrs, 1)])
+    if who:
+        return {k: sorted(v, key=lambda x: -(x[1] or 0)) for k, v in w.items()}
     return [{"bucket": k, "count": b.get(k, 0)} for k in order]
 
 
@@ -304,8 +367,8 @@ def employee_history(db: Session, emp_no: str) -> list[dict]:
     rows = db.execute(select(Period, MonthResult).join(MonthResult, MonthResult.period_id == Period.id)
                       .where(MonthResult.emp_no == emp_no).order_by(Period.year, Period.month)).all()
     return [{"key": p.key, "label": p.label, **{k: r.data.get(k) for k in (
-        "days_present", "pl_days", "cof_days", "unauth_absent_days", "lop_days", "wfh_days", "late_days", "regularised_days",
-        "missing_punch_days", "actual_hours", "required_hours", "balance_hours", "deduction_days",
+        "days_present", "pl_days", "cof_days", "unauth_absent_days", "wfh_days", "late_days", "regularised_days",
+        "actual_hours", "required_hours", "balance_hours", "deduction_days",
         "avg_in_min", "avg_work_hours", "extra_days")}} for p, r in rows]
 
 
@@ -319,9 +382,13 @@ RECON_FIELDS = [
 
 def reconciliation(db: Session, period: Period) -> dict:
     """Compare app results to (a) the uploaded manual MIS and (b) the greytHR Summary report."""
+    from app.services.scope import ignored_emp_nos
+    skip = ignored_emp_nos(db)                         # OTHERS: not compared (v1.13)
     res = {r.emp_no: r for r in results_for(db, period, with_days=False)}
-    manual = {r.emp_no: r.data for r in db.scalars(select(ManualMisRow).where(ManualMisRow.period_id == period.id))}
-    summ = {r.emp_no: r.data for r in db.scalars(select(SummaryRow).where(SummaryRow.period_id == period.id))}
+    manual = {r.emp_no: r.data for r in db.scalars(select(ManualMisRow).where(ManualMisRow.period_id == period.id))
+              if r.emp_no not in skip}
+    summ = {r.emp_no: r.data for r in db.scalars(select(SummaryRow).where(SummaryRow.period_id == period.id))
+            if r.emp_no not in skip}
     rows = []
     for emp_no in sorted(res.keys() | manual.keys()):
         r = res.get(emp_no)

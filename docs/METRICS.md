@@ -9,45 +9,53 @@ Code: `app/engine/compute.py` (per employee), `app/services/metrics.py` (organis
 | New joinees / Exits | DOJ / DOL within the month (exits also suggested from the DOJ active list) |
 | Attendance rate | Σ days present ÷ Σ (week days − holidays) |
 | Leave deductions | employees with shortfall deduction; total deduction days |
-| LOP days | loss-of-pay days approved in greytHR (LOP status). (v1.9: no "payroll LOP" / salary deduction — leave balances are kept in greytHR) |
-| Over WFH limit | employees with WFH days > limit (2); WFH counts only on the person's own working days (v1.6.4); ½ day of leave per extra day (v1.6.5) |
+| Unapplied leave (absence) | Σ `A` halves on working days, and how many people (v1.13 — formerly "unauthorised absence"; there is no LOP any more: LOP / LWP count as leave) |
+| Over WFH limit | employees with WFH days > limit (2); WFH counts only on the person's own working days (v1.6.4); ½ day of leave per extra day (v1.6.5). Work location tab (v1.13): WFH days (instances), people who worked from home, people over the limit and days over, and every WFH person (over-limit badge, “Over the limit” chip) |
 | Persistently late | > 60 min late on ≥ 10 days (non-partners) |
 | Persistent regularisation | ≥ 3 regularised days |
-| Unauthorised absent days | Σ `A` halves on working days |
 | Avg hours / present day; avg in / out time | non-partners, present working days |
 | Off-day / holiday work days; comp-offs earned (≥ 5 h) | |
 | Excess / shortfall hours | Σ positive / negative monthly balances |
 | Late-sitting days | out after 21:00 or next day |
 
 ## Charts
-Location mix of punches (biometric office / client / office-mobile / WFH / on-duty / permission) · arrival-time
-histogram (30-min buckets) · daily attendance mix (present / leave / absent+LOP / WFH) · late arrivals by weekday ·
-tenure profile · per-employee excess/shortfall bar (HTML pack, click → drill-down) · 12-month trend (deductions, late,
-WFH, absence, regularisation) once more than one month exists · per-employee history chart.
+Where people punched (v1.13: a ranked bar list instead of a doughnut — punches, share of all punches, people; a Total
+row) · arrival-time histogram (30-min buckets) · daily attendance mix (present / leave (incl. comp-off) / unapplied
+leave / WFH; tooltip "Thu 9 Oct 2026" with every series and the total) · late arrivals by weekday · tenure profile ·
+12-month trend once more than one month exists · per-employee history chart.
+
+**Click-through (v1.13, owner: "when clicked on these bars, shall show the data of those exact filtered out employees … across
+the app")**: every bar / segment / row of a chart or breakdown opens a panel listing exactly the people behind it with
+their figure for it (searchable, Filter → Group, sortable, CSV, total row): daily attendance (date × present / leave /
+unapplied leave / WFH; half days count ½), first-punch half hour, late arrivals by weekday, where people punched, tenure
+bucket, Overview *Needs attention* type (with each person's detail and a link to the payroll sheet filtered to them,
+`?f=fl-<CODE>`), By-group row, Insights day-length bucket, arrival cell (weekday × half hour), group bar / row. Trend
+charts open the clicked month; the employee history chart opens that month's page. The lists behind the bars come from
+`metrics.period_metrics()["drill"]` / `insights()["drill"]` and always add up to the bar.
 
 ## Top lists
-Most often > 1 h late · above WFH limit · most regularisations · missing punches · unauthorised absence ·
-most excess hours · hours shortfall (with deduction) · comp-offs earned · leave adjacent to weekends/holidays.
-Each list holds every employee who qualifies (value ≥ 1 day, or above the WFH limit; ties by name); the page shows the
-top 5/10/20/all and searches by name or employee no. (v1.6.3).
+Most often > 1 h late · WFH (everyone, over-limit marked) · most regularisations · unapplied leave (absence) ·
+most excess hours · hours shortfall (with deduction) · comp-offs earned; Insights: most unapplied leave this month /
+12 months. Each list holds every employee who qualifies (value ≥ 1 day, or above the WFH limit; ties by name); the page shows the
+top 5/10/20/all and searches by name or employee no. (v1.6.3). v1.13: a **group filter** (several groups at once) on
+every list, and a footer "x of y people · total z" for the people matching the search / groups.
 
 ## Heatmap Total (v1.6.3)
 Insights → Attendance heatmap: *Total* = number of days in the legend states the user highlighted (several add up; a
 half-leave day counts as one day); with nothing highlighted, all days with a state. Footer: sums for the rows shown
 after search/filter, and per day the number of highlighted cells.
 
-## Group table
-Headcount, present days, PL, comp-off, absent, LOP, WFH, late days, regularised, deduction days, employees deducted,
-actual ÷ required hours %.
+## Group table ("By group", v1.13: the category table was removed)
+Headcount, present days, leave, comp-off, unapplied leave (absence), WFH, late days, regularised, deduction days,
+actual ÷ required hours %; a Total row (sums; hours vs required = Σ actual ÷ Σ required).
 
 ## People movement
 Joiners, exits, possible exits (in last month's muster, not this month's), work anniversaries, joined in last
 6 months (probation watch), headcount by group, tenure buckets.
 
 ## Employee-level metrics (drill-down, Excel sheets)
-MIS figures E–R; splits PL / COF / unauthorised / LOP; WFH (+ partial); late days, very-late days, avg minutes late,
-avg in/out, early exits, short days (< 7 h), late sitting, missing punches, regularised days, permission swipes,
-present-without-punch days, auto attendance, client-location days, on-duty days, biometric vs mobile swipes, mobile
+MIS figures E–R; splits leave (incl. LOP / LWP) / COF / unapplied leave; WFH (+ partial); late days, very-late days, avg minutes late,
+avg in/out, early exits, short days (< 7 h), late sitting, regularised days, permission swipes, auto attendance, client-location days, on-duty days, biometric vs mobile swipes, mobile
 "Office" swipes, comp-off earned / taken, sandwich count, the deduction split (hours / WFH); day-by-day status, punches with
 place names, notes where the app calendar differs from greytHR.
 
@@ -56,32 +64,31 @@ place names, notes where the app calendar differs from greytHR.
 |---|---|---|
 | NO_ATTENDANCE | critical | no present day and no hours in month |
 | SHORTFALL_DEDUCTION | high | deduction > 0 |
-| UNAUTHORISED_ABSENCE | high | any `A` half-day |
+| UNAUTHORISED_ABSENCE | high | any `A` half-day — shown as **Unapplied leave (absence)** (v1.13) |
 | WFH_OVER_LIMIT | high | WFH days > limit |
 | LEAVE_EXHAUSTED, NO_OPENING_BALANCE, COMPOFF_OVERDRAWN | — | not raised since v1.9 (no balances); labels kept for finalised months |
 | PERSISTENT_LATE | medium | "Often more than 1 h late" (see KPI) |
 | PERSISTENT_REGULARISATION | medium | regularised days ≥ 3 |
-| MISSING_PUNCHES | medium | ≥ 2 present days with one punch / no out |
-| PRESENT_WITHOUT_PUNCH | medium | present days with times but zero swipes (employee punches on other days) |
+| MISSING_PUNCHES, PRESENT_WITHOUT_PUNCH, LOP | — | removed in v1.13 (owner); never shown, even for months finalised earlier (`metrics.RETIRED_FLAGS`) |
 | COMPOFF_OVERDRAWN | medium | COF taken > balance |
 | GROUP_NOT_SET / NOT_IN_MASTER / UNKNOWN_STATUS | medium | data quality |
-| SHORTFALL_EXEMPT, MOBILE_AT_OFFICE, LATE_SITTING (≥ 5), SANDWICH_PATTERN (≥ 2), LOP, AUTO_ATTENDANCE, DOJ_MISSING, NEW_JOINEE, EXIT, CALENDAR_MISMATCH, MANUAL_OVERRIDE, NO_OPENING_BALANCE | info | |
+| SHORTFALL_EXEMPT, MOBILE_AT_OFFICE, LATE_SITTING (≥ 5), SANDWICH_PATTERN (≥ 2), AUTO_ATTENDANCE, DOJ_MISSING, NEW_JOINEE, EXIT, CALENDAR_MISMATCH, MANUAL_OVERRIDE, NO_OPENING_BALANCE | info | |
 
 ## Insights (v1.4 — `app/services/insights.py`; Insights page, employee Scorecard tab, Excel *Scorecard*)
-Working days = days of type WORKDAY for the employee. *Behaviour* measures (punctuality, regularisation, missing
-punches) exclude `metrics_exclude_groups` (default Partner).
+Working days = days of type WORKDAY for the employee. *Behaviour* measures (punctuality, regularisation) exclude
+`metrics_exclude_groups` (default Partner).
 
 | Measure | Definition |
 |---|---|
 | Attendance % | days present ÷ working days |
-| Unplanned absence % (absenteeism) | (absent + loss-of-pay half-days ÷ 2) ÷ working days. Planned leave and comp-off are *not* unplanned |
-| Absence spell | consecutive working days with any unplanned absence; weekly-offs/holidays in between do not break a spell |
+| Unapplied leave (absence) % | absent (`A`) half-days ÷ 2 ÷ working days (v1.13: was "unplanned absence" = absent + LOP; LOP is leave now). Leave and comp-off are not counted |
+| Absence spell | consecutive working days with unapplied leave; weekly-offs/holidays in between do not break a spell |
 | On time % (punctuality) | present working days whose first punch is within the late grace (shift start + `late_grace_min`) ÷ present working days with a first punch |
 | Hours vs required % (utilisation) | actual hours ÷ required hours |
 | Overtime / shortfall hours | sum of positive / negative month balances |
 | Long day | a day worked ≥ 2 h more than the person's hours per day |
 | WFH share % | WFH days ÷ days present |
-| Regularisation % / missing-punch % | regularised (missing-punch) days ÷ days present |
+| Regularisation % | regularised days ÷ days present |
 | Leave used FY % | paid leave taken in the financial year to date ÷ annual entitlement × people |
 | Attrition (12 m) % | exits with Date of Leaving in the last 12 months ÷ average of headcount now and 12 months ago |
 | Average tenure | mean years since joining, active employees with a DOJ |
@@ -89,10 +96,10 @@ punches) exclude `metrics_exclude_groups` (default Partner).
 | Arrival heatmap | first punches counted by weekday × half hour (`< 08:00` and `13:00 +` folded) |
 | Working-day histogram | worked days by length bucket (< 4 h … 11 h +) |
 
-**Attention score (0–100, higher = more to talk about)** = 25 × min(1, unplanned-absence days in the last 12 months ÷ 10) + 20 × (1 − on-time share)
-+ 20 × min(1, (100 − hours-vs-required %) ÷ 20) + 15 × min(1, regularised days ÷ (2 × persistent-regularisation days))
-+ 10 × min(1, (WFH days − limit) ÷ (2 × limit)) + 10 × min(1, missing-punch days ÷ 5). Behaviour parts are 0 for excluded
-groups. "Main reasons" lists the parts worth ≥ 5 points. ≥ 50 counts as "needs a conversation".
+**Attention score (0–100, higher = more to talk about)** = 30 × min(1, unapplied-leave days in the last 12 months ÷ 10) + 20 × (1 − on-time share)
++ 25 × min(1, (100 − hours-vs-required %) ÷ 20) + 15 × min(1, regularised days ÷ (2 × persistent-regularisation days))
++ 10 × min(1, (WFH days − limit) ÷ (2 × limit)). Behaviour parts are 0 for excluded groups. (v1.13: missing punches
+removed; its 10 points went to unapplied leave +5 and hours +5.) "Main reasons" lists the parts worth ≥ 5 points. ≥ 50 counts as "needs a conversation".
 
 **Employee comparison** (Scorecard tab): the person's value, their group's average and the firm's average for ten
 measures; verdict "better / needs attention" when the gap to the firm exceeds 5 % points (percentages) or 10 % of the
@@ -122,8 +129,6 @@ crossing a month boundary counts once).
 One row per employee-day with ≥ 1 issue; all from the stored day detail.
 | Issue | Rule |
 |---|---|
-| Missing punch | present working day with one punch only, or an in-time without an out-time (`missing`) |
-| Present, no punch | marked present in greytHR with no punch at all that day (people who punch at all) |
 | In/out changed (no matching punch) | regularised day without a Permission punch: greytHR in/out time matches no punch |
 | Regularisation request | a `Permission` punch that day (reason shown) |
 | Rejected sign-in | a sign-in with approval Rejected / Declined / Cancelled / Denied (ignored for attendance) |
@@ -132,12 +137,23 @@ One row per employee-day with ≥ 1 issue; all from the stored day detail.
 | WFH on a leave / absent day | WFH sign-in on a working day of full leave / absence (not counted — check the day) |
 | WFH — office closed (Saturday) | WFH on a working Saturday the branches are closed (only the open Saturdays in the setting) — not counted (v1.7.4) |
 | Late > 1 h / Early exit / Short day | as in Behaviour metrics (lateness under 1 h is on Insights / Overview) |
-| Absent / LOP / Worked on a day off | unauthorised absence or LOP half; work on a weekly off / holiday (not WFH) |
-Partners on automatic attendance are not checked for punch issues. "Punch issues" KPI = days with missing punch, no
-punch, changed times or a rejected sign-in; "Regularisations" = requests + changed times.
+| Unapplied leave / Worked on a day off | absent (`A`) half on a working day; work on a weekly off / holiday (not WFH) |
+People on automatic attendance are not checked for punch issues. "Incorrect punches" KPI = days with changed times
+or a rejected sign-in (v1.13: missing punch and present-without-punch removed); "Regularisations" = requests + changed times.
 
-## Categories (v1.7)
-Overview *By group & category* and Insights *Groups & categories* show the same measures per **category** (the
-category stored with each month's result; "(not set)" for people without one) as per group; Excel: Board Summary *By
-category*, *Categories Compared*, Scorecard column. Payroll sheet, Punch exceptions, heatmap and scorecard have a
+## Categories (v1.7; v1.13: comparisons by group only)
+The category comparison tables (Overview, Insights, Board Summary *By category*, *Categories Compared*) were removed
+in v1.13 (owner: "only keep one table for group"). Payroll sheet, Punch exceptions, heatmap and scorecard keep a
 Category column (hidden by default where space is tight).
+
+## Totals, explanations, PDF (v1.13)
+- **Totals** wherever they add up: tables with a footer that re-totals the rows shown (payroll sheet, scorecard,
+  heatmap, Punch exceptions days / people, Locations sign-ins / places / people, By group, employee history), ranked
+  lists (footer total), Where people punched (Total row), Insights arrival table (per weekday and per half hour), click-
+  through panels; Insights *Groups compared* ends with the whole firm.
+- **"i"** next to every KPI, card, tab and small figure: hover / focus / tap explains how it is calculated
+  (`ui.info(text)`, `ui.kpi(…, tip=…)`).
+- **PDF** (Overview, Insights, Payroll leave sheet, Punch exceptions, Locations): A4 landscape, every tab one after
+  the other, KPI cards as boxes, charts as images, lists and tables as text tables with their colours (rows as filtered
+  on screen), header (firm, page, time) and "Page x of y" on every page. Built in the browser (`static/pdf.js` with the
+  vendored jsPDF + AutoTable) — nothing leaves the server.

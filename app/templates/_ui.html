@@ -39,9 +39,14 @@
 {%- endif -%}
 {%- endmacro %}
 
-{% macro kpi(label, value, ic="", tone="", href=None, foot="", sub="") -%}
+{# "i" button: hover / focus / tap shows how a figure is calculated or what it represents (v1.13) #}
+{% macro info(text) -%}
+<span class="info-i" tabindex="0" role="button" aria-label="About: {{ text }}" data-tip="{{ text }}">i</span>
+{%- endmacro %}
+
+{% macro kpi(label, value, ic="", tone="", href=None, foot="", sub="", tip="") -%}
 {% if href %}<a class="kpi {{ tone }}" href="{{ href }}">{% else %}<div class="kpi {{ tone }}">{% endif %}
-  <div class="l">{% if ic %}{{ icon(ic, 'sm') }}{% endif %}{{ label }}</div>
+  <div class="l">{% if ic %}{{ icon(ic, 'sm') }}{% endif %}{{ label }}{% if tip %}{{ info(tip) }}{% endif %}</div>
   <div class="v">{{ value }}{% if sub %} <small>{{ sub }}</small>{% endif %}</div>
   {% if foot %}<div class="f">{{ foot }}</div>{% endif %}
 {% if href %}</a>{% else %}</div>{% endif %}
@@ -53,16 +58,21 @@
 
 {% macro csrf_field() -%}<input type="hidden" name="csrf" value="{{ csrf }}">{%- endmacro %}
 
-{# Ranked list of every qualifying employee. Shows the top n (5 / 10 / 20 / all, remembered per browser) and can be
-   searched by name or employee number; the rank shown is always the real rank. neg=True renders "−x unit" plus a
-   deduction badge (hours shortfall). #}
-{% macro toplist(rows, unit, pkey, n=10, neg=False, empty="Nobody this month.") -%}
+{# Ranked list of every qualifying employee. Shows the top n (5 / 10 / 20 / all, remembered per browser), can be
+   searched by name or employee number and filtered by group (several at once); the footer gives how many match and
+   their total. The rank shown is always the real rank. neg=True renders "−x unit" plus a deduction badge (hours
+   shortfall); badge=key shows that row value as a red badge (e.g. WFH days over the limit). #}
+{% macro toplist(rows, unit, pkey, n=10, neg=False, empty="Nobody this month.", badge=None, badge_unit="", total=True) -%}
+{% set gs = rows|map(attribute='group')|map('default', '', true)|unique|sort|list %}
 <div class="tl" data-toplist data-n="{{ n }}">
-{% if rows|length > 5 %}<div class="tl-bar"><label class="tl-q">{{ icon('search','sm') }}<input type="search" placeholder="Search name or ID" aria-label="Search this list" autocomplete="off"></label>
-<select aria-label="How many to show"><option value="5">Top 5</option><option value="10"{{ ' selected' if n == 10 }}>Top 10</option><option value="20">Top 20</option><option value="0">All ({{ rows|length }})</option></select></div>{% endif %}
-<ul class="list">{% for r in rows %}<li data-q="{{ (r.name ~ ' ' ~ r.emp_no)|lower }}"{{ ' hidden' if loop.index > n }}><span class="rank">{{ loop.index }}</span>{{ person(r.name, r.group, '/periods/' ~ pkey ~ '/employee/' ~ r.emp_no) }}<span class="r">{% if neg %}<span class="neg">−{{ r.value|n }} {{ unit }}</span>{% if r.deduction %} <span class="badge b-bad">{{ r.deduction|n }} d</span>{% endif %}{% else %}{{ r.value|n }} {{ unit[:-1] if unit.endswith('s') and r.value|float <= 1 else unit }}{% endif %}</span></li>
+{% if rows|length > 5 or gs|length > 1 %}<div class="tl-bar">{% if rows|length > 5 %}<label class="tl-q">{{ icon('search','sm') }}<input type="search" placeholder="Search name or ID" aria-label="Search this list" autocomplete="off"></label>{% else %}<span style="flex:1"></span>{% endif %}
+{% if gs|length > 1 %}<details class="tl-grp"><summary title="Show only some groups">{{ icon('filter','sm') }}<span>All groups</span></summary><div class="tl-menu">
+{% for g in gs %}<label><input type="checkbox" value="{{ g }}"> {{ g or '(no group)' }} <span class="muted">{{ rows|selectattr('group', 'equalto', g)|list|length if g else rows|rejectattr('group')|list|length }}</span></label>{% endfor %}
+<div class="tl-gact"><button type="button" class="btn sm ghost" data-gnone>All groups</button></div></div></details>{% endif %}
+{% if rows|length > 5 %}<select aria-label="How many to show"><option value="5">Top 5</option><option value="10"{{ ' selected' if n == 10 }}>Top 10</option><option value="20">Top 20</option><option value="0">All ({{ rows|length }})</option></select>{% endif %}</div>{% endif %}
+<ul class="list">{% for r in rows %}<li data-q="{{ (r.name ~ ' ' ~ r.emp_no)|lower }}" data-g="{{ r.group or '' }}" data-v="{{ r.value }}"{{ ' hidden' if loop.index > n }}><span class="rank">{{ loop.index }}</span>{{ person(r.name, r.sub or r.group, '/periods/' ~ pkey ~ '/employee/' ~ r.emp_no) }}<span class="r">{% if badge and r[badge] %}<span class="badge b-bad" title="over the limit">+{{ r[badge]|n }}{{ badge_unit }}</span> {% endif %}{% if neg %}<span class="neg">−{{ r.value|n }} {{ unit }}</span>{% if r.deduction %} <span class="badge b-bad">{{ r.deduction|n }} d</span>{% endif %}{% else %}{{ r.value|n }} {{ unit[:-1] if unit.endswith('s') and r.value|float <= 1 else unit }}{% endif %}</span></li>
 {% else %}<li class="muted">{{ icon('circle-check','sm') }} {{ empty }}</li>{% endfor %}
-{% if rows %}<li class="muted tl-none" hidden>No one by that name on this list.</li>{% endif %}</ul>
-{% if rows|length > 5 %}<div class="tl-foot"><span data-tl-count>{{ [n, rows|length]|min }}</span> of {{ rows|length }} {{ 'person' if rows|length == 1 else 'people' }}</div>{% endif %}
+{% if rows %}<li class="muted tl-none" hidden>No one by that name or group on this list.</li>{% endif %}</ul>
+{% if rows %}<div class="tl-foot"><span data-tl-count>{{ [n, rows|length]|min }}</span> of <span data-tl-of>{{ rows|length }}</span> {{ 'person' if rows|length == 1 else 'people' }}{% if total %} · total <b><span data-tl-sum>{{ rows|sum(attribute='value')|n }}</span> {{ unit or '' }}</b>{% endif %}</div>{% endif %}
 </div>
 {%- endmacro %}

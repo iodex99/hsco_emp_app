@@ -97,7 +97,7 @@
 <script>window.HSCO_UPD = {{ upd|tojson_safe }};</script>
 {% endif %}
 <div class="toasts" id="toasts">{% if flash %}<div class="toast" role="status">{{ ui.icon('circle-check') }}<span>{{ flash }}</span><button type="button" aria-label="Dismiss" onclick="this.parentNode.remove()">{{ ui.icon('x','sm') }}</button></div>{% endif %}</div>
-<script>window.HSCO_ICONS = "/static/icons.svg?v={{ asset_v }}";</script>
+<script>window.HSCO_ICONS = "/static/icons.svg?v={{ asset_v }}"; window.HSCO_ASSET_V = "{{ asset_v }}"; window.HSCO_ORG = {{ (org or "HSCO")|tojson }};</script>
 <script src="/static/app.js?v={{ asset_v }}"></script>
 <script src="/static/table.js?v={{ asset_v }}"></script>
 {% block scripts %}{% endblock %}

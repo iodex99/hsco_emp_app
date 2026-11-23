@@ -266,3 +266,17 @@ file is missing; draft + finalised punches named once it is back; coordinate cac
 `test_datadir::test_settings_warns_when_the_offline_place_names_are_missing`. CI install job checks the file was
 copied. Live: a real-data copy put into the client's state (all 828 GPS punches stored as coordinates, cache holding
 coordinates) — after a start every punch had a place name (Locations page and employee page checked).
+
+## v1.13.0 — no LOP, unapplied leave, OTHERS ignored, click-through, totals, "i", PDF
+Engine: LOP / LWP → leave (old `lop` status lists too), no LOP / missing-punch / no-punch fields or flags.
+Web (`test_web.py`): `test_group_others_is_ignored_everywhere` (no result; not on any page, search, Excel or locations
+workbook; Settings list editable, emptying it brings the person back), `test_overview_click_through_totals_info_and_pdf`
+(people behind each daily bar add up to the bar; location shares add to 100 %; WFH list; Needs-attention links; payroll
+sheet `?f=fl-CODE` chip; "i" count; PDF scripts served locally), `test_excel_without_lop_missing_punches_or_categories`;
+existing tests updated for the new wording, columns (payroll sheet column 28 = Category) and attention weights.
+Browser (`tests/e2e/test_tables.py`): Needs-attention → panel with the same count → payroll sheet filtered to exactly
+them; "i" tooltip; click a daily bar → "Present — Thu 1 Oct 2026" with a total equal to the bar; group filter on a ranked
+list; Overview / Insights / payroll-sheet PDFs downloaded and read back (pypdf): pages, sections, "Page 1 of", no "LOP".
+Real data (copy of October): every Overview / Insights interaction above, Overview PDF 8 pages / Insights 10 pages
+(rendered and checked page by page: KPI boxes, side-by-side lists, coloured heatmap, scorecard with totals), no console
+errors.

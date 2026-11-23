@@ -15,23 +15,28 @@
     {% if months|length > 1 %}<form method="get" action="/locations" class="inline"><select name="period" onchange="this.form.submit()" aria-label="Month">
       {% for p in months %}<option value="{{ p.key }}" {{ 'selected' if p.key == key }}>{{ p.label }}</option>{% endfor %}</select></form>{% endif %}
     <a class="btn" href="/exports/{{ key }}/locations.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Download Excel</a>
+    <button class="btn sec" type="button" data-pdf="Locations {{ R.period.label }}" title="Every tab, rows as filtered, as a PDF">{{ ui.icon('file-down','sm') }} PDF</button>
   </div>
 </div>
 
 
 <div class="kpis">
-  {{ ui.kpi('Mobile sign-ins', k.mobile, 'smartphone', '', none, (k.gps_pct|n(0) ~ '% with GPS · ' ~ k.places ~ ' places') if k.gps_pct is not none else 'no GPS in this export') }}
-  {{ ui.kpi('Client visits', k.client_visits, 'briefcase', '', none, 'distinct person · day · place') }}
-  {{ ui.kpi('Work from home', k.wfh, 'house', '', none, k.wfh_people ~ ' people') }}
-  {{ ui.kpi("Tagged 'Office' from a phone", k.office_tagged, 'building-2', '', none, k.office_people ~ ' people · check the place against your office') }}
+  {{ ui.kpi('Mobile sign-ins', k.mobile, 'smartphone', '', none, (k.gps_pct|n(0) ~ '% with GPS · ' ~ k.places ~ ' places') if k.gps_pct is not none else 'no GPS in this export',
+       tip='Sign-ins made on the greytHR app (everything except the office biometric reader), and how many carried GPS coordinates. Places = distinct place names.') }}
+  {{ ui.kpi('Client visits', k.client_visits, 'briefcase', '', none, 'distinct person · day · place',
+       tip='Sign-ins tagged Client location, counted once per person, day and place.') }}
+  {{ ui.kpi('Work from home', k.wfh, 'house', '', none, k.wfh_people ~ ' people',
+       tip='Sign-ins tagged Work from home (sign-ins, not WFH days — the WFH day count is on the Overview).') }}
+  {{ ui.kpi("Tagged 'Office' from a phone", k.office_tagged, 'building-2', '', none, k.office_people ~ ' people · check the place against your office',
+       tip='Mobile sign-ins tagged Office instead of a biometric punch — check that the place shown really is an office.') }}
 </div>
 {% if R.shared %}<div class="alert bad">{{ ui.icon('triangle-alert') }}<span><b>{{ R.shared|length }} phone{{ 's' if R.shared|length != 1 }} used to sign in for more than one person:</b>
   {% for d, who in R.shared.items() %}{{ who|join(' & ') }}{{ '; ' if not loop.last }}{% endfor %}.</span></div>{% endif %}
 
 <div class="tabs" data-tabs id="loc-tabs">
-  <button class="on" data-tab="all">Sign-ins <span class="n">{{ R.rows|length }}</span></button>
-  <button data-tab="places">By place <span class="n">{{ R.places|length }}</span></button>
-  <button data-tab="people">By person <span class="n">{{ R.people|length }}</span></button>
+  <button class="on" data-tab="all">Sign-ins <span class="n">{{ R.rows|length }}</span> {{ ui.info('Every mobile sign-in of the month with its place name (from the built-in offline map of India).') }}</button>
+  <button data-tab="places">By place <span class="n">{{ R.places|length }}</span> {{ ui.info('Sign-ins grouped by place name, with who signed in there.') }}</button>
+  <button data-tab="people">By person <span class="n">{{ R.people|length }}</span> {{ ui.info('Sign-ins per person by how they were tagged.') }}</button>
 </div>
 
 <section class="pane on" data-pane="all"><div class="card flush">
@@ -55,7 +60,7 @@
     <td class="small">{% if 'rejected' in r.tags %}<span class="badge b-bad">{{ r.approval }}</span>{% else %}{{ r.approval }}{% endif %}</td>
     <td class="small mono">{% if r.lat is not none %}{{ '%.5f'|format(r.lat) }}, {{ '%.5f'|format(r.lon) }}{% endif %}</td></tr>
   {% else %}<tr><td colspan="9">{% call ui.empty('No mobile sign-ins this month', 'Everyone punched on the office biometric reader.', 'smartphone') %}{% endcall %}</td></tr>{% endfor %}
-  </tbody></table></div></div></div>
+  </tbody>{% if R.rows %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#signins">{{ R.rows|length }}</span> sign-ins</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr></tfoot>{% endif %}</table></div></div></div>
   <p class="small muted mt-s">{{ ui.icon('info','sm') }} Place names come from the built-in offline map of India — nothing is sent off the server. Click a row for that person's month.</p>
 </section>
 
@@ -68,18 +73,18 @@
     <td class="num">{{ b.count }}</td><td class="num">{{ b.people }}</td><td class="small" data-csv="{{ b.people_names|join('; ') }}">{{ b.people_names[:5]|join(', ') }}{% if b.people_names|length > 5 %} +{{ b.people_names|length - 5 }}{% endif %}</td>
     <td class="small">{{ b.notes }}</td><td class="small" data-v="{{ b.first.isoformat() }}">{{ b.first.strftime('%d %b') }}</td><td class="small" data-v="{{ b.last.isoformat() }}">{{ b.last.strftime('%d %b') }}</td></tr>
   {% else %}<tr><td colspan="9" class="muted">No places with GPS this month.</td></tr>{% endfor %}
-  </tbody></table></div></div></div></section>
+  </tbody>{% if R.places %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#places">{{ R.places|length }}</span> places</td><td></td><td></td><td class="num" data-sum></td><td></td><td></td><td></td><td></td><td></td></tr></tfoot>{% endif %}</table></div></div></div></section>
 
 <section class="pane" data-pane="people"><div class="card flush"><div data-table-for="#people"></div>
   <div class="bd"><div class="tw" style="max-height:70vh"><table id="people" class="compact" data-table data-csv="sign-ins-by-person-{{ key }}">
-  <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="n" data-type="num" class="num" data-sum>Mobile sign-ins</th><th data-key="gps" data-type="num" class="num" data-sum>With GPS</th>
+  <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="n" data-type="num" class="num" data-sum>Mobile sign-ins</th><th data-key="gps" data-type="num" class="num" data-sum>With GPS</th>
     <th data-key="places" data-type="num" class="num">Places</th><th data-key="client" data-type="num" class="num" data-sum>Client</th><th data-key="wfh" data-type="num" class="num" data-sum>WFH</th>
     <th data-key="onduty" data-type="num" class="num" data-sum>On duty</th><th data-key="office" data-type="num" class="num" data-sum>Tagged Office</th>
 <th data-key="perm" data-type="num" class="num" data-sum>Permission</th></tr></thead><tbody>
-  {% for p in R.people %}<tr data-href="{{ p.href }}"><td data-v="{{ p.name }}" data-csv="{{ p.name }} ({{ p.emp_no }})">{{ ui.person(p.name, p.emp_no) }}</td>
+  {% for p in R.people %}<tr data-href="{{ p.href }}"><td data-v="{{ p.name }}" data-csv="{{ p.name }} ({{ p.emp_no }})">{{ ui.person(p.name, p.emp_no) }}</td><td class="small">{{ p.group }}</td>
     <td class="num">{{ p.sign_ins }}</td><td class="num">{{ p.gps }}</td><td class="num">{{ p.places }}</td><td class="num">{{ p.client or '' }}</td><td class="num">{{ p.wfh or '' }}</td>
     <td class="num">{{ p.onduty or '' }}</td><td class="num">{{ p.office_tagged or '' }}</td>
 <td class="num">{{ p.permission or '' }}</td></tr>
-  {% endfor %}</tbody></table></div></div></div></section>
+  {% endfor %}</tbody>{% if R.people %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#people">{{ R.people|length }}</span> people</td><td></td><td class="num" data-sum></td><td class="num" data-sum></td><td></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td></tr></tfoot>{% endif %}</table></div></div></div></section>
 {% endif %}
 {% endblock %}

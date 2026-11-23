@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
 {% block title %}{{ r.name }} · {{ period.label }}{% endblock %}
-{% macro status_opts() -%}{% set B = {'present':'Present','leave':'Leave','compoff':'Comp-off','absent':'Absent','lop':'Loss of pay','off':'Off / holiday'} %}{% for b, lbl in B.items() %}<optgroup label="{{ lbl }}">{% for s in status_codes if status_meaning.get(s) == b %}<option value="{{ s }}">{{ s }} — {{ lbl|lower }}</option>{% endfor %}</optgroup>{% endfor %}{%- endmacro %}
+{% macro status_opts() -%}{% set B = {'present':'Present','leave':'Leave','compoff':'Comp-off','absent':'Unapplied leave (absence)','off':'Off / holiday'} %}{% for b, lbl in B.items() %}<optgroup label="{{ lbl }}">{% for s in status_codes if status_meaning.get(s) == b %}<option value="{{ s }}">{{ s }} — {{ lbl|lower }}</option>{% endfor %}</optgroup>{% endfor %}{%- endmacro %}
 {% block content %}
 {% set editable = can_hr and period.status != 'FINALISED' %}
 <div class="crumbs"><a href="/periods/{{ period.key }}">Payroll leave sheet</a> {{ ui.icon('chevron-right','sm') }} <span>{{ r.name }}</span></div>
@@ -18,13 +18,17 @@
 </div>
 
 <div class="kpis">
-  {{ ui.kpi('Days present', d.days_present|n, 'calendar-days', '', none, 'of ' ~ ((d.total_week_days - d.holidays)|n) ~ ' working days · ' ~ (d.holidays|n) ~ ' holiday(s)') }}
+  {{ ui.kpi('Days present', d.days_present|n, 'calendar-days', '', none, 'of ' ~ ((d.total_week_days - d.holidays)|n) ~ ' working days · ' ~ (d.holidays|n) ~ ' holiday(s)',
+       tip='Week days − holidays − leave − unapplied leave (absence). Includes WFH and on-duty days.') }}
   {{ ui.kpi('Hours vs required', ('+' if d.balance_hours > 0 else '') ~ (d.balance_hours|n(1)) ~ ' h', 'clock', 'bad' if d.balance_hours < 0 else 'good', none,
-       (d.actual_hours|n(1)) ~ ' worked · ' ~ (d.required_hours|n(1)) ~ ' required') }}
+       (d.actual_hours|n(1)) ~ ' worked · ' ~ (d.required_hours|n(1)) ~ ' required',
+       tip='Actual hours (hours on weekly offs and holidays excluded) − required hours (days present × ' ~ ((d.hours_per_day or policy.hours_per_day)|n) ~ ' h).') }}
   {{ ui.kpi('Leave deduction', (d.deduction_days|n) ~ ' d', 'calendar', 'bad' if d.deduction_days else '', none,
-       d.remark if d.remark else 'no deduction') }}
+       d.remark if d.remark else 'no deduction',
+       tip='½ day per ' ~ (policy.shortfall_block_hours|n) ~ ' h short (rounded up; none when exempt or waived) + ' ~ (policy.wfh_excess_deduction_days|n) ~ ' day per WFH day above ' ~ (policy.wfh_limit_days|n) ~ ' not approved.') }}
   {{ ui.kpi('Leave taken', ((d.pl_days or 0) + (d.cof_days or 0))|n ~ ' d', 'briefcase', '', none,
-       'paid ' ~ (d.pl_days|n) ~ ' · comp-off ' ~ (d.cof_days|n) ~ ((' · LOP ' ~ (d.lop_days|n)) if d.lop_days else '')) }}
+       'leave ' ~ (d.pl_days|n) ~ ' · comp-off ' ~ (d.cof_days|n),
+       tip='Leave (PL, CL, SL … and loss of pay) and comp-off taken on working days, in half days.') }}
 </div>
 
 <div class="tabs" data-tabs id="emp-tabs">
@@ -42,51 +46,50 @@
     <div class="cal">{% for h in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<div class="h">{{ h }}</div>{% endfor %}
     {% for w in weeks %}{% for dd in w %}
       {% if dd %}{% set main_b = dd.b1 if dd.b1 != 'present' else dd.b2 %}
-      {% set tags = [('absent', dd.b1 in ('absent','lop') or dd.b2 in ('absent','lop')), ('leave', dd.b1 == 'leave' or dd.b2 == 'leave'),
+      {% set tags = [('absent', dd.b1 == 'absent' or dd.b2 == 'absent'), ('leave', dd.b1 in ('leave','lop') or dd.b2 in ('leave','lop')),
                      ('compoff', dd.b1 == 'compoff' or dd.b2 == 'compoff'), ('holiday', dd.type == 'HOLIDAY'), ('late', dd.late),
-                     ('wfh', dd.wfh), ('missing', dd.missing), ('regularised', dd.regularised), ('extra', dd.extra),
+                     ('wfh', dd.wfh), ('regularised', dd.regularised), ('extra', dd.extra),
                      ('corrected', dd.overridden)]|selectattr(1)|map(attribute=0)|join(' ') %}
       <button type="button" class="day {{ dd.type }} b-{{ main_b }}" data-day="{{ dd.date }}" data-tags="{{ tags }}" title="{{ dd.notes|join('; ') }}">
         <span class="dn">{{ dd.date[8:]|int }}</span>
-        <span class="st">{% if dd.type == 'WEEKLY_OFF' %}Weekly off{% elif dd.type == 'HOLIDAY' %}{{ dd.holiday or 'Holiday' }}{% else %}{{ {'P':'Present','A':'Absent','PL':'Leave','COF':'Comp-off','LOP':'LOP'}.get(dd.s1, dd.s1) }}{% if dd.s2 != dd.s1 %} / {{ dd.s2 }}{% endif %}{% endif %}</span>
+        <span class="st">{% if dd.type == 'WEEKLY_OFF' %}Weekly off{% elif dd.type == 'HOLIDAY' %}{{ dd.holiday or 'Holiday' }}{% else %}{{ {'P':'Present','A':'Unapplied leave','PL':'Leave','COF':'Comp-off','LOP':'Leave','LWP':'Leave'}.get(dd.s1, dd.s1) }}{% if dd.s2 != dd.s1 %} / {{ dd.s2 }}{% endif %}{% endif %}</span>
         {% if dd.in %}<span class="tm">{{ dd.in }}–{{ dd.out or '?' }}</span>{% endif %}
         {% if dd.work_min %}<span class="hr">{{ dd.work_min|hm }} h</span>{% endif %}
-        <span class="dots">{% if dd.late %}<i class="dot d-late"></i>{% endif %}{% if dd.wfh %}<i class="dot d-wfh"></i>{% endif %}{% if dd.missing %}<i class="dot d-miss"></i>{% endif %}{% if dd.regularised %}<i class="dot d-reg"></i>{% endif %}{% if dd.extra %}<i class="dot d-extra"></i>{% endif %}{% if dd.overridden %}<i class="dot d-ovr"></i>{% endif %}</span>
+        <span class="dots">{% if dd.late %}<i class="dot d-late"></i>{% endif %}{% if dd.wfh %}<i class="dot d-wfh"></i>{% endif %}{% if dd.regularised %}<i class="dot d-reg"></i>{% endif %}{% if dd.extra %}<i class="dot d-extra"></i>{% endif %}{% if dd.overridden %}<i class="dot d-ovr"></i>{% endif %}</span>
       </button>
       {% else %}<div class="day blank"></div>{% endif %}
     {% endfor %}{% endfor %}</div>
     <div class="legend" id="cal-legend" title="Click one or more to show only those days">
-      {% for key, label, mark in [('absent','Absent','<i class="sw" style="background:var(--bad-bg);border-color:var(--bad-bd)"></i>'),
+      {% for key, label, mark in [('absent','Unapplied leave','<i class="sw" style="background:var(--bad-bg);border-color:var(--bad-bd)"></i>'),
                                   ('leave','Leave','<i class="sw" style="background:var(--info-bg);border-color:var(--info-bd)"></i>'),
                                   ('compoff','Comp-off','<i class="sw" style="background:var(--teal-bg)"></i>'),
                                   ('holiday','Holiday','<i class="sw" style="background:var(--violet-bg)"></i>'),
                                   ('late','Late','<i class="dot d-late"></i>'), ('wfh','WFH','<i class="dot d-wfh"></i>'),
-                                  ('missing','Missing punch','<i class="dot d-miss"></i>'), ('regularised','Regularised','<i class="dot d-reg"></i>'),
+                                  ('regularised','Regularised','<i class="dot d-reg"></i>'),
                                   ('extra','Worked off-day','<i class="dot d-extra"></i>'), ('corrected','Corrected','<i class="dot d-ovr"></i>')] %}
       <button type="button" class="lg" data-lg="{{ key }}" aria-pressed="false">{{ mark|safe }}{{ label }}</button>{% endfor %}
       <span class="lg-info muted hidden" id="lg-info"><b id="lg-n">0</b> days match · <button type="button" class="tt-clear" id="lg-clear">Show all days</button></span>
     </div>
   </div></div>
   <div>
-    <div class="card"><div class="hd"><h2>Flags</h2><div class="tools"><a class="btn sm ghost" id="emp-queue" href="/flags?period={{ period.key }}&emp={{ r.emp_no }}&show=all" title="Open the review queue showing only {{ r.name }}">Review queue {{ ui.icon('arrow-right','sm') }}</a></div></div><div class="bd" style="padding-top:4px;padding-bottom:4px"><ul class="list">
-      {% for f in r.flags|sort(attribute='severity') if f.severity != 'info' %}<li style="align-items:flex-start"><a class="flag-link" href="/flags?period={{ period.key }}&emp={{ r.emp_no }}&code={{ f.code }}&show=all" title="Review this in the queue">{{ ui.sev(f.severity) }}<span class="small">{{ f.message }}</span></a></li>
+    <div class="card"><div class="hd"><h2>Flags {{ ui.info('Exceptions found for this person this month. Only WFH above the limit and Group not set wait for a review; the rest are reviewed automatically.') }}</h2><div class="tools"><a class="btn sm ghost" id="emp-queue" href="/flags?period={{ period.key }}&emp={{ r.emp_no }}&show=all" title="Open the review queue showing only {{ r.name }}">Review queue {{ ui.icon('arrow-right','sm') }}</a></div></div><div class="bd" style="padding-top:4px;padding-bottom:4px"><ul class="list">
+      {% for f in r.flags|rejectattr('code', 'in', retired)|sort(attribute='severity') if f.severity != 'info' %}<li style="align-items:flex-start"><a class="flag-link" href="/flags?period={{ period.key }}&emp={{ r.emp_no }}&code={{ f.code }}&show=all" title="Review this in the queue">{{ ui.sev(f.severity) }}<span class="small">{{ f.message }}</span></a></li>
       {% else %}<li class="muted">{{ ui.icon('circle-check','sm') }} No exceptions.</li>{% endfor %}
-      {% set infos = r.flags|selectattr('severity','equalto','info')|list %}
+      {% set infos = r.flags|rejectattr('code', 'in', retired)|selectattr('severity','equalto','info')|list %}
       {% if infos %}<li style="display:block"><details><summary class="small muted" style="cursor:pointer">{{ infos|length }} informational note{{ 's' if infos|length > 1 }}</summary>
         <ul class="small" style="padding-left:18px;color:var(--text-2)">{% for f in infos %}<li style="display:list-item;border:0;padding:3px 0">{{ f.message }}</li>{% endfor %}</ul></details></li>{% endif %}
     </ul></div></div>
-    <div class="card"><div class="hd"><h2>This month at a glance</h2></div><div class="bd">
+    <div class="card"><div class="hd"><h2>This month at a glance {{ ui.info('The month in figures: leave, unapplied leave, WFH against the limit, late arrivals, punch times, hours, regularisations, off-day work and comp-offs.') }}</h2></div><div class="bd">
       <div class="minis" style="grid-template-columns:1fr 1fr">
         <div class="mini"><div class="v">{{ d.pl_days|n }} / {{ d.cof_days|n }}</div><div class="l">Leave / comp-off</div></div>
-        <div class="mini {{ 'bad' if d.unauth_absent_days }}"><div class="v">{{ d.unauth_absent_days|n }} / {{ d.lop_days|n }}</div><div class="l">Absent / LOP</div></div>
+        <div class="mini {{ 'bad' if d.unauth_absent_days }}"><div class="v">{{ d.unauth_absent_days|n }}</div><div class="l">Unapplied leave (absence)</div></div>
         <div class="mini {{ 'warn' if d.wfh_days > policy.wfh_limit_days }}"><div class="v">{{ d.wfh_days|n }}</div><div class="l">WFH days (max {{ policy.wfh_limit_days|n }})</div></div>
         <div class="mini {{ 'warn' if d.very_late_days >= policy.persistent_late_days }}"><div class="v">{{ d.late_days }} / {{ d.very_late_days }}</div><div class="l">Late &gt;{{ policy.late_grace_min }}m / &gt;{{ policy.very_late_min }}m</div></div>
         <div class="mini"><div class="v">{{ d.avg_in_min|hm or '—' }}</div><div class="l">Avg in · out {{ d.avg_out_min|hm or '—' }}</div></div>
         <div class="mini"><div class="v">{{ d.avg_work_hours or '—' }}</div><div class="l">Avg hours / day</div></div>
         <div class="mini {{ 'warn' if d.regularised_days >= policy.persistent_regularisation_days }}"><div class="v">{{ d.regularised_days }}</div><div class="l">Regularised days</div></div>
-        <div class="mini {{ 'warn' if d.missing_punch_days }}"><div class="v">{{ d.missing_punch_days }}</div><div class="l">Missing punches</div></div>
         <div class="mini"><div class="v">{{ d.extra_days|n }}</div><div class="l">Worked off-days</div></div>
-        <div class="mini"><div class="v">{{ d.compoff_earned|n }}</div><div class="l">Comp-offs earned</div></div>
+        <div class="mini" style="grid-column:span 2"><div class="v">{{ d.compoff_earned|n }}</div><div class="l">Comp-offs earned</div></div>
       </div></div></div>
   </div>
 </div>
@@ -103,9 +106,9 @@
   <div class="card"><div class="hd"><h2>Attention score</h2></div><div class="bd">
     <div class="minis" style="grid-template-columns:1fr 1fr">
       <div class="mini {{ 'bad' if me.attention >= 50 else 'warn' if me.attention >= 25 }}"><div class="v">{{ me.attention }}<small class="muted"> / 100</small></div><div class="l">#{{ sc.rank }} of {{ sc.of }} this month</div></div>
-      <div class="mini {{ 'warn' if me.absence_12m_days }}"><div class="v">{{ me.absence_12m_days|n }} <small class="muted">d</small></div><div class="l">Unplanned absence, last {{ me.absence_12m_months }} month{{ "s" if me.absence_12m_months != 1 }} ({{ me.absence_12m_spells }} spell{{ "s" if me.absence_12m_spells != 1 }})</div></div>
+      <div class="mini {{ 'warn' if me.absence_12m_days }}"><div class="v">{{ me.absence_12m_days|n }} <small class="muted">d</small></div><div class="l">Unapplied leave (absence), last {{ me.absence_12m_months }} month{{ "s" if me.absence_12m_months != 1 }} ({{ me.absence_12m_spells }} spell{{ "s" if me.absence_12m_spells != 1 }})</div></div>
     </div>
-    <ul class="list mt-s">{% for k, v in me.attention_parts.items() %}<li><span>{{ {'absence':'Unplanned absence (12 months)','punctuality':'Late arrivals','utilisation':'Hours below required','regularisation':'Regularisations','wfh':'WFH over the limit','missing':'Missing punches'}[k] }}</span>
+    <ul class="list mt-s">{% for k, v in me.attention_parts.items() %}<li><span>{{ {'absence':'Unapplied leave (absence), 12 months','punctuality':'Late arrivals','utilisation':'Hours below required','regularisation':'Regularisations','wfh':'WFH over the limit'}.get(k, k) }}</span>
       <span class="r"><span class="score {{ 'bad' if v >= 10 else 'warn' if v >= 5 else 'ok' }}"><i style="width:{{ (100 * v / sc.weights[k])|round if sc.weights[k] else 0 }}%"></i><b>{{ v|n(1) }}/{{ sc.weights[k] }}</b></span></span></li>{% endfor %}</ul>
     <p class="small muted mt-s">Higher = more to talk about. <a href="/insights?period={{ period.key }}">See everyone on Insights</a>.</p>
   </div></div>
@@ -116,7 +119,7 @@
 {% set DT = r.days %}
 <section class="pane" data-pane="days"><div class="card flush">
   <div class="hd" style="flex-wrap:wrap;gap:8px"><div class="chips" data-chips="#days">
-    {% for tag, label in [('', 'All days'), ('work', 'Working days'), ('late', 'Late'), ('missing', 'Missing punch'), ('regularised', 'Regularised'), ('wfh', 'WFH'), ('absent', 'Absent / LOP'), ('leave', 'Leave / comp-off'), ('extra', 'Worked off-day'), ('corrected', 'Corrected')] %}
+    {% for tag, label in [('', 'All days'), ('work', 'Working days'), ('late', 'Late'), ('regularised', 'Regularised'), ('wfh', 'WFH'), ('absent', 'Unapplied leave'), ('leave', 'Leave / comp-off'), ('extra', 'Worked off-day'), ('corrected', 'Corrected')] %}
     <button class="chip{{ ' on' if not tag }}" type="button" data-chip="{{ tag }}">{{ label }}</button>{% endfor %}
   </div></div>
   <div data-table-for="#days"></div>
@@ -125,11 +128,11 @@
 {% for dd in r.days %}
 {% set st = 'Weekly off' if dd.type == 'WEEKLY_OFF' else ('Holiday' if dd.type == 'HOLIDAY' else (dd.s1 if dd.s1 == dd.s2 else dd.s1 ~ '/' ~ dd.s2)) %}
 <tr id="d-{{ dd.date }}" style="{{ 'background:var(--surface-2)' if dd.type != 'WORKDAY' }}"
-    data-tags="{{ 'work' if dd.type == 'WORKDAY' }} {{ 'late' if dd.late }} {{ 'missing' if dd.missing }} {{ 'regularised' if dd.regularised }} {{ 'wfh' if dd.wfh }} {{ 'absent' if dd.b1 in ('absent','lop') or dd.b2 in ('absent','lop') }} {{ 'leave' if dd.b1 in ('leave','compoff') or dd.b2 in ('leave','compoff') }} {{ 'extra' if dd.extra }} {{ 'corrected' if dd.overridden }}">
+    data-tags="{{ 'work' if dd.type == 'WORKDAY' }} {{ 'late' if dd.late }} {{ 'regularised' if dd.regularised }} {{ 'wfh' if dd.wfh }} {{ 'absent' if dd.b1 == 'absent' or dd.b2 == 'absent' }} {{ 'leave' if dd.b1 in ('leave','compoff','lop') or dd.b2 in ('leave','compoff','lop') }} {{ 'extra' if dd.extra }} {{ 'corrected' if dd.overridden }}">
   <td style="white-space:nowrap" data-v="{{ dd.date }}"><b>{{ dd.date[8:] }}</b> {{ period.label[:3] }}</td><td class="muted">{{ dd.wd }}</td>
   <td data-f="{{ st }}">{% if dd.type == 'WEEKLY_OFF' %}<span class="muted">Weekly off</span>{% elif dd.type == 'HOLIDAY' %}<span class="badge b-violet">{{ dd.holiday or 'Holiday' }}</span>{% else %}<span class="strong">{{ dd.s1 }}{% if dd.s2 != dd.s1 %}/{{ dd.s2 }}{% endif %}</span>{% endif %}
     {% if raw_status.get(dd.date) and (raw_status[dd.date][0] != dd.s1 or raw_status[dd.date][1] != dd.s2) %}<span class="muted small">(greytHR {{ raw_status[dd.date][0] }})</span>{% endif %}
-    <div>{% for t,on,cls in [('late '~dd.late_min~'m',dd.late,'late'),('missing punch',dd.missing,'bad'),('regularised',dd.regularised,'info'),('WFH',dd.wfh,'vio'),('worked off-day',dd.extra,'ok'),('comp-off earned',dd.co_earned,'ok'),('early exit',dd.early,'late'),('late sitting',dd.late_sit,''),('corrected',dd.overridden,'vio')] if on %}<span class="tag {{ cls }}">{{ t }}</span>{% endfor %}</div></td>
+    <div>{% for t,on,cls in [('late '~dd.late_min~'m',dd.late,'late'),('regularised',dd.regularised,'info'),('WFH',dd.wfh,'vio'),('worked off-day',dd.extra,'ok'),('comp-off earned',dd.co_earned,'ok'),('early exit',dd.early,'late'),('late sitting',dd.late_sit,''),('corrected',dd.overridden,'vio')] if on %}<span class="tag {{ cls }}">{{ t }}</span>{% endfor %}</div></td>
   <td class="tnum">{{ dd.in }}</td><td class="tnum">{{ dd.out }}{% if dd.out_next_day %}<sup>+1</sup>{% endif %}</td><td class="num" data-v="{{ (dd.work_min / 60)|round(2) if dd.work_min else '' }}">{{ dd.work_min|hm if dd.work_min else '' }}</td><td class="num" data-v="{{ dd.late_min if dd.late else '' }}">{{ dd.late_min if dd.late else '' }}</td>
   <td class="small">{% for s in dd.swipes %}<div>{{ s.t[:5] }} · {{ s.place or s.loc or ('Office biometric' if s.type == 'Astra' else s.type) }}{% if s.place and s.loc %} <span class="muted">({{ s.loc }})</span>{% endif %}{% if s.note %} <i class="muted">“{{ s.note }}”</i>{% endif %}{% if s.reason %} <span class="tag">{{ s.reason }}</span>{% endif %}</div>{% else %}<span class="muted">—</span>{% endfor %}</td>
   <td class="small muted">{{ dd.notes|join('; ') }}</td>
@@ -154,19 +157,18 @@
 
 <section class="pane" data-pane="ledger">
 <div class="grid g2">
-  <div class="card"><div class="hd"><h2>Leave this month</h2><span class="sub">balances are kept in greytHR</span></div>
+  <div class="card"><div class="hd"><h2>Leave this month {{ ui.info('Leave and absence of the month, and the leave deduction to apply in greytHR (balances are kept there). Deduction = hours-shortfall part + WFH-over-the-limit part.') }}</h2><span class="sub">balances are kept in greytHR</span></div>
     <div class="bd"><table class="ledger plain"><tbody>
-      <tr><td>Paid leave taken</td><td class="num">{{ d.pl_days|n }}</td></tr>
+      <tr><td>Leave taken <span class="muted small">(incl. loss of pay)</span></td><td class="num">{{ d.pl_days|n }}</td></tr>
       <tr><td>Comp-off taken</td><td class="num">{{ d.cof_days|n }}</td></tr>
-      <tr><td>Loss of pay (approved in greytHR)</td><td class="num">{{ d.lop_days|n }}</td></tr>
-      <tr><td>Absent without approved leave</td><td class="num {{ 'neg' if d.unauth_absent_days }}">{{ d.unauth_absent_days|n }}</td></tr>
+      <tr><td>Unapplied leave (absence)</td><td class="num {{ 'neg' if d.unauth_absent_days }}">{{ d.unauth_absent_days|n }}</td></tr>
       <tr><td>Hours-shortfall deduction{% if editable and can_hr and d.shortfall_deduction_days %}
         <button class="btn sm sec" type="button" style="margin-left:8px" onclick="HSCO.openDrawer('waive');setTimeout(()=>document.getElementById('wv-reason').focus(),50)">{{ ui.icon('badge-check','sm') }} Waive</button>{% endif %}</td>
         <td class="num">{{ d.shortfall_deduction_days|n }}</td></tr>
       {% if d.wfh_deduction_days %}<tr><td>WFH over the limit ({{ (d.wfh_excess_days - (d.wfh_approved_days or 0))|n }} day{{ 's' if (d.wfh_excess_days - (d.wfh_approved_days or 0)) != 1 }} × {{ policy.wfh_excess_deduction_days|n }})</td><td class="num">{{ d.wfh_deduction_days|n }}</td></tr>{% endif %}
       <tr class="tot"><td>Leave deduction (to take from leave)</td><td class="num {{ 'neg' if d.deduction_days }}">{{ d.deduction_days|n }}</td></tr>
     </tbody></table></div></div>
-  <div class="card"><div class="hd"><h2>Comp-off</h2><span class="sub">earned for ≥ {{ policy.comp_off_min_hours|n }} h on an off-day</span></div><div class="bd"><table class="ledger plain"><tbody>
+  <div class="card"><div class="hd"><h2>Comp-off {{ ui.info('Earned: weekly offs / holidays worked for at least ' ~ (policy.comp_off_min_hours|n) ~ ' h (not a restricted holiday). Taken: COF days in greytHR.') }}</h2><span class="sub">earned for ≥ {{ policy.comp_off_min_hours|n }} h on an off-day</span></div><div class="bd"><table class="ledger plain"><tbody>
       <tr><td>Earned this month</td><td class="num">{{ d.compoff_earned|n }}</td></tr>
       <tr><td>Taken this month</td><td class="num">{{ d.cof_days|n }}</td></tr>
   </tbody></table></div></div>
@@ -175,10 +177,10 @@
 
 {% if history|length > 1 %}
 <section class="pane" data-pane="hist">
-  <div class="card"><div class="hd"><h2>Month by month</h2></div><div class="bd"><div class="chartbox"><canvas id="cHist"></canvas></div></div></div>
-  <div class="card flush"><div class="bd"><div class="tw"><table class="compact"><thead><tr><th>Month</th><th class="num">Present</th><th class="num">Leave</th><th class="num">Absent</th><th class="num">WFH</th><th class="num">Late</th><th class="num">Regularised</th><th class="num">+/− h</th><th class="num">Deduction</th></tr></thead><tbody>
+  <div class="card"><div class="hd"><h2>Month by month {{ ui.info('Hours above / below the required hours each month (bars) with late days and WFH days (lines). Click a month to open it.') }}</h2><span class="sub">click a month to open it</span></div><div class="bd"><div class="chartbox"><canvas id="cHist"></canvas></div></div></div>
+  <div class="card flush"><div class="bd"><div class="tw"><table class="compact"><thead><tr><th>Month</th><th class="num">Present</th><th class="num">Leave</th><th class="num">Unapplied leave</th><th class="num">WFH</th><th class="num">Late</th><th class="num">Regularised</th><th class="num">+/− h</th><th class="num">Deduction</th></tr></thead><tbody>
   {% for h in history %}<tr class="click" data-href="/periods/{{ h.key }}/employee/{{ r.emp_no }}"><td class="strong">{{ h.label }}</td><td class="num">{{ h.days_present|n }}</td><td class="num">{{ h.pl_days|n }}</td><td class="num">{{ h.unauth_absent_days|n }}</td><td class="num">{{ h.wfh_days|n }}</td><td class="num">{{ h.late_days }}</td><td class="num">{{ h.regularised_days }}</td><td class="num {{ 'neg' if h.balance_hours and h.balance_hours < 0 }}">{{ h.balance_hours|n(1) }}</td><td class="num">{{ h.deduction_days|n }}</td></tr>{% endfor %}
-  </tbody></table></div></div></div>
+  </tbody><tfoot><tr class="tfoot"><td>Total · {{ history|length }} months</td><td class="num">{{ history|map(attribute='days_present')|map('float')|sum|n }}</td><td class="num">{{ history|map(attribute='pl_days')|map('float')|sum|n }}</td><td class="num">{{ history|map(attribute='unauth_absent_days')|map('float')|sum|n }}</td><td class="num">{{ history|map(attribute='wfh_days')|map('float')|sum|n }}</td><td class="num">{{ history|map(attribute='late_days')|map('int')|sum }}</td><td class="num">{{ history|map(attribute='regularised_days')|map('int')|sum }}</td><td class="num">{{ history|map(attribute='balance_hours')|map('float')|sum|n(1) }}</td><td class="num">{{ history|map(attribute='deduction_days')|map('float')|sum|n }}</td></tr></tfoot></table></div></div></div>
 </section>
 {% endif %}
 
@@ -282,5 +284,6 @@ HSCO.chart('cHist',{type:'bar',data:{labels:H.map(x=>x.label),datasets:[
  {label:'Hours +/−',data:H.map(x=>x.balance_hours),backgroundColor:H.map(x=>x.balance_hours<0?C.bad:C.ok),yAxisID:'y'},
  {label:'Late days',data:H.map(x=>x.late_days),type:'line',borderColor:C.warn,backgroundColor:C.warn,yAxisID:'y1'},
  {label:'WFH days',data:H.map(x=>x.wfh_days),type:'line',borderColor:C.violet,backgroundColor:C.violet,yAxisID:'y1'}]},
- options:{scales:{y:{position:'left'},y1:{position:'right',grid:{drawOnChartArea:false}}}}});{% endif %}
+ options:{scales:{y:{position:'left'},y1:{position:'right',grid:{drawOnChartArea:false}}}},
+ drill:(i)=>{ location.href='/periods/'+H[i].key+'/employee/{{ r.emp_no }}'; }});{% endif %}
 </script>{% endblock %}

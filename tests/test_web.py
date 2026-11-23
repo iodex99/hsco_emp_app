@@ -173,10 +173,10 @@ def test_import_and_calculations(loaded):
     d4, f4 = _result("T004")
     assert d4["wfh_days"] == 4 and {"WFH_OVER_LIMIT", "PERSISTENT_LATE"} <= {f["code"] for f in f4}
     d5, f5 = _result("T005")
-    assert d5["pl_days"] == 1.5 and d5["lop_days"] == 1 and d5["unauth_absent_days"] == 1
+    assert d5["pl_days"] == 2.5 and "lop_days" not in d5 and d5["unauth_absent_days"] == 1   # LOP = leave (v1.13)
     d6, f6 = _result("T006")
     assert d6["is_new_joinee"] and d6["total_week_days"] == 14   # 13-Oct onwards, all Saturdays off, 20-Oct holiday
-    assert d6["missing_punch_days"] == 2 and d6["permission_swipes"] == 3
+    assert "missing_punch_days" not in d6 and d6["permission_swipes"] == 3
     assert "NEW_JOINEE" in {f["code"] for f in f6}
     # T007 (future joiner from DOJ) exists in master but has no attendance this month
     assert "T007" in c.get("/employees").text
@@ -195,7 +195,7 @@ def test_all_pages_render(loaded):
     assert c.get("/periods/2099-01").status_code == 404
     assert c.get("/periods/2026-10/employee/NOPE").status_code == 404
     html = c.get("/").text
-    assert "<h1>October 2026</h1>" in html and "Over WFH limit" in html and "Month-end checklist" in html
+    assert "<h1>October 2026</h1>" in html and "Over the limit" in html and "Month-end checklist" in html
 
 
 def test_overrides_ledger_and_audit(loaded):
@@ -325,7 +325,7 @@ def test_exports(loaded):
     ws = wb["Payroll Leave Sheet"]
     hdr = [c_.value for c_ in ws[5]]
     assert hdr[:4] == ["Employee No", "Name", "Group", "Location"]
-    assert hdr[25:] == ["LOP (approved)", "Comp-off Earned", "Flags", "Category"]       # no balance columns (v1.9)
+    assert hdr[24:] == ["Unapplied Leave (Absence)", "Comp-off Earned", "Flags", "Category"]   # no LOP (v1.13)
     assert not any("Leave Opening" in h or "Closing" in h or "Salary" in h or "Payroll LOP" in h for h in hdr)
     rows = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
     i = rows["T001"]
@@ -630,7 +630,7 @@ def test_insights_kpis_and_scorecard(loaded):
             {"date": "2026-10-07", "type": "WORKDAY", "b1": "present", "b2": "absent"}]
     assert INS._spells(days) == (2, 2.5)
     html = loaded.get("/insights").text
-    assert "Employee scorecard" in html and "Bradford" not in html and "Absence 12 m" in html and 'id="hm"' in html
+    assert "Employee scorecard" in html and "Bradford" not in html and "Unapplied 12 m" in html and 'id="hm"' in html
     html = loaded.get("/periods/2026-10/employee/T001").text
     assert 'data-tab="score"' in html and "Compared with others" in html
 
@@ -804,16 +804,17 @@ def test_punch_exceptions_page_and_excel(loaded):
     for emp in ("T001", "T002", "T004", "T005", "T006"):
         for d in _result_days(emp):
             iss = by.get((emp, d["date"]), [])
-            assert ("missing" in iss) == bool(d["missing"]), (emp, d["date"])
+            assert "missing" not in iss and "nopunch" not in iss                      # removed (v1.13)
             assert ("wfh" in iss) == bool(d["wfh"]), (emp, d["date"])
             assert ("very_late" in iss) == bool(d["very_late"]), (emp, d["date"])
-    assert people["T006"]["missing"] >= 1 and (people["T006"]["permission"] + people["T006"]["edited"]) >= 1
+    assert "missing" not in people["T006"] and (people["T006"]["permission"] + people["T006"]["edited"]) >= 1
     assert people["T004"]["wfh"] == 4 and people["T004"]["wfh_over"] == 2 and people["T004"]["wfh_deduction"] == 1.0
     assert sum(1 for (e, _d), i in by.items() if e == "T004" and "wfh_over" in i) == 2   # the 3rd and 4th WFH day
-    assert people["T005"]["absent"] >= 2
-    assert "T003" not in people or not people["T003"]["missing"]          # partner on automatic attendance: not checked
+    assert people["T005"]["absent"] == 1                                 # the A day; the LOP day is leave (v1.13)
+    assert "T003" not in people or not people["T003"]["edited"]           # partner on automatic attendance: not checked
     html = c.get("/exceptions?period=2026-10").text
-    assert "Punch exceptions" in html and 'id="ex"' in html and 'id="exp"' in html and 'data-chip="missing"' in html
+    assert "Punch exceptions" in html and 'id="ex"' in html and 'id="exp"' in html and 'data-chip="missing"' not in html
+    assert "Missing punch" not in html and "No punch" not in html and "Unapplied leave" in html
     assert 'href="/exceptions?period=2026-10"' in html                     # sidebar
     assert "/periods/2026-10/employee/T006?day=2026-10-" in html           # row opens that day
     assert "openDay(qd)" in c.get("/periods/2026-10/employee/T006?day=2026-10-14").text
@@ -961,20 +962,19 @@ def test_categories_end_to_end(loaded):
     assert hs[date(2026, 4, 3)] == "Good Friday" and hs[date(2026, 10, 2)] == "Mahatma Gandhi's Birthday"
     # 10) categories everywhere
     assert "HSCO (Mumbai)" in c.get("/employees").text and "No category" in c.get("/employees").text
-    assert "By category" in c.get("/?period=2026-10").text and "HSCO (Carlyle)" in c.get("/?period=2026-10").text
+    ov = c.get("/?period=2026-10").text                  # v1.13 (owner): only the group table ("By group")
+    assert "By category" not in ov and 'id="catg"' not in ov and ">By group" in ov
     ins = c.get("/insights?period=2026-10").text
-    assert "Categories compared" in ins and 'id="cc"' in ins and 'data-key="category"' in ins
+    assert "Categories compared" not in ins and 'id="cc"' not in ins and 'data-key="category"' in ins
     assert 'data-key="category"' in c.get("/periods/2026-10").text
     assert "HSCO (Carlyle)" in c.get("/periods/2026-10/employee/T006").text
     assert 'data-key="cat"' in c.get("/exceptions?period=2026-10").text
     wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
-    assert "Categories Compared" in wb.sheetnames
-    cc = {x[0].value for x in wb["Categories Compared"].iter_rows(min_row=6) if x[0].value}
-    assert {"HSCO (Mumbai)", "Article", "HSCO (Carlyle)"} <= cc
+    assert "Categories Compared" not in wb.sheetnames
     ws = wb["Payroll Leave Sheet"]
-    assert ws.cell(row=5, column=29).value == "Category"
+    assert ws.cell(row=5, column=28).value == "Category"
     rows = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
-    assert ws.cell(row=rows["T004"], column=29).value == "Article + HSCO (Mumbai)"
+    assert ws.cell(row=rows["T004"], column=28).value == "Article + HSCO (Mumbai)"
     assert "Category" in [x.value for x in wb["Scorecard"][6]]
     tpl = load_workbook(io.BytesIO(c.get("/exports/templates/employee_master.xlsx").content)).active
     assert [x.value for x in tpl[1]][3:5] == ["Category", "Additional Category"]
@@ -1084,7 +1084,7 @@ def test_category_review_fixes(loaded):
     wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
     ws = wb["Payroll Leave Sheet"]
     rows_ = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
-    cell = ws.cell(row=rows_["T006"], column=29)
+    cell = ws.cell(row=rows_["T006"], column=28)
     assert cell.value == "=SUM(1,1)" and cell.data_type == "s"
     # 15) delete: refused while anyone (also leavers) has it; its holiday list is kept
     for e in ("T001", "T002", "T003", "T005"):
@@ -1168,10 +1168,11 @@ def test_attention_counts_zero_percent_as_zero(data_dir):
     from app.db import session_scope
     with session_scope() as db:
         pol = get_policy(db)
-    base = {"behaviour": True, "absence_12m_days": 0, "regularised_days": 0, "wfh_days": 0, "missing_punch_days": 0}
+    base = {"behaviour": True, "absence_12m_days": 0, "regularised_days": 0, "wfh_days": 0}
     worst = INS._attention({**base, "punctuality_pct": 0.0, "utilisation_pct": 0.0}, pol)
     best = INS._attention({**base, "punctuality_pct": 100.0, "utilisation_pct": 100.0}, pol)
-    assert worst["attention"] == 40 and best["attention"] == 0
+    assert worst["attention"] == 45 and best["attention"] == 0          # punctuality 20 + hours 25 (v1.13)
+    assert sum(INS.WEIGHTS.values()) == 100 and "missing" not in INS.WEIGHTS
 
 
 def test_stored_month_stats_match_day_detail(loaded):
@@ -1547,10 +1548,9 @@ def test_attention_absence_part_uses_12_month_days(data_dir):
     from app.db import session_scope
     with session_scope() as db:
         pol = get_policy(db)
-    base = {"behaviour": True, "punctuality_pct": 100.0, "utilisation_pct": 100.0, "regularised_days": 0, "wfh_days": 0,
-            "missing_punch_days": 0}
-    assert INS._attention({**base, "absence_12m_days": 5}, pol)["attention"] == 12          # 5 of 10 days → half of 25
-    assert INS._attention({**base, "absence_12m_days": 30}, pol)["attention"] == 25         # capped at the full part
+    base = {"behaviour": True, "punctuality_pct": 100.0, "utilisation_pct": 100.0, "regularised_days": 0, "wfh_days": 0}
+    assert INS._attention({**base, "absence_12m_days": 5}, pol)["attention"] == 15          # 5 of 10 days → half of 30
+    assert INS._attention({**base, "absence_12m_days": 30}, pol)["attention"] == 30         # capped at the full part
     assert "absence" in INS.WEIGHTS and "bradford" not in INS.WEIGHTS
 
 
@@ -1712,7 +1712,7 @@ def test_day_drawer_explains_codes_and_warns_about_fixed_figures(loaded):
     c = loaded
     base = "/periods/2026-10/employee/T001"
     page = c.get(base).text
-    assert '<optgroup label="Leave">' in page and "— absent</option>" in page
+    assert '<optgroup label="Leave">' in page and "— unapplied leave (absence)</option>" in page and "Loss of pay" not in page
     csrf = csrf_of(c, base)
     c.post(base + "/month-override", data={"csrf": csrf, "field": "absent_days", "value": "0", "reason": "Fixed by HR"})
     r = c.post(base + "/day-override", data={"csrf": csrf, "day": "2026-10-05", "s1": "A", "s2": "A",
@@ -1725,9 +1725,9 @@ def test_no_leave_balances_anywhere(loaded):
     """v1.9 (owner): leave balances are kept in greytHR — the app neither asks for nor shows them."""
     c = loaded
     page = c.get("/").text
-    assert "opening balance" not in page.lower() and "LOP days" in page and "Payroll LOP" not in page
+    assert "opening balance" not in page.lower() and "LOP" not in page and "Payroll LOP" not in page
     sheet = c.get("/periods/2026-10").text
-    assert "Leave bal." not in sheet and "Salary ded." not in sheet and "LOP days (greytHR)" in sheet
+    assert "Leave bal." not in sheet and "Salary ded." not in sheet and "LOP" not in sheet
     ins = c.get("/insights?period=2026-10").text
     assert "Leave liability" not in ins and "Comp-off bal." not in ins and "Annual leave used" in ins
     imp = c.get("/imports").text
@@ -1944,3 +1944,95 @@ def test_migration_links_older_rows_to_their_latest_upload(data_dir):
         _link_rows_to_uploads(db)
     with session_scope() as db:
         assert db.scalar(select(MusterRow.batch_id)) == new_id
+
+
+# ---------------------------------------------------------------------------------------------- v1.13 (owner, 23-Nov)
+from sqlalchemy import select  # noqa: E402
+
+
+def _recompute_oct():
+    from app.db import session_scope
+    from app.models import Period
+    from app.services.compute import compute_period
+    with session_scope() as db:
+        compute_period(db, db.scalar(select(Period).where(Period.year == 2026, Period.month == 10)))
+
+
+def test_group_others_is_ignored_everywhere(loaded):
+    """'employees with the group OTHERS … shall not be considered anywhere in the app' — case-insensitive, editable."""
+    from app.db import session_scope
+    from app.models import Employee, MonthResult
+    from app.services.settings import save_policy
+    c = loaded
+    with session_scope() as db:
+        db.get(Employee, "T006").group = "Others"
+    _recompute_oct()
+    with session_scope() as db:
+        assert db.scalar(select(MonthResult).where(MonthResult.emp_no == "T006")) is None
+    emps = c.get("/employees").text
+    assert "Farhan Ali" not in emps and "1 employee in OTHERS is ignored" in emps
+    assert "Farhan Ali" in c.get("/employees?ignored=1").text
+    assert all(e["emp_no"] != "T006" for e in c.get("/api/employees").json())
+    for page in ("/", "/periods/2026-10", "/insights?period=2026-10", "/exceptions?period=2026-10",
+                 "/locations?period=2026-10", "/flags?period=2026-10", "/reconciliation?period=2026-10"):
+        assert "Farhan" not in c.get(page).text, page
+    for url in ("/exports/2026-10.xlsx", "/exports/2026-10/locations.xlsx"):
+        wb = load_workbook(io.BytesIO(c.get(url).content))
+        assert not any(v == "T006" for ws in wb.worksheets for row in ws.iter_rows(values_only=True) for v in row), url
+    assert "Ignored groups" in [r[0] for r in load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))["Rules Applied"].iter_rows(values_only=True)]
+    # the list is editable: nothing ignored → back in the month
+    with session_scope() as db:
+        save_policy(db, {"ignored_groups": []})
+    _recompute_oct()
+    assert "Farhan Ali" in c.get("/employees").text and _result("T006")[0]["name"] == "Farhan Ali"
+    assert 'name="ignored_groups"' in c.get("/settings").text
+
+
+def test_overview_click_through_totals_info_and_pdf(loaded):
+    """Needs-attention types open the people (and filter the payroll sheet); every chart bar knows who is behind it;
+    ranked lists filter by group and total; 'i' explanations; PDF button with its scripts served from the server."""
+    from app.db import session_scope
+    from app.models import Period
+    from app.services import metrics as MX
+    c = loaded
+    with session_scope() as db:
+        m = MX.period_metrics(db, db.scalar(select(Period).where(Period.year == 2026, Period.month == 10)))
+    assert "categories" not in m and m["who"]["T001"][0] == "Asha Rao"
+    d = m["daily"][0]
+    assert d["wd"] in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    who_present = m["drill"]["daily"][d["date"]].get("present", [])
+    assert round(sum(v for _e, v in who_present), 1) == d.get("present", 0)          # the bar = the people behind it
+    assert sum(x["count"] for x in m["location_mix"]) == sum(v for rows in m["drill"]["loc"].values() for _e, v in rows)
+    assert abs(sum(x["pct"] for x in m["location_mix"]) - 100) < 0.5
+    t004 = next(x for x in m["wfh_people"] if x["emp_no"] == "T004")
+    assert t004["value"] == 4 and t004["over"] == 2 and m["kpis"]["wfh_over_limit"] >= 1 and m["kpis"]["wfh_people"] >= 1
+    assert m["drill"]["tenure"] and all(rows for rows in m["drill"]["tenure"].values())
+    html = c.get("/?period=2026-10").text
+    assert 'data-flag="UNAUTHORISED_ABSENCE"' in html and 'href="/periods/2026-10?f=fl-UNAUTHORISED_ABSENCE"' in html
+    assert "Unapplied leave (absence)" in html and "Unauthorised" not in html and "Missing punch" not in html
+    assert html.count('class="info-i"') >= 25 and 'data-pdf="Overview October 2026"' in html
+    assert 'class="tl-grp"' in html and "data-tl-sum" in html and 'id="loc-shares"' in html and 'id="wfh-over"' in html
+    assert "By category" not in html and ">By group" in html
+    sheet = c.get("/periods/2026-10?f=fl-UNAUTHORISED_ABSENCE").text
+    assert 'data-chip="fl-UNAUTHORISED_ABSENCE"' in sheet and "fl-UNAUTHORISED_ABSENCE" in sheet.split('data-href="/periods/2026-10/employee/T005"')[1][:400]
+    assert 'data-chip="absent"' in sheet and 'data-pdf="Payroll leave sheet October 2026"' in sheet
+    ins = c.get("/insights?period=2026-10").text
+    assert 'id="arrive-heat"' in ins and "Whole firm" in ins and "data-tl-sum" in ins and 'id="gc"' in ins
+    assert 'data-pdf="Insights October 2026"' in ins and 'class="info-i"' in ins and "Loss of pay" not in ins
+    for p in ("/static/vendor/jspdf.umd.min.js", "/static/vendor/jspdf.plugin.autotable.min.js", "/static/pdf.js"):
+        r = c.get(p)
+        assert r.status_code == 200 and len(r.content) > 1000, p
+    assert "cdn" not in c.get("/static/pdf.js").text.lower()                       # nothing loaded from outside
+    for page in ("/exceptions?period=2026-10", "/locations?period=2026-10"):
+        assert "data-pdf=" in c.get(page).text
+
+
+def test_excel_without_lop_missing_punches_or_categories(loaded):
+    wb = load_workbook(io.BytesIO(loaded.get("/exports/2026-10.xlsx").content))
+    text = " ".join(str(v) for ws in wb.worksheets for row in ws.iter_rows(values_only=True) for v in row if v)
+    assert "LOP (approved)" not in text and "LOP days" not in text and "Missing-punch" not in text
+    assert "Missing punch" not in text and "Present with no punch" not in text and "Unauthorised" not in text
+    assert "Categories Compared" not in wb.sheetnames
+    bs = [r for r in wb["Board Summary"].iter_rows(values_only=True)]
+    assert any(r[0] == "Total" for r in bs) and not any(r[0] == "By category" for r in bs)
+    assert any(r[0] == "Unapplied leave (absence) days" for r in bs)
