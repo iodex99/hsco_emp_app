@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 REF = ROOT / "reference"
 HAS_REF = (REF / "Attendance Muster Report.xlsx").exists()
+# greytHR's Attendance Summary export, whatever it was saved as ("Attendance Summary Report.xls", "… oct.xls")
+SUMMARY_NAME = next((p.name for p in sorted(REF.glob("Attendance Summary Report*.xls*"))), "Attendance Summary Report.xls")
 
 
 @pytest.fixture()

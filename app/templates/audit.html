@@ -19,7 +19,7 @@
   'settings.policy':'Changed rules','settings.general':'Changed system settings','flag.review':'Reviewed exception','flag.reopen':'Re-opened exception','export.xlsx':'Downloaded Excel','export.html':'Downloaded board pack (old)','export.locations':'Downloaded punches & locations',
   'user.create':'Created user','user.update':'Edited user','user.reset_password':'Reset password','user.reset_mfa':'Reset 2FA','user.unlock':'Unlocked user','mfa.add':'Added 2FA method','mfa.remove':'Removed 2FA method',
   'password.change':'Changed password','mfa.recovery_regenerated':'New recovery codes','holiday.add':'Added holiday','holiday.delete':'Removed holiday','holiday.paste':'Pasted holiday list',
-  'holidays.list':'Loaded holiday list','migration.holidays_by_category':'Holidays moved to category lists (v1.9)','migration.remove_2fa':'Two-step verification removed (v1.10)'} %}
+  'holidays.list':'Loaded holiday list','migration.holidays_by_category':'Holidays moved to category lists (v1.9)','migration.remove_2fa':'Two-step verification removed (v1.10)','import.delete':'Deleted upload and its data'} %}
 <div class="card flush"><div data-table-for="#aud"></div><div class="bd"><div class="tw"><table id="aud" class="compact" data-table data-csv="audit-log">
 <thead><tr><th data-key="when" data-type="date">When</th><th data-key="who" data-type="enum">Who</th><th data-key="what" data-type="enum">What</th><th data-key="type" data-type="enum">Type</th><th data-key="about" data-type="text">About</th><th data-key="details" data-type="text">Details</th></tr></thead><tbody>
 {% for a in rows %}<tr><td class="small" style="white-space:nowrap" data-v="{{ a.ts.isoformat() }}">{{ a.ts.strftime('%d %b %Y, %H:%M:%S') }}</td><td>{{ a.username or '—' }}</td>

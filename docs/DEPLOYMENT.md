@@ -99,6 +99,7 @@ in it is part of the code, so reinstalling or updating the code leaves it as it 
 | Create another admin | `.venv\Scripts\python -m app.cli create-admin` |
 | User forgot their password | admin → Users → Manage → Reset password (a new temporary password) |
 | Import from command line | `python -m app.cli import file1.xlsx file2.xlsx` |
+| Wrong file uploaded | Import files → Import history → bin icon (removes the file's data and recalculates; v1.11) |
 | Dev / local test (HTTP) | `python run_server.py --dev` → http://localhost:8443 |
 | Run without supervisor (debug) | `python run_server.py --dev --no-supervisor` |
 | Last update result | `DATA_DIR\updates\last_result.json`; supervisor messages are prefixed `[supervisor]` in the console/log |

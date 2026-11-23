@@ -16,10 +16,10 @@ from pathlib import Path
 import pytest
 
 pw = pytest.importorskip("playwright.sync_api")
-from tests.conftest import ADMIN_PW, HAS_REF, REF  # noqa: E402
+from tests.conftest import ADMIN_PW, HAS_REF, REF, SUMMARY_NAME  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[2] / "test-results"
-REAL = ["MIS Report October 2026_Manual.xlsx", "DateOfJoiningReport.xlsx", "Attendance Summary Report.xls",
+REAL = ["MIS Report October 2026_Manual.xlsx", "DateOfJoiningReport.xlsx", SUMMARY_NAME,
         "EmployeeSwipeDetails.xlsx", "Attendance Muster Report.xlsx"]
 
 

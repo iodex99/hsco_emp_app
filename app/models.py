@@ -92,6 +92,7 @@ class Holiday(Base):
     name: Mapped[str] = mapped_column(String(128), default="")
     # optional (restricted) holiday: a working day unless greytHR marks the person's day as a holiday (v1.7)
     optional: Mapped[bool] = mapped_column(Boolean, default=False)
+    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # the upload it came from (v1.11)
     calendar: Mapped[HolidayCalendar] = relationship(back_populates="holidays")
 
 
@@ -208,6 +209,8 @@ class ImportBatch(Base):
     warnings: Mapped[list] = mapped_column(JSON, default=list)
     uploaded_by: Mapped[str] = mapped_column(String(64), default="")
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # v1.11: what to undo when the upload is deleted — {"created": [emp_no], "changed": {emp_no: {field: [before, after]}}}
+    undo: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class MusterRow(Base):
@@ -224,6 +227,7 @@ class MusterRow(Base):
     out_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     work_min: Mapped[int] = mapped_column(Integer, default=0)
     shift: Mapped[str] = mapped_column(String(64), default="")
+    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # the upload it came from (v1.11)
 
 
 class SwipeRow(Base):
@@ -245,6 +249,7 @@ class SwipeRow(Base):
     approval: Mapped[str] = mapped_column(String(32), default="")    # Approved / Pending / Rejected
     device: Mapped[str] = mapped_column(String(128), default="")     # phone model
     device_id: Mapped[str] = mapped_column(String(128), default="")  # phone identifier
+    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # the upload it came from (v1.11)
 
 
 class SummaryRow(Base):
@@ -255,6 +260,7 @@ class SummaryRow(Base):
     period_id: Mapped[int] = mapped_column(ForeignKey("periods.id", ondelete="CASCADE"))
     emp_no: Mapped[str] = mapped_column(String(32))
     data: Mapped[dict] = mapped_column(JSON)
+    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # the upload it came from (v1.11)
 
 
 class ManualMisRow(Base):
@@ -265,6 +271,7 @@ class ManualMisRow(Base):
     period_id: Mapped[int] = mapped_column(ForeignKey("periods.id", ondelete="CASCADE"))
     emp_no: Mapped[str] = mapped_column(String(32))
     data: Mapped[dict] = mapped_column(JSON)
+    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # the upload it came from (v1.11)
 
 
 # ----------------------------------------------------------------------------- manual entries

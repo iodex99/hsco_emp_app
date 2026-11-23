@@ -62,6 +62,9 @@ def migrate_data() -> None:
         if "holidays_by_category_v1" not in done:
             _holidays_by_category(db)
             done.add("holidays_by_category_v1")
+        if "import_batch_links_v1" not in done:
+            _link_rows_to_uploads(db)
+            done.add("import_batch_links_v1")
         if "remove_2fa_v1" not in done:
             _remove_2fa(db)
             done.add("remove_2fa_v1")
@@ -69,6 +72,19 @@ def migrate_data() -> None:
             db.add(Setting(key="migrations", value={"done": sorted(done)}))
         else:
             st.value = {"done": sorted(done)}
+
+
+def _link_rows_to_uploads(db) -> None:
+    """v1.11: imported rows carry the id of their upload (to delete an upload with its data). Rows imported before
+    that belong to the latest upload of their kind for their month (a later full file replaced the earlier ones)."""
+    from sqlalchemy import text
+    for kind, table in (("muster", "muster_rows"), ("swipes", "swipes"), ("summary", "summary_rows"),
+                        ("mis_manual", "manual_mis_rows")):
+        for pid, bid in db.execute(text("SELECT period_id, MAX(id) FROM imports WHERE kind = :k AND period_id IS NOT NULL "
+                                        "GROUP BY period_id"), {"k": kind}).all():
+            db.execute(text(f"UPDATE {table} SET batch_id = :b WHERE period_id = :p AND batch_id IS NULL"),
+                       {"b": bid, "p": pid})
+    db.flush()
 
 
 def _remove_2fa(db) -> None:

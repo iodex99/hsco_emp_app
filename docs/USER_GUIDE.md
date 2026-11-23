@@ -191,3 +191,10 @@ The app does not keep leave or comp-off balances — greytHR does. Each month it
 ## Opening the app (v1.9.2)
 Sign in to the server (Remote Desktop) and double-click **HSCO Attendance** on the desktop. The app is always running
 in the background on the server — there is no window to keep open or close.
+
+## Deleting an upload (v1.11)
+Uploaded the wrong file? Import files → **Import history** → the bin icon on that upload. The panel says what will be
+removed — the file's attendance days / punches / summary rows for that month, the holidays it put in the lists, or the
+employee details it changed (put back as they were) — then give a reason and confirm. The month is recalculated at
+once; with no attendance left it shows as waiting for files again. Upload the right file afterwards. Not possible in
+a finalised month (re-open it first).

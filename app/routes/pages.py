@@ -118,7 +118,48 @@ def imports_page(c: Ctx = Depends(hr)):
     pmap = {p.id: p for p in periods(c.db)}
     cur = pick_period(c, None)
     return render(c, "imports.html", batches=batches, pmap=pmap, results=None, wf=WF.status(c.db, cur) if cur else None,
-                  layouts=IMP.get_layouts(c.db), kind_labels=P.KIND_LABELS)
+                  layouts=IMP.get_layouts(c.db), kind_labels=P.KIND_LABELS, effects=_effects(c, batches, pmap))
+
+
+def _effects(c: Ctx, batches, pmap) -> dict:
+    """For the Delete button of each upload: what deleting it removes, in words (None = not allowed)."""
+    out = {}
+    for b in batches:
+        p = pmap.get(b.period_id)
+        if p is not None and p.status != "DRAFT":
+            out[b.id] = None
+            continue
+        e = IMP.import_effects(c.db, b)
+        bits = []
+        if e["rows"]:
+            bits.append(f"{e['rows']:,} {e['what']}" + (f" of {p.label}" if p else ""))
+        if e["holidays"]:
+            bits.append(f"{e['holidays']} holiday{'s' if e['holidays'] != 1 else ''} it put in the lists")
+        if e["changed"]:
+            bits.append(f"the details it changed for {e['changed']} employee{'s' if e['changed'] != 1 else ''} "
+                        "(put back as they were, unless edited since)")
+        if e["created"]:
+            bits.append(f"{e['created']} employee{'s' if e['created'] != 1 else ''} it added (if no other file has "
+                        "data for them)")
+        out[b.id] = ("Removes " + "; ".join(bits) + ".") if bits else \
+            "Nothing is linked to this upload any more (a later file replaced its data, or it was imported before " \
+            "v1.11) — only the history entry goes."
+    return out
+
+
+@router.post("/imports/{bid}/delete")
+def delete_upload(bid: int, reason: str = Form(""), c: Ctx = Depends(hr)):
+    """Delete an upload and the data it imported (services/imports.delete_import); reason required, audit-logged."""
+    b = c.db.get(ImportBatch, bid)
+    if b is None:
+        return redirect("/imports", "That upload was already deleted.")
+    if not reason.strip():
+        return redirect("/imports", "Say why the upload is deleted (a reason is required for every manual change).")
+    try:
+        msg = IMP.delete_import(c.db, b, c.user, reason, c.ip)
+    except ValueError as ex:
+        return redirect("/imports", str(ex))
+    return redirect("/imports", msg)
 
 
 @router.post("/imports", response_class=HTMLResponse)
@@ -175,7 +216,8 @@ def _run_imports(c: Ctx, blobs, hint, manual=None, remember=False, token=""):
     pmap = {p.id: p for p in periods(c.db)}
     cur = pick_period(c, None)
     return render(c, "imports.html", batches=batches, pmap=pmap, results=results, errors=errors,
-                  wf=WF.status(c.db, cur) if cur else None, layouts=IMP.get_layouts(c.db), kind_labels=P.KIND_LABELS)
+                  wf=WF.status(c.db, cur) if cur else None, layouts=IMP.get_layouts(c.db), kind_labels=P.KIND_LABELS,
+                  effects=_effects(c, batches, pmap))
 
 
 def _map_context(c: Ctx, token: str, sheet: str, kind: str, hr_row: Optional[int], chosen: Optional[dict] = None,

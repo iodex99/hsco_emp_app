@@ -5,7 +5,7 @@ import pytest
 
 from app.importers import parsers as P
 from app.importers.readers import read_path, read_workbook
-from tests.conftest import HAS_REF, REF
+from tests.conftest import HAS_REF, REF, SUMMARY_NAME
 
 
 def test_value_parsers():
@@ -75,7 +75,7 @@ def test_offline_geocoder():
 @pytest.mark.skipif(not HAS_REF, reason="reference/ (real data, git-ignored) not present")
 def test_real_exports_detected():
     expect = {"Attendance Muster Report.xlsx": {"muster"}, "EmployeeSwipeDetails.xlsx": {"swipes"},
-              "Attendance Summary Report.xls": {"summary"}, "DateOfJoiningReport.xlsx": {"doj"},
+              SUMMARY_NAME: {"summary"}, "DateOfJoiningReport.xlsx": {"doj"},
               "MIS Report October 2026_Manual.xlsx": {"mis_manual"}}
     for f, kinds in expect.items():
         s = read_path(REF / f)

@@ -72,11 +72,29 @@
 </div></div>
 
 <div class="card flush"><div class="hd"><h2>Import history</h2></div><div data-table-for="#imp"></div><div class="bd"><div class="tw" style="max-height:480px"><table id="imp" data-table data-csv="import-history" class="compact">
-<thead><tr><th data-key="when" data-type="date">When</th><th data-key="by" data-type="enum">By</th><th data-key="file" data-type="text">File</th><th data-key="kind" data-type="enum">Recognised as</th><th data-key="month" data-type="enum">Month</th><th class="num" data-key="rows" data-type="num">Rows</th><th data-key="notes" data-type="text">Notes</th></tr></thead><tbody>
-{% for b in batches %}<tr><td class="small" data-v="{{ b.uploaded_at.isoformat() }}" style="white-space:nowrap">{{ b.uploaded_at.strftime('%d %b %Y, %H:%M') }}</td><td>{{ b.uploaded_by }}</td><td class="small">{{ b.filename }}</td><td data-v="{{ kind_labels.get(b.kind, b.kind) }}"><span class="tag">{{ kind_labels.get(b.kind, b.kind) }}</span></td><td>{{ pmap[b.period_id].label if b.period_id in pmap else '' }}</td><td class="num">{{ b.rows }}</td><td class="small muted">{{ b.warnings|join(' · ') }}</td></tr>
-{% else %}<tr><td colspan="7">{% call ui.empty('Nothing imported yet', 'Upload the month\'s exports above to get started.', 'upload') %}{% endcall %}</td></tr>{% endfor %}</tbody></table></div></div></div>
+<thead><tr><th data-key="when" data-type="date">When</th><th data-key="by" data-type="enum">By</th><th data-key="file" data-type="text">File</th><th data-key="kind" data-type="enum">Recognised as</th><th data-key="month" data-type="enum">Month</th><th class="num" data-key="rows" data-type="num">Rows</th><th data-key="notes" data-type="text">Notes</th><th data-type="none" style="width:1%"></th></tr></thead><tbody>
+{% for b in batches %}<tr><td class="small" data-v="{{ b.uploaded_at.isoformat() }}" style="white-space:nowrap">{{ b.uploaded_at.strftime('%d %b %Y, %H:%M') }}</td><td>{{ b.uploaded_by }}</td><td class="small">{{ b.filename }}</td><td data-v="{{ kind_labels.get(b.kind, b.kind) }}"><span class="tag">{{ kind_labels.get(b.kind, b.kind) }}</span></td><td>{{ pmap[b.period_id].label if b.period_id in pmap else '' }}</td><td class="num">{{ b.rows }}</td><td class="small muted">{{ b.warnings|join(' · ') }}</td>
+  <td>{% if effects.get(b.id) is none %}<span class="muted small" title="The month is finalised — re-open it to delete this upload">{{ ui.icon('lock','sm') }}</span>
+    {% else %}<button class="btn sm ghost" type="button" data-del="{{ b.id }}" data-file="{{ b.filename }}" data-effect="{{ effects[b.id] }}" title="Delete this upload and the data it imported">{{ ui.icon('trash-2','sm') }}</button>{% endif %}</td></tr>
+{% else %}<tr><td colspan="8">{% call ui.empty('Nothing imported yet', 'Upload the month\'s exports above to get started.', 'upload') %}{% endcall %}</td></tr>{% endfor %}</tbody></table></div></div></div>
+<aside class="drawer" id="del-upload" aria-label="Delete upload"><form method="post" id="del-form" style="display:contents">{{ ui.csrf_field() }}
+<div class="dh"><div><div class="small muted">Delete upload</div><h2 id="del-file">File</h2></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
+<div class="db">
+  <div class="alert warn">{{ ui.icon('triangle-alert') }}<span id="del-effect"></span></div>
+  <p class="small" style="color:var(--text-2)">The month is recalculated straight away. To get earlier figures back, upload that
+    file again. Corrections, reviews and settings are kept. This can't be undone.</p>
+  <div class="field"><label>Reason <span class="muted">(required — saved in the audit log)</span></label><textarea name="reason" id="del-reason" rows="2" maxlength="300" required></textarea></div>
+  <div class="chips">{% for t in ['Wrong file uploaded','Wrong month','Duplicate upload','Superseded by a corrected file'] %}<button class="chip" type="button" data-del-note="{{ t }}">{{ t }}</button>{% endfor %}</div>
+</div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn danger">{{ ui.icon('trash-2','sm') }} Delete upload and its data</button></div></form></aside><div class="scrim"></div>
 {% endblock %}
 {% block scripts %}<script>
+document.querySelectorAll('#imp [data-del]').forEach(b=>b.addEventListener('click',()=>{
+  document.getElementById('del-form').action='/imports/'+b.dataset.del+'/delete';
+  document.getElementById('del-file').textContent=b.dataset.file;
+  document.getElementById('del-effect').textContent=b.dataset.effect;
+  document.getElementById('del-reason').value='';
+  HSCO.openDrawer('del-upload'); setTimeout(()=>document.getElementById('del-reason').focus(),50);}));
+document.querySelectorAll('#del-upload [data-del-note]').forEach(c=>c.onclick=()=>{document.getElementById('del-reason').value=c.dataset.delNote;});
 const inp=document.getElementById('files'), drop=document.getElementById('drop'), list=document.getElementById('filelist'), btn=document.getElementById('upbtn');
 const guess=n=>{n=n.toLowerCase();return n.includes('muster')?'Attendance muster':n.includes('swipe')?'Swipe details':n.includes('joining')||n.includes('doj')?'Date of joining':
   n.includes('summary')?'Attendance summary':n.includes('mis')?'Manual MIS (reconciliation)':n.includes('master')?'Employee master':n.includes('holiday')?'Holiday list':'Detected after upload';};

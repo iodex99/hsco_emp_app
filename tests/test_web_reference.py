@@ -9,11 +9,11 @@ import re
 import pytest
 from openpyxl import load_workbook
 
-from tests.conftest import HAS_REF, REF, csrf_of, login_full, make_user
+from tests.conftest import HAS_REF, REF, SUMMARY_NAME, csrf_of, login_full, make_user
 
 pytestmark = pytest.mark.skipif(not HAS_REF, reason="reference/ (real data, git-ignored) not present")
 
-FILES = ["MIS Report October 2026_Manual.xlsx", "DateOfJoiningReport.xlsx", "Attendance Summary Report.xls",
+FILES = ["MIS Report October 2026_Manual.xlsx", "DateOfJoiningReport.xlsx", SUMMARY_NAME,
          "EmployeeSwipeDetails.xlsx", "Attendance Muster Report.xlsx"]
 
 

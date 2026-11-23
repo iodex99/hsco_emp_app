@@ -10,14 +10,15 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.orm import Session
 
 from app.importers import parsers as P
 from app.importers.readers import read_workbook
 from app.config import get_config
 from app.models import (
-    Category, Employee, Holiday, HolidayCalendar, ImportBatch, ManualMisRow, MusterRow, Period, Setting, SummaryRow,
+    Category, Employee, Holiday, HolidayCalendar, ImportBatch, ManualMisRow, MonthResult, MusterRow, Period, Setting,
+    SummaryRow,
     SwipeRow, User,
 )
 from app.services.audit import audit
@@ -193,6 +194,14 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
         kind = ds.kind
         period: Optional[Period] = None
         n = 0
+        # the upload record first: every row this sheet imports carries its id, so deleting the upload removes
+        # exactly its data (v1.11); employee fields it changes are remembered so they can be put back
+        batch = ImportBatch(kind=kind, filename=filename, sha256=sha, sheet=ds.sheet, rows=0, warnings=[],
+                            uploaded_by=user.username if user else "")
+        db.add(batch)
+        db.flush()
+        bid = batch.id
+        before = _snapshot(emp_cache)
         if kind == "muster":
             recs, warnings = P.parse_muster(rows, ds)
             period = _period_for(db, _month_of(ds, rows, [r.day for r in recs], warnings), period_hint)
@@ -204,7 +213,8 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
             if keep:
                 db.execute(insert(MusterRow), [
                     {"period_id": period.id, "emp_no": r.emp_no, "name": r.name, "day": r.day, "s1": r.s1, "s2": r.s2,
-                     "in_time": r.in_time, "out_time": r.out_time, "work_min": r.work_min, "shift": r.shift} for r in keep])
+                     "in_time": r.in_time, "out_time": r.out_time, "work_min": r.work_min, "shift": r.shift,
+                     "batch_id": bid} for r in keep])
             n = len(keep)
         elif kind == "swipes":
             recs, names, warnings = P.parse_swipes(rows, ds)
@@ -223,7 +233,7 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                     {"period_id": period.id, "emp_no": r.emp_no, "ts": r.ts, "door": r.door,
                      "location_type": r.location_type, "swipe_type": r.swipe_type, "lat": r.lat, "lon": r.lon,
                      "place": pl, "note": r.note, "reason": r.reason, "approval": r.approval, "device": r.device,
-                     "device_id": r.device_id} for r, pl in zip(keep, places)])
+                     "device_id": r.device_id, "batch_id": bid} for r, pl in zip(keep, places)])
             namer.flush_cache()
             n = len(keep)
             if not any(r.lat is not None for r in recs):
@@ -236,7 +246,7 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                 e = _ensure_employee(db, emp_cache, r["emp_no"], r.get("name", ""), "summary")
                 if r.get("location") and not e.location:
                     e.location = r["location"]
-                db.add(SummaryRow(period_id=period.id, emp_no=r["emp_no"], data=r))
+                db.add(SummaryRow(period_id=period.id, emp_no=r["emp_no"], data=r, batch_id=bid))
                 n += 1
         elif kind == "doj":
             recs = P.parse_doj(rows, ds)
@@ -267,7 +277,7 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                     e.group = r["group"]
                 if r.get("location") and not e.location:
                     e.location = r["location"]
-                db.add(ManualMisRow(period_id=period.id, emp_no=r["emp_no"], data=r))
+                db.add(ManualMisRow(period_id=period.id, emp_no=r["emp_no"], data=r, batch_id=bid))
                 n += 1
         elif kind in ("employee_master", "employee_category"):
             recs = P.parse_employee_master(rows, ds)
@@ -330,14 +340,16 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
             for r in recs:
                 names = [x.strip() for x in (r["category"] or from_file).split(",") if x.strip()]
                 for nm in names or [None]:
-                    hol_plan.append({**r, "target": ("category", nm) if nm else ("default", ""), "sheet": ds.sheet})
+                    hol_plan.append({**r, "target": ("category", nm) if nm else ("default", ""), "sheet": ds.sheet,
+                                     "batch_id": bid})
                 n += 1
             hol_sheets.append(len(results))
             touched.update(p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT")))
         if period is not None:
             touched.add(period.id)
-        db.add(ImportBatch(period_id=period.id if period else None, kind=kind, filename=filename, sha256=sha,
-                           sheet=ds.sheet, rows=n, warnings=warnings[:50], uploaded_by=user.username if user else ""))
+        db.flush()
+        batch.period_id, batch.rows, batch.warnings = (period.id if period else None), n, warnings[:50]
+        batch.undo = _changes(before, emp_cache)
         audit(db, user, "import", kind, period.key if period else "", {"file": filename, "sheet": ds.sheet, "rows": n}, ip)
         results.append({"kind": kind, "label": P.KIND_LABELS[kind], "sheet": ds.sheet, "rows": n,
                         "period": period.label if period else "", "warnings": warnings[:20],
@@ -353,6 +365,119 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
     if recompute:
         recompute_from(db, touched)
     return results
+
+
+# ----------------------------------------------------------------------------- deleting an upload (v1.11)
+EMP_FIELDS = ("name", "group", "category", "additional_category", "location", "department", "designation", "email",
+              "doj", "dol", "weekly_off", "working_saturdays", "hours_per_day", "exempt", "exempt_reason", "is_active")
+ROW_TABLES = {"muster": MusterRow, "swipes": SwipeRow, "summary": SummaryRow, "mis_manual": ManualMisRow}
+WHAT = {"muster": "attendance days", "swipes": "punches", "summary": "summary rows", "mis_manual": "manual MIS rows"}
+
+
+def _jsonable(v):
+    return v.isoformat() if isinstance(v, date) else v
+
+
+def _snapshot(emp_cache: dict) -> dict:
+    return {no: tuple(_jsonable(getattr(e, f)) for f in EMP_FIELDS) for no, e in emp_cache.items()}
+
+
+def _changes(before: dict, emp_cache: dict) -> dict:
+    """Employees this sheet created, and the employee fields it changed (before → after)."""
+    created = sorted(no for no in emp_cache if no not in before)
+    changed = {}
+    for no, old in before.items():
+        e = emp_cache.get(no)
+        if e is None:
+            continue
+        new = tuple(_jsonable(getattr(e, f)) for f in EMP_FIELDS)
+        diff = {f: [a, b] for f, a, b in zip(EMP_FIELDS, old, new) if a != b}
+        if diff:
+            changed[no] = diff
+    return {"created": created, "changed": changed}
+
+
+def _restore(field: str, v):
+    if field in ("doj", "dol") and isinstance(v, str) and v:
+        return date.fromisoformat(v)
+    return v
+
+
+def import_effects(db: Session, batch: ImportBatch) -> dict:
+    """What deleting this upload removes: {"rows": n (attendance / punches / …), "what": label, "holidays": n,
+    "changed": n employees, "created": n employees, "tracked": bool (False = imported before v1.11 with nothing
+    linked to it)}."""
+    out = {"rows": 0, "what": WHAT.get(batch.kind, "rows"), "holidays": 0, "changed": 0, "created": 0}
+    model = ROW_TABLES.get(batch.kind)
+    if model is not None:
+        out["rows"] = db.scalar(select(func.count()).select_from(model).where(model.batch_id == batch.id)) or 0
+    if batch.kind == "holidays":
+        out["holidays"] = db.scalar(select(func.count()).select_from(Holiday).where(Holiday.batch_id == batch.id)) or 0
+    undo = batch.undo or {}
+    out["changed"], out["created"] = len(undo.get("changed") or {}), len(undo.get("created") or [])
+    out["tracked"] = bool(out["rows"] or out["holidays"] or out["changed"] or out["created"] or batch.undo is not None)
+    return out
+
+
+def delete_import(db: Session, batch: ImportBatch, user: Optional[User], reason: str, ip: str = "") -> str:
+    """Delete an upload and the data it imported, then recalculate. Monthly files: their rows (a later file that
+    replaced them already took them away); holiday lists: the holidays they added or changed; employee files: the
+    fields they changed go back to what they were (unless edited since) and employees they created with no other
+    data go. A finalised month is never touched. Returns a plain-language summary (raises ValueError if refused)."""
+    period = db.get(Period, batch.period_id) if batch.period_id else None
+    if period is not None and period.status != "DRAFT":
+        raise ValueError(f"{period.label} is finalised — re-open it first.")
+    eff = import_effects(db, batch)
+    done: list[str] = []
+    model = ROW_TABLES.get(batch.kind)
+    if model is not None and eff["rows"]:
+        db.execute(delete(model).where(model.batch_id == batch.id))
+        done.append(f"{eff['rows']} {eff['what']}")
+    if batch.kind == "holidays" and eff["holidays"]:
+        db.execute(delete(Holiday).where(Holiday.batch_id == batch.id))
+        done.append(f"{eff['holidays']} holiday{'s' if eff['holidays'] != 1 else ''}")
+    undo = batch.undo or {}
+    restored = 0
+    for no, diff in (undo.get("changed") or {}).items():
+        e = db.get(Employee, no)
+        if e is None:
+            continue
+        for f, (old, new) in diff.items():
+            if _jsonable(getattr(e, f)) == new:            # not edited since: put the earlier value back
+                setattr(e, f, _restore(f, old))
+                restored += 1
+    if restored:
+        done.append(f"{restored} employee detail{'s' if restored != 1 else ''} put back")
+    gone = []
+    for no in undo.get("created") or []:
+        if any(db.scalar(select(m.id).where(m.emp_no == no).limit(1)) for m in ROW_TABLES.values()):
+            continue                                       # other files have data for them
+        e = db.get(Employee, no)
+        if e is not None:
+            db.execute(delete(MonthResult).where(MonthResult.emp_no == no))
+            db.delete(e)
+            gone.append(no)
+    if gone:
+        done.append(f"{len(gone)} employee{'s' if len(gone) != 1 else ''} added by it")
+    audit(db, user, "import.delete", batch.kind, period.key if period else "",
+          {"file": batch.filename, "sheet": batch.sheet, "uploaded": batch.uploaded_at.isoformat(timespec="minutes"),
+           "removed": done, "reason": reason.strip()}, ip)
+    db.delete(batch)
+    db.flush()
+    # recalculate: the file's month (no attendance left → back to "waiting for files"), else every draft month
+    if model is not None and period is not None:
+        if db.scalar(select(MusterRow.id).where(MusterRow.period_id == period.id).limit(1)):
+            compute_period(db, period)
+        else:
+            db.execute(delete(MonthResult).where(MonthResult.period_id == period.id))
+            period.computed_at = None
+    else:
+        db.commit()
+        recompute_from(db, {p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT",
+                                                                           Period.computed_at.is_not(None)))},
+                       commit_each=True)
+    what = ", ".join(done) if done else "nothing was linked to it (imported before v1.11)"
+    return f"“{batch.filename}” deleted — removed {what}."
 
 
 def CAT_NAME_FROM_FILE(db: Session, filename: str) -> str:  # noqa: N802 — small alias
@@ -486,10 +611,13 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
                 nm = (r["name"] or "Holiday").strip()[:128]
                 h = old.get(d)
                 if h is None:
-                    db.add(Holiday(calendar_id=cid, day=d, name=nm, optional=bool(r.get("optional"))))
+                    db.add(Holiday(calendar_id=cid, day=d, name=nm, optional=bool(r.get("optional")),
+                                   batch_id=r.get("batch_id")))
                     added += 1
                 elif h.name != nm or bool(h.optional) != bool(r.get("optional")):
                     h.name, h.optional = nm, bool(r.get("optional"))
+                    if r.get("batch_id"):
+                        h.batch_id = r["batch_id"]
                     changed += 1
             n_opt = sum(1 for r in new.values() if r.get("optional"))
             what = f"{len(new)} holidays" + (f" ({n_opt} optional)" if n_opt else "")

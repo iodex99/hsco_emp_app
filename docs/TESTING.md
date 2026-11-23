@@ -237,3 +237,12 @@ until it is set (flash with an em dash still works); migration `remove_2fa_v1` e
 2FA / SMTP settings (incl. the SMTP password) and runs once. Browser test: sign in with the password, then account
 menu → Change password → sign out → sign in with the new one. On the real-data copy: 6 methods and 60 recovery codes
 deleted, settings dropped, sign-in straight in, old pages 404, no console errors. Full suite **161 passed**.
+
+## v1.11.0 — delete an upload with its data
+Attendance upload: every day linked to it; the panel text; reason required; days and results gone, month back to
+"waiting", punches kept, audit entry; re-upload restores. Punch upload: punches gone, WFH recalculated (4 → 0). A
+later one-person correction file: deleting it removes only that person's days, the rest stays with the first file.
+Holiday list: its 2 holidays gone, the day a working day again. Employee master: changed group put back, a field
+edited since is kept, the employee it added is removed. Finalised month: no button, POST refused. Migration links
+older rows to the latest upload. Real-data copy: monthly uploads link to 2,988 days / 4,149 punches / 97 rows; older
+holiday and employee uploads say nothing is linked; button visible without scrolling; no console errors.

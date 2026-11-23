@@ -285,3 +285,14 @@ directory, `HSCO_DATA_DIR`, `HSCO_RP_ID`). Python: `py -3.13` → Program Files 
 (not the Store stub) → winget → python.org 3.13.1 silent all-users. Writes the office-PC kit next to the app folder.
 `scripts/build_release.py` ships `Install.cmd`; `.gitattributes` keeps `*.cmd` / `*.ps1` CRLF. CI job `install` in
 `.github/workflows/release.yml`.
+
+## Deleting an upload (v1.11)
+`batch_id` (the `imports.id`, no foreign key) on `muster_rows`, `swipes`, `summary_rows`, `manual_mis_rows` and
+`holidays`; `ImportBatch.undo` = `{"created": [emp_no], "changed": {emp_no: {field: [before, after]}}}` from a
+snapshot of `imports.EMP_FIELDS` before and after each sheet. `import_file` creates the batch first (flush → id) and
+fills period / rows / warnings / undo at the end; errors roll the whole file back. `imports.import_effects` (what a
+delete removes) and `imports.delete_import` (refuses finalised months; deletes rows by `batch_id`; restores a field
+only if it still has the value the file set; deletes created employees without rows in any `ROW_TABLES`; audit
+`import.delete`; recalculates the month or clears its results and `computed_at`, else all draft months). Route
+`POST /imports/{id}/delete` (HR, reason). Migration `import_batch_links_v1` links pre-v1.11 rows to the latest upload
+of their kind and month.

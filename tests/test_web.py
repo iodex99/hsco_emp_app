@@ -1715,3 +1715,164 @@ def test_import_templates_round_trip(loaded, tmp_path):
     assert "HSCO (Mum) 2026: 6 holidays — no changes." in r.text and "Unexpected" not in r.text
     # a leave-balance file is no longer imported as balances
     assert c.get("/exports/templates/leave_opening.xlsx").status_code == 404
+
+
+# ---------------------------------------------------------------- v1.11 delete an upload together with its data
+
+def _batch(kind):
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import ImportBatch
+    with session_scope() as db:
+        b = db.scalar(select(ImportBatch).where(ImportBatch.kind == kind).order_by(ImportBatch.id.desc()))
+        return b.id if b else None
+
+
+def _count(model, **kw):
+    from sqlalchemy import func, select
+    from app.db import session_scope
+    with session_scope() as db:
+        q = select(func.count()).select_from(model)
+        for k, v in kw.items():
+            q = q.where(getattr(model, k) == v)
+        return db.scalar(q)
+
+
+def test_delete_attendance_upload_removes_its_days_and_resets_the_month(loaded, fixtures):
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import AuditLog, MonthResult, MusterRow, Period, SwipeRow
+    c = loaded
+    bid = _batch("muster")
+    n = _count(MusterRow, batch_id=bid)
+    assert n > 100 and n == _count(MusterRow)                     # every attendance day knows its upload
+    page = c.get("/imports").text
+    assert f'data-del="{bid}"' in page and f"Removes {n:,} attendance days of October 2026" in page
+    csrf = csrf_of(c, "/imports")
+    r = c.post(f"/imports/{bid}/delete", data={"csrf": csrf, "reason": " "}, follow_redirects=True)
+    assert "reason is required" in r.text and _count(MusterRow) == n
+    r = c.post(f"/imports/{bid}/delete", data={"csrf": csrf, "reason": "Wrong file uploaded"}, follow_redirects=True)
+    assert f"removed {n} attendance days" in r.text
+    assert _count(MusterRow) == 0 and _count(MonthResult) == 0 and _count(SwipeRow) > 0     # punches: another file
+    with session_scope() as db:
+        assert db.scalar(select(Period.computed_at).where(Period.year == 2026, Period.month == 10)) is None
+        a = db.scalar(select(AuditLog).where(AuditLog.action == "import.delete"))
+        assert a.details["reason"] == "Wrong file uploaded" and "attendance days" in a.details["removed"][0]
+    assert c.get("/periods/2026-10").status_code == 200                   # "waiting for files", not an error
+    assert f'data-del="{bid}"' not in c.get("/imports").text
+    _upload(c, [fixtures["muster"]])                                      # uploading it again brings the month back
+    assert _count(MusterRow) == n and _count(MonthResult) > 0
+
+
+def test_delete_punch_upload_recalculates_without_its_punches(loaded):
+    from app.models import MonthResult, SwipeRow
+    c = loaded
+    wfh_before = _result("T004")[0]["wfh_days"]
+    bid = _batch("swipes")
+    r = c.post(f"/imports/{bid}/delete", data={"csrf": csrf_of(c, "/imports"), "reason": "Duplicate upload"},
+               follow_redirects=True)
+    assert "punches" in r.text and _count(SwipeRow) == 0 and _count(MonthResult) > 0
+    assert wfh_before == 4 and _result("T004")[0]["wfh_days"] == 0                # WFH came from the punches
+
+
+def test_delete_a_later_partial_file_only_takes_its_own_people(loaded, fixtures, tmp_path):
+    """A small correction file replaced one person's days; deleting it removes that person's days only."""
+    import openpyxl
+    from app.models import MusterRow
+    c = loaded
+    full = _batch("muster")
+    total = _count(MusterRow)
+    wb = openpyxl.load_workbook(fixtures["muster"])
+    ws = wb.active
+    keys = ("employee no", "emp no", "employee number", "employee no.")
+    norm = lambda v: " ".join(str(v or "").split()).lower()  # noqa: E731 - greytHR writes "Employee  No"
+    hdr_row = next(i for i in range(1, 30) if any(norm(v.value) in keys for v in ws[i]))
+    emp_col = next(j for j, v in enumerate(ws[hdr_row]) if norm(v.value) in keys)
+    for i in range(ws.max_row, hdr_row, -1):
+        v = ws.cell(row=i, column=emp_col + 1).value
+        if v and str(v).strip() != "T001":
+            ws.delete_rows(i)
+    f = tmp_path / "Attendance Muster Report T001 fix.xlsx"
+    wb.save(f)
+    _upload(c, [f])
+    part = _batch("muster")
+    t001 = _count(MusterRow, emp_no="T001")
+    assert part != full and t001 > 0 and _count(MusterRow, batch_id=part) == t001
+    assert _count(MusterRow) == total and _count(MusterRow, batch_id=full) == total - t001
+    c.post(f"/imports/{part}/delete", data={"csrf": csrf_of(c, "/imports"), "reason": "Wrong file uploaded"})
+    assert _count(MusterRow, emp_no="T001") == 0
+    assert _count(MusterRow) == _count(MusterRow, batch_id=full) == total - t001    # the others are untouched
+
+
+def test_delete_holiday_and_employee_uploads_undo_their_changes(loaded):
+    from datetime import date
+    from app.db import session_scope
+    from app.models import Category, Employee, Holiday
+    c = loaded
+    with session_scope() as db:
+        db.add(Category(name="HSCO (Mum)"))
+        db.get(Employee, "T001").category = "HSCO (Mum)"
+    hol = _xlsx([["Date", "Day", "Holiday", "Category", "Optional"],
+                 [date(2026, 10, 7), "Wed", "Mum day", "HSCO (Mum)", "No"],
+                 [date(2026, 10, 9), "Fri", "Second day", "HSCO (Mum)", "No"]])
+    _post_files(c, [("Holidays.xlsx", hol)])
+    hb = _batch("holidays")
+    assert _count(Holiday, batch_id=hb) == 2
+    day = lambda emp, iso: next(d for d in _result_days(emp) if d["date"] == iso)  # noqa: E731
+    assert day("T001", "2026-10-07")["type"] == "HOLIDAY"
+    assert "Removes 2 holidays it put in the lists" in c.get("/imports").text
+    c.post(f"/imports/{hb}/delete", data={"csrf": csrf_of(c, "/imports"), "reason": "Wrong year"})
+    assert _count(Holiday, batch_id=hb) == 0 and day("T001", "2026-10-07")["type"] == "WORKDAY"
+    # employee master: a changed group and a new person — undone; a later manual edit wins
+    m = _xlsx([["Employee No", "Name", "Group"], ["T001", "Asha Rao", "ATA"], ["T002", "Bilal Khan", "GST"],
+               ["T099", "New Person", "BSS"]])
+    _post_files(c, [("employee_master.xlsx", m)])
+    mb = _batch("employee_master")
+    with session_scope() as db:
+        assert db.get(Employee, "T001").group == "ATA" and db.get(Employee, "T099") is not None
+        db.get(Employee, "T002").group = "Offshore"                     # edited by hand after the import
+    page = c.get("/imports").text
+    assert "the details it changed for 2 employees" in page and "1 employee it added" in page
+    r = c.post(f"/imports/{mb}/delete", data={"csrf": csrf_of(c, "/imports"), "reason": "Wrong file uploaded"},
+               follow_redirects=True)
+    assert "employee detail" in r.text and "1 employee added by it" in r.text
+    with session_scope() as db:
+        assert db.get(Employee, "T001").group == "BSS"                  # put back
+        assert db.get(Employee, "T002").group == "Offshore"             # edited since: kept
+        assert db.get(Employee, "T099") is None                         # added by the file, no other data
+
+
+def test_delete_upload_refused_for_a_finalised_month(loaded):
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import MusterRow, Period
+    c = loaded
+    bid = _batch("muster")
+    with session_scope() as db:
+        db.scalar(select(Period).where(Period.year == 2026, Period.month == 10)).status = "FINALISED"
+    assert f'data-del="{bid}"' not in c.get("/imports").text
+    r = c.post(f"/imports/{bid}/delete", data={"csrf": csrf_of(c, "/imports"), "reason": "x"}, follow_redirects=True)
+    assert "finalised" in r.text and _count(MusterRow) > 0
+
+
+def test_migration_links_older_rows_to_their_latest_upload(data_dir):
+    from datetime import date
+    from sqlalchemy import select, text
+    from app.db import _link_rows_to_uploads, init_db, session_scope
+    from app.models import ImportBatch, MusterRow, Period
+    init_db()
+    with session_scope() as db:
+        p = Period(year=2026, month=9)
+        db.add(p)
+        db.flush()
+        old = ImportBatch(period_id=p.id, kind="muster", filename="a.xlsx", sha256="x")
+        new = ImportBatch(period_id=p.id, kind="muster", filename="b.xlsx", sha256="y")
+        db.add_all([old, new])
+        db.flush()
+        db.add(MusterRow(period_id=p.id, emp_no="E1", day=date(2026, 9, 1)))
+        new_id = new.id
+    with session_scope() as db:
+        db.execute(text("UPDATE muster_rows SET batch_id = NULL"))
+        _link_rows_to_uploads(db)
+    with session_scope() as db:
+        assert db.scalar(select(MusterRow.batch_id)) == new_id

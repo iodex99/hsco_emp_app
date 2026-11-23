@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.11.0 — 2026-11-23 — delete an upload together with its data
+Owner: "give option to delete uploaded files which shall also delete the data imported from the file".
+- Import files → **Import history** → the bin icon on an upload → a panel says exactly what goes (e.g. "Removes 2,988
+  attendance days of October 2026") → reason (required, audit-logged) → **Delete upload and its data**.
+- What "its data" means: **monthly files** (Attendance Muster, Swipe Details, Attendance Summary, manual MIS) — the
+  rows that file brought in (if a later file already replaced them, nothing); the month is recalculated, or goes back
+  to "waiting for files" when no attendance is left. **Holiday lists** — the holidays the file added or changed.
+  **Employee master / category report / joining-dates report** — the employee details it changed go back to what
+  they were (unless someone edited them since) and employees it added go (when no other file has data for them).
+- A small correction file (one person's days) removes only that person's days when deleted; the rest of the month
+  stays. To get earlier figures back, upload that file again. Corrections, reviews and settings are never touched.
+- Finalised months: no delete (re-open the month first).
+- Every imported row now records the upload it came from. On update, rows imported earlier are linked to the latest
+  upload of their kind for their month; holiday lists and employee files imported before this version can't be
+  traced to their rows — deleting them only removes the history entry (the panel says so).
+
 ## 1.10.0 — 2026-11-23 — two-step verification removed
 Owner: "remove 2fa completely from the app".
 - Sign-in is **user name + password** and straight into the app. Gone: authenticator-app codes, security keys /
