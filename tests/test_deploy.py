@@ -53,3 +53,21 @@ def test_create_admin_confirms_a_typed_password(data_dir, monkeypatch, capsys):
     cli.create_admin(["boss"])
     with session_scope() as db:
         assert db.scalar(select(User).where(User.username == "boss")).role == "admin"
+
+
+@needs_ps
+def test_installer_follows_a_data_folder_moved_from_the_app(tmp_path):
+    """Re-running Install.cmd after Settings → Data folder → Move keeps using the moved folder (v1.12)."""
+    import json
+    import os
+    base = os.environ.get("HSCO_DATA_DIR_MACHINE_TEST") or "C:\HSCOData"
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "data_location.json").write_text(json.dumps({"base": base, "dir": "D:\Moved\HSCOData"}), encoding="utf-8")
+    r = subprocess.run([PS, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "deploy" / "install_windows.ps1"),
+                        "-DryRun", "-AppDir", str(app)], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr
+    machine = subprocess.run([PS, "-NoProfile", "-Command", "[Environment]::GetEnvironmentVariable('HSCO_DATA_DIR','Machine')"],
+                             capture_output=True, text=True).stdout.strip()
+    if not machine or machine.rstrip("\\").lower() == base.rstrip("\\").lower():
+        assert "Data folder: D:\Moved\HSCOData" in r.stdout, r.stdout

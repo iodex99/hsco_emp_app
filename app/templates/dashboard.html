@@ -40,7 +40,8 @@
     <div class="tools"><a class="btn sm sec" href="/flags?period={{ key }}">Open review queue</a></div></div>
     <div class="bd" style="padding-top:4px;padding-bottom:4px"><ul class="list">
     {% for f in m.flag_summary if f.severity != 'info' %}
-      <li>{{ ui.sev(f.severity) }}<a href="/flags?period={{ key }}&code={{ f.code }}" style="color:var(--text);font-weight:500">{{ f.label }}</a>
+      <li>{{ ui.sev(f.severity) }}{% if f.code in review_codes %}<a href="/flags?period={{ key }}&code={{ f.code }}" style="color:var(--text);font-weight:500">{{ f.label }}</a>
+        {% else %}<a href="/periods/{{ key }}?f=flags" style="color:var(--text)" title="Reviewed automatically — see the people on the payroll sheet">{{ f.label }}</a> <span class="muted small">auto-reviewed</span>{% endif %}
         <span class="r">{{ f.count }} <span class="muted small" style="font-weight:400">{{ 'person' if f.count == 1 else 'people' }}</span></span></li>
     {% else %}<li class="muted">{{ ui.icon('circle-check','sm') }} Nothing needs attention this month.</li>{% endfor %}
     </ul></div></div>

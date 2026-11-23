@@ -13,6 +13,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Iterable, Optional
 
 from .model import (
+    RH_CODES,
     B_ABSENT, B_COMPOFF, B_LEAVE, B_LOP, B_OFF, B_PRESENT, HOLIDAY, P_ALL_SAT_OFF, P_CUSTOM, P_MUSTER,
     P_STD_FIRST_SAT, P_SUN_ONLY, WEEKLY_OFF, WORKDAY, DayDetail, DayOverride, Employee, EmployeeMonth,
     REJECTED_APPROVALS, MusterDay, Policy, Swipe,
@@ -126,9 +127,10 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
 # 7 = v1.7.4: WFH on a working Saturday the office is closed (only the 1st Saturday open) is not counted as WFH.
 # 8 = v1.7.5: extra WFH days approved by a manager / partner (month correction) are not deducted.
 # 9 = v1.8.0: the hours-shortfall deduction can be waived for a month (month correction "shortfall_waived").
+# 11 = v1.12.0: greytHR status RH = an earned (restricted) holiday: no absence, no comp-off for work that day.
 # 10 = v1.9.0: holidays only by category (no per-employee calendar, no location / group / person targeting); leave
 #      balances are not calculated (no ledger, salary deduction or payroll LOP).
-RULES_VERSION = 10
+RULES_VERSION = 11
 
 
 def office_closed_saturday(d: date, policy: Policy) -> bool:
@@ -191,8 +193,9 @@ def compute_employee_month(
             if ov.work_min is not None:
                 work_min = int(ov.work_min)
         worked = work_min > 0
+        is_rh = s1 in RH_CODES or s2 in RH_CODES
         for code in (s1, s2):
-            if code and code not in policy.status_map and code not in seen_unknown:
+            if code and code not in policy.status_map and code not in RH_CODES and code not in seen_unknown:
                 seen_unknown.add(code)
                 flags.append(("UNKNOWN_STATUS", SEV_MEDIUM, f"Unknown greytHR status code '{code}' (mapped by hours)"))
 
@@ -216,11 +219,15 @@ def compute_employee_month(
                 holiday_name = f"{emp.optional_holidays[d] or 'Optional holiday'} (optional)"
             else:
                 opt_note = f"Optional holiday ({emp.optional_holidays[d] or 'unnamed'}) — not taken"
+        if day_type == WORKDAY and is_rh:
+            # restricted holiday taken (greytHR RH): the person's earned holiday — not an absence, not leave
+            day_type = HOLIDAY
+            holiday_name = "Restricted holiday (RH)"
         if ov and ov.day_type:
             day_type = ov.day_type
         notes = [opt_note] if opt_note else []
         if emp.holidays is not None and d not in emp.optional_holidays and (muster_type == HOLIDAY) != (day_type == HOLIDAY) \
-                and day_type != WEEKLY_OFF:
+                and day_type != WEEKLY_OFF and not is_rh:
             notes.append("Holiday calendar differs from greytHR")
         if ptype and (ptype == WEEKLY_OFF) != (muster_type == WEEKLY_OFF) and muster_type != HOLIDAY:
             notes.append(f"Weekly-off pattern differs from greytHR ({'off' if ptype == WEEKLY_OFF else 'working'} per pattern)")
@@ -243,7 +250,8 @@ def compute_employee_month(
             notes.append(f"{rejected_by_day[d]} rejected sign-in(s) ignored")
         dd = DayDetail(day=d, weekday=d.strftime("%a"), day_type=day_type, s1=s1, s2=s2, b1=b1, b2=b2,
                        in_time=m.in_time, out_time=m.out_time, work_min=work_min, shift=m.shift,
-                       swipes=sw, holiday_name=holiday_name, overridden=bool(ov), notes=notes)
+                       swipes=sw, holiday_name=holiday_name, overridden=bool(ov), notes=notes,
+                       is_rh=is_rh and day_type == HOLIDAY)
         lt = []
         for s in sw:
             label = s.location_type or ("Office (biometric)" if s.swipe_type.lower() == "astra" else s.swipe_type or "Unknown")
@@ -277,7 +285,10 @@ def compute_employee_month(
                          "not counted as WFH (off-day work)")
         if day_type != WORKDAY and (worked or m.in_time or sw):
             dd.is_extra_work = True
-            dd.compoff_earned = work_min >= policy.comp_off_min_hours * 60
+            # no comp-off for working on one's own restricted holiday (owner, v1.12)
+            dd.compoff_earned = work_min >= policy.comp_off_min_hours * 60 and not dd.is_rh
+            if dd.is_rh and work_min >= policy.comp_off_min_hours * 60:
+                notes.append("Worked on a restricted holiday (RH) — no comp-off")
         if day_type == WORKDAY and B_PRESENT in (b1, b2) and m.in_time and not sw and swipes:
             dd.notes.append("Marked present but no punch recorded this day")
         res.days.append(dd)

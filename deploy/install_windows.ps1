@@ -70,6 +70,14 @@ $Home_ = Split-Path $AppDir -Parent
 if (-not $DataDir) {
   $DataDir = [Environment]::GetEnvironmentVariable("HSCO_DATA_DIR", "Machine")
   if (-not $DataDir) { $DataDir = "C:\HSCOData" }
+  # moved from the app (Settings -> Data folder): data_location.json next to the app says where it went (v1.12)
+  $ptr = Join-Path $AppDir "data_location.json"
+  if (Test-Path $ptr) {
+    try {
+      $j = Get-Content -Raw $ptr | ConvertFrom-Json
+      if ($j.dir -and $j.base -and ($j.base.TrimEnd('') -ieq $DataDir.TrimEnd(''))) { $DataDir = $j.dir }
+    } catch {}
+  }
 }
 if (-not $HostName) {
   $HostName = [Environment]::GetEnvironmentVariable("HSCO_RP_ID", "Machine")

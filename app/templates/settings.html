@@ -169,6 +169,24 @@
 </section>
 
 <section class="pane" data-pane="general">
+{% if can_admin and dd %}
+<div class="card" id="data-folder"><div class="hd"><h2>Data folder</h2><span class="sub">database, uploads, backups, certificate and logo — on this server</span></div>
+<div class="bd">
+  <div class="minis mb">
+    <div class="mini"><div class="v mono" style="font-size:15px;word-break:break-all">{{ dd.dir }}</div><div class="l">In use{% if dd.moved %} · moved from {{ dd.base }}{% endif %}</div></div>
+    <div class="mini"><div class="v">{{ (dd.size / 1048576)|round(0)|int }} MB</div><div class="l">Size{% if dd.free is not none %} · {{ (dd.free / 1073741824)|round(1) }} GB free on that drive{% endif %}</div></div>
+  </div>
+  {% if dd.can_move %}
+  <form method="post" action="/settings/data-folder" class="row" style="align-items:flex-end"
+        data-confirm="Copy all the data to this folder and restart the app on it? The current folder is kept as it is.">{{ ui.csrf_field() }}
+    <div class="field" style="margin:0;flex:1"><label>Move the data to</label><input name="target" placeholder="e.g. D:\HSCOData" required>
+      <div class="help">A new or empty folder on this server (another drive is fine). Everything is copied and checked, the app restarts on the
+        new folder in a few seconds, and the old folder is left as it was (with a MOVED.txt note) until you delete it.</div></div>
+    <button class="btn sec" style="margin-bottom:22px">{{ ui.icon('arrow-right','sm') }} Move the data here</button>
+  </form>
+  {% else %}<div class="alert">{{ ui.icon('info') }}<span>{{ dd.why_not }}</span></div>{% endif %}
+</div></div>
+{% endif %}
 {% if can_admin %}
 <div class="card" id="backups"><div class="hd"><h2>Backups &amp; data safety</h2><span class="sub">stored in the data folder on this server</span>
   <div class="tools"><form method="post" action="/settings/backup" class="inline">{{ ui.csrf_field() }}<button class="btn sm">{{ ui.icon('download','sm') }} Back up now</button></form></div></div>

@@ -4,7 +4,8 @@
 {% block content %}
 {% set base = '/flags?period=' ~ period.key ~ ('&emp=' ~ emp if emp else '') %}
 <div class="ph">
-  <div><h1>Review queue</h1><div class="sub">{{ period.label }} · exceptions found by the app. Mark each one reviewed once you've dealt with it.</div></div>
+  <div><h1>Review queue</h1><div class="sub">{{ period.label }} · {{ review_types|join(' and ') }} need a review — mark each one once you've
+    dealt with it. Every other exception is reviewed automatically (it stays on the employee's page and in the Excel).</div></div>
   <div class="actions" style="min-width:260px">
     <div style="flex:1"><div class="split small"><span class="strong" id="prog-text">{{ reviewed }} of {{ total }} reviewed</span><span class="muted" id="pct">{{ ((reviewed / total * 100) if total else 100)|round|int }}%</span></div>
     <div class="bar {{ 'ok' if reviewed == total }}"><i id="pbar" style="width:{{ ((reviewed / total * 100) if total else 100)|round }}%"></i></div></div>
@@ -25,10 +26,6 @@
       <span class="dot" style="background:{{ {'critical':'#f04438','high':'#f79009','medium':'#eaaa08'}[g.severity] }}"></span>{{ g.label }}
       <span class="r">{% if g.open %}{{ g.open }}{% else %}{{ ui.icon('check','sm') }}{% endif %}</span></a>
     {% endfor %}
-    <div class="grp" style="padding:12px 10px 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-4)">For information</div>
-    {% for g in summary if g.severity == 'info' %}
-    <a class="nav-item {{ 'on' if code == g.code }}" href="{{ base }}&code={{ g.code }}&show=all">{{ g.label }}<span class="r muted">{{ g.total }}</span></a>
-    {% else %}<div class="muted small" style="padding:4px 10px">None</div>{% endfor %}
   </div></div>
 
   <div class="card flush">
@@ -62,7 +59,6 @@
               data-approved="{{ w.approved|n }}" data-ded="{{ w.deduction|n }}" title="A manager / partner allowed more WFH: don't deduct">{{ ui.icon('badge-check','sm') }} <span class="lbl">{{ 'Edit WFH approval' if w.approved else 'Approve WFH' }}</span></button>
           {% endif %}
           {% if can_hr and f.actionable %}
-            {% if f.code == 'SHORTFALL_DEDUCTION' and not f.reviewed %}<button class="btn sm sec" type="button" data-waive="{{ f.emp_no }}" data-name="{{ f.name }}" title="A partner waived the hours-shortfall deduction this month">{{ ui.icon('badge-check','sm') }} <span class="lbl">Waive</span></button>{% endif %}
             {% if f.reviewed %}<button class="btn sm ghost" type="button" data-act="reopen" title="Re-open">{{ ui.icon('undo-2','sm') }} <span class="lbl">Re-open</span></button>
             {% else %}<button class="btn sm sec" type="button" data-act="review" title="Mark reviewed">{{ ui.icon('check','sm') }} <span class="lbl">Reviewed</span></button>{% endif %}
           {% endif %}
@@ -96,16 +92,9 @@ tr.is-rev td{opacity:.7}</style>
   <div class="field"><label>Approved by / reason <span class="muted">(required — saved in the audit log)</span></label><textarea name="reason" id="wo-reason" rows="2" maxlength="300" required></textarea></div>
   <div class="chips">{% for t in ['Approved by partner','Approved by manager','Client assignment — approved','Medical — approved'] %}<button class="chip" type="button" data-wo-note="{{ t }}">{{ t }}</button>{% endfor %}</div>
 </div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn">{{ ui.icon('check','sm') }} Save — recalculate</button></div></form></aside>
-<aside class="drawer" id="waive" aria-label="Waive hours deduction"><form method="post" action="/flags/waive-shortfall" style="display:contents">{{ ui.csrf_field() }}
-<input type="hidden" name="period" value="{{ period.key }}"><input type="hidden" name="emp_no" id="wv-emp">
-<div class="dh"><div><div class="small muted">Hours shortfall → leave deduction</div><h2 id="wv-title">Waive the hours deduction</h2></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
-<div class="db"><p class="small" style="margin-top:0;color:var(--text-2)">The hours-shortfall deduction is not taken this month (a WFH-over-limit deduction, if any, still applies). Saved as a month correction with your reason; undo it on the employee's page.</p>
-  <div class="field"><label>Approved by / reason <span class="muted">(required — saved in the audit log)</span></label><textarea name="reason" id="wv-reason" rows="2" maxlength="300" required></textarea></div>
-  <div class="chips">{% for t in ['Waived by partner','Client work outside office hours','Medical — approved'] %}<button class="chip" type="button" data-wv-note="{{ t }}">{{ t }}</button>{% endfor %}</div>
-</div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn">{{ ui.icon('check','sm') }} Waive — recalculate</button></div></form></aside>
 <aside class="drawer" id="rev" aria-label="Mark reviewed"><div class="dh"><div><div class="small muted" id="rv-sub"></div><h2 id="rv-title">Mark reviewed</h2></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
 <div class="db"><p class="small" id="rv-msg" style="margin-top:0;color:var(--text-2)"></p>
-  <p class="help" style="margin-top:0">Marking reviewed records that you looked at it — it does not change any figure. To change a deduction use <b>Approve WFH</b>, <b>Waive</b> or a correction on the employee's page.</p>
+  <p class="help" style="margin-top:0">Marking reviewed records that you looked at it — it does not change any figure. To change a deduction use <b>Approve WFH</b>, or <b>Waive</b> / a correction on the employee's page.</p>
   <div class="field"><label>What was done? <span class="muted">(optional)</span></label><textarea id="rv-note" rows="3" maxlength="500"></textarea></div>
   <div class="chips">{% for t in ['Approved by partner','Regularised in greytHR','Discussed with employee','Leave applied late — accepted','No action needed'] %}<button class="chip" type="button" data-note="{{ t }}">{{ t }}</button>{% endfor %}</div>
 </div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn" type="button" id="rv-save">{{ ui.icon('check','sm') }} Mark reviewed</button></div></aside><div class="scrim"></div>{% endif %}
@@ -128,10 +117,6 @@ $$('#fl [data-wfh]').forEach(b=>b.addEventListener('click',(e)=>{
   $('#wo-days').value= +ap ? ap : ex; $('#wo-reason').value='';
   HSCO.openDrawer('wfh-ok'); setTimeout(()=>$('#wo-reason').focus(),50);}));
 $$('#wfh-ok [data-wo-note]').forEach(c=>c.onclick=()=>{$('#wo-reason').value=c.dataset.woNote;});
-$$('#fl [data-waive]').forEach(b=>b.addEventListener('click',(e)=>{e.stopPropagation();
-  $('#wv-emp').value=b.dataset.waive; $('#wv-title').textContent='Waive: '+b.dataset.name; $('#wv-reason').value='';
-  HSCO.openDrawer('waive'); setTimeout(()=>$('#wv-reason').focus(),50);}));
-$$('#waive [data-wv-note]').forEach(c=>c.onclick=()=>{$('#wv-reason').value=c.dataset.wvNote;});
 
 // ---------------- single-row actions
 $$('#fl [data-act]').forEach(b=>b.addEventListener('click',async(e)=>{

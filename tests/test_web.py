@@ -399,23 +399,44 @@ def test_db_dependency_commits_before_response():
 
 
 def test_review_queue_search_and_navigation(loaded):
+    """v1.12 (owner): only "WFH above monthly limit" and "Group not set" wait in the review queue; every other
+    exception is reviewed automatically (still on the employee's page and in the Excel)."""
+    from app.db import session_scope
+    from app.models import Employee
     c = loaded
-    # review queue lists actionable flags; mark one reviewed, then a whole type
+    tok = csrf_of(c, "/flags")
+    with session_scope() as db:
+        db.get(Employee, "T005").group = ""                                   # → Group not set
+    c.post("/periods/2026-10/recompute", data={"csrf": tok})
     page = c.get("/flags?period=2026-10")
     assert page.status_code == 200 and "Review queue" in page.text and "Mark reviewed" in page.text
-    tok = csrf_of(c, "/flags")
+    assert "WFH above monthly limit" in page.text and "Group not set" in page.text
+    assert "reviewed automatically" in page.text
+    for other in ("Hours shortfall", "Often more than 1 h late", "For information", "New joinee"):
+        assert other not in page.text, other
     j = c.post("/flags/review", json={"period": "2026-10", "emp_no": "T004", "code": "WFH_OVER_LIMIT", "action": "review",
                                       "note": "OK-T004-note"}, headers={"X-CSRF-Token": tok}).json()
-    assert j["ok"] and j["reviewed"] == 1 and j["total"] > 1
+    assert j["ok"] and j["reviewed"] == 1 and j["total"] == 2
     reviewed = c.get("/flags?period=2026-10&code=WFH_OVER_LIMIT&show=reviewed").text
     assert "OK-T004-note" in reviewed and "Re-open" in reviewed
     assert "OK-T004-note" not in c.get("/flags?period=2026-10&show=open").text
-    j = c.post("/flags/review", json={"period": "2026-10", "emp_no": "*", "code": "PERSISTENT_LATE", "action": "review"},
+    j = c.post("/flags/review", json={"period": "2026-10", "emp_no": "*", "code": "GROUP_NOT_SET", "action": "review"},
                headers={"X-CSRF-Token": tok}).json()
-    assert j["count"] >= 1
+    assert j["count"] == 1 and j["reviewed"] == 2
+    j0 = c.post("/flags/review", json={"period": "2026-10", "emp_no": "*", "code": "PERSISTENT_LATE", "action": "review"},
+                headers={"X-CSRF-Token": tok}).json()
+    assert j0["count"] == 0                                                  # already reviewed automatically
     j2 = c.post("/flags/review", json={"period": "2026-10", "emp_no": "T004", "code": "WFH_OVER_LIMIT", "action": "reopen"},
                 headers={"X-CSRF-Token": tok}).json()
-    assert j2["reviewed"] == j["reviewed"] - 1
+    assert j2["reviewed"] == 1 and j2["total"] == 2
+    # the Excel Flags sheet: open review items first, the rest marked as reviewed automatically
+    ws = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))["Flags"]
+    status = {(r_[0].value, r_[4].value): r_[6].value for r_ in ws.iter_rows(min_row=6) if r_[0].value}
+    assert status[("T004", "WFH above monthly limit")] == "Open"
+    assert status[("T004", "Often more than 1 h late")] == "Reviewed automatically"
+    # the Overview: the two types link to the queue, the others are marked auto-reviewed
+    ov = c.get("/").text
+    assert "/flags?period=2026-10&code=WFH_OVER_LIMIT" in ov and "auto-reviewed" in ov
     # reviews survive recomputation
     c.post("/periods/2026-10/recompute", data={"csrf": tok})
     assert "flag.review" in c.get("/audit").text
@@ -448,23 +469,29 @@ def test_viewer_cannot_review(loaded):
 
 
 def test_bulk_review_and_employee_filter(loaded):
+    from app.db import session_scope
+    from app.models import Employee
     c = loaded
     tok = csrf_of(c, "/flags")
+    with session_scope() as db:
+        db.get(Employee, "T005").group = ""                                   # → Group not set
+    c.post("/periods/2026-10/recompute", data={"csrf": tok})
     page = c.get("/flags?period=2026-10&emp=T004&show=all").text
     assert "Showing only <b>Dev Mehta</b>" in page and "Show everyone" in page
     emps = set(re.findall(r'<tr data-emp="([^"]+)"', page))
     assert emps == {"T004"}
-    codes = re.findall(r'<tr data-emp="T004" data-code="([^"]+)"', page)
-    assert len(codes) >= 2
-    items = [{"emp_no": "T004", "code": cd} for cd in codes[:2]] + [{"emp_no": "NOPE", "code": "X"}]   # bogus item ignored
+    assert re.findall(r'<tr data-emp="T004" data-code="([^"]+)"', page) == ["WFH_OVER_LIMIT"]   # only review types
+    items = [{"emp_no": "T004", "code": "WFH_OVER_LIMIT"}, {"emp_no": "T005", "code": "GROUP_NOT_SET"},
+             {"emp_no": "T004", "code": "PERSISTENT_LATE"},                  # reviewed automatically: ignored
+             {"emp_no": "NOPE", "code": "X"}]                                # bogus item ignored
     j = c.post("/flags/review", json={"period": "2026-10", "items": items, "action": "review", "note": "bulk-ok"},
                headers={"X-CSRF-Token": tok}).json()
-    assert j["count"] == 2
-    page = c.get("/flags?period=2026-10&emp=T004&show=reviewed").text
+    assert j["count"] == 2 and j["reviewed"] == j["total"] == 2
+    page = c.get("/flags?period=2026-10&show=reviewed").text
     assert page.count("bulk-ok") == 4                     # detail + the (hidden) review-note column, 2 rows
     j = c.post("/flags/review", json={"period": "2026-10", "items": items[:2], "action": "reopen"},
                headers={"X-CSRF-Token": tok}).json()
-    assert j["count"] == 2 and "bulk-ok" not in c.get("/flags?period=2026-10&emp=T004&show=reviewed").text
+    assert j["count"] == 2 and "bulk-ok" not in c.get("/flags?period=2026-10&show=reviewed").text
     # the employee page links into the filtered queue
     html = c.get("/periods/2026-10/employee/T004").text
     assert 'href="/flags?period=2026-10&amp;emp=T004&amp;show=all"' in html or 'href="/flags?period=2026-10&emp=T004&show=all"' in html
@@ -1596,21 +1623,25 @@ def test_number_plural_and_audit_filters():
     assert _readable("Approved — partner") == "Approved — partner" and _readable(None) == ""
 
 
-def test_waive_hours_deduction_from_review_queue(loaded):
-    """v1.8.0: Review queue → Waive (a partner waived the hours-shortfall deduction): month correction
-    shortfall_waived with the reason, deduction gone, info note instead, Excel follows; undo on the employee page."""
+def test_waive_hours_deduction_from_the_employee_page(loaded):
+    """v1.8.0 Waive (a partner waived the hours-shortfall deduction): since v1.12 on the employee's page (the hours
+    shortfall is reviewed automatically, so it is no longer in the review queue). Month correction shortfall_waived
+    with the reason, deduction gone, info note instead, Excel follows; undo on the employee page."""
     from sqlalchemy import select
     from app.db import session_scope
     from app.models import AuditLog, MonthOverrideRow
     c = loaded
     d1, f1 = _result("T001")
     assert d1["shortfall_deduction_days"] > 0 and "SHORTFALL_DEDUCTION" in {f["code"] for f in f1}
-    page = c.get("/flags?period=2026-10&code=SHORTFALL_DEDUCTION").text
-    assert 'data-waive="T001"' in page and 'action="/flags/waive-shortfall"' in page
-    assert "does not change any figure" in page
-    csrf = csrf_of(c, "/flags?period=2026-10")
-    r = c.post("/flags/waive-shortfall", data={"csrf": csrf, "period": "2026-10", "emp_no": "T001", "reason": " "},
-               follow_redirects=True)
+    assert 'data-waive' not in c.get("/flags?period=2026-10").text
+    page = c.get("/periods/2026-10/employee/T001").text
+    assert 'action="/flags/waive-shortfall"' in page and "Waive: Asha Rao" in page and "does not change any figure" not in page
+    assert 'action="/flags/waive-shortfall"' not in c.get("/periods/2026-10/employee/T003").text   # nothing to waive
+    csrf = csrf_of(c, "/periods/2026-10/employee/T001")
+    r = c.post("/flags/waive-shortfall", data={"csrf": csrf, "period": "2026-10", "emp_no": "T001", "reason": " ",
+                                               "back": "/periods/2026-10/employee/T001"}, follow_redirects=False)
+    assert r.headers["location"] == "/periods/2026-10/employee/T001"
+    r = c.get(r.headers["location"])
     assert "reason is required" in r.text
     r = c.post("/flags/waive-shortfall", data={"csrf": csrf, "period": "2026-10", "emp_no": "t001",
                                                "reason": "Waived by partner"}, follow_redirects=True)

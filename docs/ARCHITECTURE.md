@@ -296,3 +296,18 @@ only if it still has the value the file set; deletes created employees without r
 `import.delete`; recalculates the month or clears its results and `computed_at`, else all draft months). Route
 `POST /imports/{id}/delete` (HR, reason). Migration `import_batch_links_v1` links pre-v1.11 rows to the latest upload
 of their kind and month.
+
+## RH, review types, data folder (v1.12)
+- Engine: `model.RH_CODES = ("RH",)`; a WORKDAY with RH in s1/s2 → HOLIDAY ("Restricted holiday (RH)"),
+  `DayDetail.is_rh`, comp-off not earned on it; serialized as `rh`. RULES_VERSION 11.
+- `workflow.REVIEW_CODES = ("WFH_OVER_LIMIT", "GROUP_NOT_SET")`; `actionable_flags` marks others `reviewed=True`,
+  `auto=True`, `reviewed_by="auto"`; the queue lists only actionable rows; Excel Flags status "Reviewed automatically".
+  `/flags/waive-shortfall` takes `back` (the employee page).
+- Data folder: `config.base_data_dir()` (HSCO_DATA_DIR or `<app>/data`), `config.resolve_data_dir()` follows
+  `<app>/data_location.json` {"base", "dir"} only while the base matches; `run_server.data_dir()` does the same and is
+  re-read at every (re)start; the supervisor sets `HSCO_SUPERVISOR_FEATURES=datadir` (older supervisors: the move is
+  offered only after a server restart); `data_location.json` is in `run_server.PROTECTED` and `.gitignore`.
+  `services/datadir.py`: `info`, `check_target` (absolute, new/empty, outside the current folder and the app, drive
+  exists, free space), `move` (copytree without `updates/staged|rollback|download`, DB via `sqlite3.backup`,
+  integrity check, icacls when admin, pointer written atomically, MOVED.txt). `POST /settings/data-folder` (admin) →
+  audit `settings.data_folder` before the copy → restart hook. The installer honours the pointer.

@@ -1,6 +1,7 @@
 """Admin settings: policy rules, status codes, shifts, general/security, holiday calendars, logo, backups."""
 from __future__ import annotations
 
+import os
 from datetime import date
 
 import anyio
@@ -68,7 +69,9 @@ def settings_page(c: Ctx = Depends(hr)):
     conflicts = CAT.calendar_conflicts(c.db, c.db.scalars(select(MonthResult).where(MonthResult.period_id == latest.id))
                                        ) if latest else []
     this_year = date.today().year
+    from app.services import datadir as DD
     return render(c, "settings.html", backups=BK.list_backups()[:12], bk=BK.summary(),
+                  dd=DD.info() if c.can("admin") else None,
                   pol=get_policy_json(c.db), g=get_general(c.db), numbers=POLICY_NUMBERS,
                   buckets=BUCKETS, cals=cals, shift_names=shift_names,
                   cat_rows=cat_rows, cal_use=cal_use, conflicts=conflicts, conflict_period=latest,
@@ -367,6 +370,40 @@ def add_category_holiday(day: str = Form(...), name: str = Form(""), optional: s
     return redirect("/settings#holidays", f"{nm} ({d:%d-%b-%Y}) added to {len(cats)} "
                     f"{'list' if len(cats) == 1 else 'lists'}: {', '.join(cats)}.{warn}{note}"
                     if lines else "Nothing added.")
+
+
+@router.post("/settings/data-folder")
+def move_data_folder(target: str = Form(""), c: Ctx = Depends(admin)):
+    """Move the whole data folder (database, uploads, backups, certificate, logo …) to another folder or drive, then
+    restart on it (services/datadir.py). The old folder is left as it was, with a MOVED.txt note."""
+    from app import updater
+    from app.services import datadir as DD
+    ok, why = DD.can_move()
+    if not ok:
+        return redirect("/settings#general", why)
+    t, err = DD.check_target(target)
+    if t is None:
+        return redirect("/settings#general", err)
+    old = str(get_config_dir())
+    audit(c.db, c.user, "settings.data_folder", "system", "", {"from": old, "to": str(t)}, c.ip)
+    c.db.commit()                       # the entry goes into the copy
+    try:
+        res = DD.move(t)
+    except Exception as ex:  # noqa: BLE001
+        return redirect("/settings#general", f"The data was not moved — {ex}. The app keeps using {old}.")
+    mb = res["size"] / 1048576
+    if os.environ.get("HSCO_SUPERVISED") == "1" and updater._restart_hook is not None:
+        import threading
+        threading.Timer(1.5, updater._restart_hook).start()
+        return redirect("/settings#general", f"Data copied to {t} ({mb:,.0f} MB) — the app restarts on it now; reload "
+                                             f"the page in a few seconds. The old folder {old} is kept (see MOVED.txt).")
+    return redirect("/settings#general", f"Data copied to {t} ({mb:,.0f} MB). Restart the app to start using it. The "
+                                         f"old folder {old} is kept (see MOVED.txt).")
+
+
+def get_config_dir():
+    from app.config import get_config
+    return get_config().data_dir
 
 
 @router.post("/settings/updates")

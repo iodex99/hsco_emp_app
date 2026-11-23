@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.12.0 — 2026-11-23 — RH earned holiday, a two-type review queue, movable data folder
+Owner: "the status code in muster report RH shall be considered as an earned holiday and no absence shall be
+registered on that day … if those employees have worked on those days, no comp offs are to be given / in the review
+queue, by type, we need only 2 types — WFH above monthly limit and group not set … others shall be auto reviewed /
+give an option in the app for the user to set the data folder location".
+- **RH (restricted holiday)** in either session of the muster: the day is that person's holiday — not a working day,
+  so no absence, no leave and no hours owed. If they worked that day it is off-day work but **earns no comp-off**
+  (the day says so). Works whatever the status-code list in Settings says. Calculation rules version 11.
+- **Review queue**: only **WFH above monthly limit** and **Group not set** wait for a review. Every other exception
+  is reviewed automatically — still shown on the employee's page, on the Overview ("auto-reviewed") and in the
+  Excel *Flags* sheet ("Reviewed automatically"); the sidebar count and the month-end checklist count only the two.
+  **Waive** (hours-shortfall deduction) moved to the employee's page → *Leave & comp-off* → *Waive*.
+- **Data folder** (Settings → Security & system, admins): shows where the data is, its size and free space; *Move the
+  data here* copies everything (database checked) to a new or empty folder — another drive is fine — and the app
+  restarts on it; the old folder stays as it was with a MOVED.txt note. Re-running Install.cmd keeps the new folder.
+  (On a server updated from an older version, restart the server once before the first move.)
+
 ## 1.11.0 — 2026-11-23 — delete an upload together with its data
 Owner: "give option to delete uploaded files which shall also delete the data imported from the file".
 - Import files → **Import history** → the bin icon on an upload → a panel says exactly what goes (e.g. "Removes 2,988

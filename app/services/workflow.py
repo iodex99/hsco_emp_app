@@ -6,7 +6,10 @@ from sqlalchemy.orm import defer, Session
 
 from app.models import DayOverrideRow, FlagReview, ImportBatch, MonthOverrideRow, MonthResult, Period
 
-ACTIONABLE = ("critical", "high", "medium")
+# exception types someone has to review (owner, v1.12); every other flag is reviewed automatically — it stays on the
+# employee's page and in the Excel, but never waits in the review queue
+REVIEW_CODES = ("WFH_OVER_LIMIT", "GROUP_NOT_SET")
+AUTO_NOTE = "Reviewed automatically"
 
 
 def actionable_flags(db: Session, period: Period) -> list[dict]:
@@ -16,9 +19,11 @@ def actionable_flags(db: Session, period: Period) -> list[dict]:
                         .options(defer(MonthResult.days), defer(MonthResult.data))):
         for f in r.flags:
             rv = reviewed.get((r.emp_no, f["code"]))
+            needs = f["code"] in REVIEW_CODES
             out.append({**f, "emp_no": r.emp_no, "name": r.name, "group": r.group,
-                        "reviewed": bool(rv), "review_note": rv.note if rv else "",
-                        "reviewed_by": rv.reviewed_by if rv else "", "actionable": f["severity"] in ACTIONABLE})
+                        "reviewed": bool(rv) or not needs, "auto": not needs,
+                        "review_note": rv.note if rv else ("" if needs else AUTO_NOTE),
+                        "reviewed_by": rv.reviewed_by if rv else ("" if needs else "auto"), "actionable": needs})
     return out
 
 

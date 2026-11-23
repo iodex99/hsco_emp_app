@@ -246,3 +246,14 @@ Holiday list: its 2 holidays gone, the day a working day again. Employee master:
 edited since is kept, the employee it added is removed. Finalised month: no button, POST refused. Migration links
 older rows to the latest upload. Real-data copy: monthly uploads link to 2,988 days / 4,149 punches / 97 rows; older
 holiday and employee uploads say nothing is linked; button visible without scrolling; no console errors.
+
+## v1.12.0 — RH, two-type review queue, data folder
+Engine: RH taken → holiday, no absence, hours owed reduced, RH worked 7 h → no comp-off (normal holiday worked still
+earns one), RH half-day → whole day, no "unknown status", no "calendar differs". Review queue: only WFH above limit
+and Group not set (counts 2 → 1 → 2 on reopen), bulk review ignores auto-reviewed flags, Excel Flags "Reviewed
+automatically", Overview "auto-reviewed"; Waive from the employee page (redirect back). Data folder
+(`tests/test_datadir.py`): pointer followed only from its base, supervisor reads it and updates never replace it,
+target checks, full copy with DB integrity / audit / MOVED.txt / transient update files left behind, restart under a
+supervisor that knows moves, older supervisor and HR refused; installer dry run follows the pointer. Live: a
+supervised server on a real-data copy moved through the Settings form, restarted itself on the new folder with all
+97 results. Real-data copy: queue shows only WFH above limit, sidebar count 78 → 1, no console errors.

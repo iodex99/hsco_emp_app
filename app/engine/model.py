@@ -40,7 +40,11 @@ DEFAULT_STATUS_MAP = {
     "COF": B_COMPOFF, "CO": B_COMPOFF,
     "LOP": B_LOP, "LWP": B_LOP,
     "OFF": B_OFF, "H": B_OFF, "WO": B_OFF,
+    "RH": B_OFF,          # restricted holiday the person took — an earned holiday (v1.12, see engine RH_CODES)
 }
+# greytHR status codes meaning "restricted holiday taken" (owner, v1.12): the day is the person's holiday — never an
+# absence — and work done that day earns no comp-off. Handled in the engine whatever the status list says.
+RH_CODES = ("RH",)
 
 
 @dataclass
@@ -173,6 +177,7 @@ class DayDetail:
     wfh_office_closed: bool = False   # WFH forced: Saturday the office is closed
     is_extra_work: bool = False
     compoff_earned: bool = False
+    is_rh: bool = False                # restricted holiday (greytHR RH) — earned holiday, no comp-off (v1.12)
     is_sandwich: bool = False
     mobile_office_swipes: int = 0
     overridden: bool = False

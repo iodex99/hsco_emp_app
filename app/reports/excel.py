@@ -368,11 +368,12 @@ def build_workbook(db: Session, period: Period) -> bytes:
     rv = {(r.emp_no, r.code): r for r in db.scalars(select(FlagReview).where(FlagReview.period_id == period.id))}
     rows = []
     sev_rank = {"critical": 0, "high": 1, "medium": 2, "info": 3}
-    m["flags"] = sorted(m["flags"], key=lambda f: (1 if rv.get((f["emp_no"], f["code"])) else 0 if f["severity"] != "info" else 2,
+    from app.services.workflow import AUTO_NOTE, REVIEW_CODES
+    m["flags"] = sorted(m["flags"], key=lambda f: (1 if rv.get((f["emp_no"], f["code"])) else 0 if f["code"] in REVIEW_CODES else 2,
                                                    sev_rank.get(f["severity"], 9), f["code"], f["emp_no"]))
     for f in m["flags"]:
         r = rv.get((f["emp_no"], f["code"]))
-        status = "Reviewed" if r else ("Open" if f["severity"] in ("critical", "high", "medium") else "Info")
+        status = "Reviewed" if r else ("Open" if f["code"] in REVIEW_CODES else AUTO_NOTE)
         rows.append([f["emp_no"], f["name"], f["group"], f["severity"].upper(), MX.FLAG_LABELS.get(f["code"], f["code"]),
                      f["message"], status, r.reviewed_by if r else "", r.reviewed_at if r else None, r.note if r else ""])
     _table(ws, 5, ["Employee No", "Name", "Group", "Severity", "Flag", "Detail", "Review", "Reviewed by", "Reviewed on",
@@ -623,7 +624,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
 
     status = "FINAL" if period.status == "FINALISED" else "DRAFT"
     kk = m.get("kpis", {})
-    open_flags = sum(1 for f in m["flags"] if f["severity"] != "info" and not rv.get((f["emp_no"], f["code"])))
+    open_flags = sum(1 for f in m["flags"] if f["code"] in REVIEW_CODES and not rv.get((f["emp_no"], f["code"])))
     _finish(wb, f"Attendance & leave — {period.label}", org, status, contents_lines=[
         ("Month", f"{period.label} ({status})"),
         ("Employees", len(res)),
@@ -650,7 +651,7 @@ SHEET_GUIDE = [
     ("Payroll Input", NAVY, "Only what payroll needs: people with a leave deduction, split into hours shortfall and WFH over the limit, with the reason (linked to the payroll sheet)."),
     ("Comp-off Ledger", NAVY, "Comp-off earned and taken per person this month."),
     ("Corrections", NAVY, "Every manual correction included in these figures, with the reason, who and when."),
-    ("Flags", NAVY, "Exceptions found by the app and whether each was reviewed (open items first)."),
+    ("Flags", NAVY, "Exceptions found by the app: WFH above the limit and Group not set need a review (open first); the rest are reviewed automatically."),
     ("Punch Exceptions", "C77700", "Day by day: missing / incorrect punches, regularisations, WFH, late, early, short, absence."),
     ("Exceptions by Employee", "C77700", "The same exceptions counted per person."),
     ("Regularisation & Punches", "C77700", "Regularised days, permission swipes, missing punches per person."),

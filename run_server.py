@@ -30,12 +30,21 @@ ROOT = Path(__file__).resolve().parent
 RESTART = 75
 CORE = ("app", "run_server.py", "BUILD.json")       # always replaced/rolled back as a unit
 # never moved or replaced by an update, whatever a package contains (data, environment, certificates, backups)
-PROTECTED = {"data", ".venv", "venv", ".git", "reference", "certs", "backups", "logs"}
+PROTECTED = {"data", ".venv", "venv", ".git", "reference", "certs", "backups", "logs", "data_location.json"}
 PRE_UPDATE_KEEP = 10
 
 
 def data_dir() -> Path:
-    return Path(os.environ.get("HSCO_DATA_DIR", ROOT / "data")).resolve()
+    """HSCO_DATA_DIR or ROOT/data — or where it was moved from the app (data_location.json, same rule as
+    app/config.resolve_data_dir; read at every (re)start so a move takes effect on the next restart)."""
+    base = Path(os.environ.get("HSCO_DATA_DIR", ROOT / "data")).resolve()
+    try:
+        j = json.loads((ROOT / "data_location.json").read_text(encoding="utf-8"))
+        if j.get("dir") and os.path.normcase(str(Path(j.get("base", "")).resolve())) == os.path.normcase(str(base)):
+            return Path(j["dir"]).resolve()
+    except (OSError, ValueError, TypeError):
+        pass
+    return base
 
 
 def log(msg: str) -> None:
@@ -178,10 +187,11 @@ def main(argv=None) -> int:
     dev = "--dev" in argv
     port = int(argv[argv.index("--port") + 1]) if "--port" in argv else int(os.environ.get("HSCO_PORT", "8443"))
     health = f"{'http' if dev else 'https'}://127.0.0.1:{port}/healthz"
-    dd = data_dir()
-    env = {**os.environ, "HSCO_SUPERVISED": "1", "HSCO_SUPERVISOR_PID": str(os.getpid())}
+    env = {**os.environ, "HSCO_SUPERVISED": "1", "HSCO_SUPERVISOR_PID": str(os.getpid()),
+           "HSCO_SUPERVISOR_FEATURES": "datadir"}     # this supervisor follows a moved data folder (v1.12)
     backoff = 2
     while True:
+        dd = data_dir()                                # re-read: the data folder may have been moved from the app
         applied = apply_staged(dd)
         started = time.time()
         child = subprocess.Popen([sys.executable, "-m", "app.serve", *argv], cwd=str(ROOT), env=env)

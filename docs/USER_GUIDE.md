@@ -198,3 +198,19 @@ removed — the file's attendance days / punches / summary rows for that month, 
 employee details it changed (put back as they were) — then give a reason and confirm. The month is recalculated at
 once; with no attendance left it shows as waiting for files again. Upload the right file afterwards. Not possible in
 a finalised month (re-open it first).
+
+## Review queue (v1.12)
+Only two kinds of exception wait for you: **WFH above monthly limit** (approve extra WFH or mark reviewed) and
+**Group not set** (set the group on the employee's page, then mark reviewed). Everything else — hours shortfall,
+lateness, missing punches, … — is reviewed automatically; you still see it on each employee's page and in the Excel.
+To waive someone's hours-shortfall deduction: their page → *Leave & comp-off* → **Waive**.
+
+## Restricted holidays (RH)
+When greytHR's muster shows **RH** for a day, that day is the person's holiday: not absent, nothing deducted, and if
+they worked anyway, no comp-off is earned for it.
+
+## Moving the data folder (v1.12, admins)
+Rules & calendars → *Security & system* → **Data folder** shows where everything is kept and how big it is. To move it
+(e.g. to a bigger drive): type a new or empty folder such as `D:\HSCOData` → **Move the data here** → confirm. The app
+copies and checks everything and restarts on the new folder within a few seconds — reload the page. The old folder is
+left untouched with a MOVED.txt note; delete it once you are happy.

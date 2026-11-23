@@ -86,7 +86,7 @@ def _serialize_day(dd: M.DayDetail) -> dict:
         "locs": dd.location_types, "late_min": dd.late_min,
         "late": dd.is_late, "very_late": dd.is_very_late, "early": dd.is_early_exit, "short": dd.is_short_day,
         "late_sit": dd.is_late_sitting, "missing": dd.is_missing_punch, "regularised": dd.is_regularised,
-        "wfh": dd.is_wfh, "partial_wfh": dd.is_partial_wfh, "wfh_closed": dd.wfh_office_closed,
+        "wfh": dd.is_wfh, "partial_wfh": dd.is_partial_wfh, "wfh_closed": dd.wfh_office_closed, "rh": dd.is_rh,
         "extra": dd.is_extra_work, "co_earned": dd.compoff_earned,
         "sandwich": dd.is_sandwich, "mobile_office": dd.mobile_office_swipes, "overridden": dd.overridden,
         "notes": dd.notes,

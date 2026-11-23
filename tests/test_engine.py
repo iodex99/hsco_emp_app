@@ -438,3 +438,32 @@ def test_extra_wfh_approved_by_manager_is_not_deducted():
     r = compute_employee_month(e, 2026, 10, month(), sw, POL, month_overrides={"wfh_approved_days": "5"})
     assert r.wfh_deduction_days == 0 and r.deduction_days == 0
     assert "→ no deduction" in next(x for x in r.flags if x[0] == "WFH_OVER_LIMIT")[2]
+
+
+def test_restricted_holiday_rh_is_an_earned_holiday_without_comp_off():
+    """v1.12 (owner): greytHR status RH = an earned holiday: never an absence; working that day earns no comp-off."""
+    rows = month()
+    rows = [r for r in rows if r.day.day not in (7, 8)]
+    rows.append(MusterDay("E1", date(2026, 10, 7), "RH", "RH"))                                  # took the RH, no work
+    rows.append(MusterDay("E1", date(2026, 10, 8), "RH", "RH", datetime(2026, 10, 8, 10), datetime(2026, 10, 8, 17), 7 * 60))
+    base = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, month(), [], POL)
+    r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, [], POL)
+    d7, d8 = (next(d for d in r.days if d.day.day == n) for n in (7, 8))
+    assert d7.day_type == HOLIDAY and d7.holiday_name == "Restricted holiday (RH)" and d7.is_rh
+    assert d8.day_type == HOLIDAY and d8.is_extra_work and not d8.compoff_earned
+    assert any("no comp-off" in n for n in d8.notes)
+    assert r.holidays == base.holidays + 2 and r.unauth_absent_days == 0 and r.absent_days == 0
+    assert r.compoff_earned == 0 and r.days_present == base.days_present - 2
+    assert r.required_hours == pytest.approx(base.required_hours - 2 * 8.5)            # no hours owed for RH days
+    assert not [f for f in r.flags if f[0] == "UNKNOWN_STATUS"]                          # RH is a known code
+    # a normal holiday worked ≥ 5 h still earns a comp-off; an RH half-day still makes the whole day the holiday
+    w = month(extra={4: 6 * 60})
+    assert compute_employee_month(Employee("E1", group="BSS"), 2026, 10, w, [], POL).compoff_earned == 1
+    half = [r_ for r_ in month() if r_.day.day != 9] + [MusterDay("E1", date(2026, 10, 9), "RH", "P")]
+    h = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, half, [], POL)
+    assert next(d for d in h.days if d.day.day == 9).day_type == HOLIDAY
+    # with the category's holiday list loaded: RH is still the person's holiday, and no "calendar differs" note
+    c = compute_employee_month(Employee("E1", group="BSS", holidays={date(2026, 10, 20): "Dussehra"}), 2026, 10, rows,
+                               [], POL)
+    d7 = next(d for d in c.days if d.day.day == 7)
+    assert d7.day_type == HOLIDAY and not any("differs" in n for n in d7.notes)

@@ -207,3 +207,14 @@ groups / named people are listed in the audit log (`migration.holidays_by_catego
 own holiday calendars were cleared.
 **Check these dates:** in the latest calculated draft month, a (category, date) where ≥ 50 % (and ≥ 2) of the
 category's people have "Holiday calendar differs from greytHR".
+
+## Restricted holiday — status RH (v1.12, owner)
+A muster day with **RH** in either session is the person's earned holiday: day type HOLIDAY ("Restricted holiday
+(RH)"), counted in Holidays, never an absence, no hours required. Work on that day is off-day work (extra day / hours
+excluded as for any holiday) but **no comp-off** is earned (note "Worked on a restricted holiday (RH) — no comp-off").
+Engine `RH_CODES`; independent of the editable status-code list (no "unknown status" flag, no "calendar differs").
+
+## What needs a review (v1.12, owner)
+Only **WFH above monthly limit** and **Group not set** (`workflow.REVIEW_CODES`). Every other flag is reviewed
+automatically: it is still raised and shown (employee page, Overview, Excel *Flags* = "Reviewed automatically") but
+never waits in the review queue and is not counted as open.

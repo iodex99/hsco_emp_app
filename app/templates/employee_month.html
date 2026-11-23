@@ -160,7 +160,9 @@
       <tr><td>Comp-off taken</td><td class="num">{{ d.cof_days|n }}</td></tr>
       <tr><td>Loss of pay (approved in greytHR)</td><td class="num">{{ d.lop_days|n }}</td></tr>
       <tr><td>Absent without approved leave</td><td class="num {{ 'neg' if d.unauth_absent_days }}">{{ d.unauth_absent_days|n }}</td></tr>
-      <tr><td>Hours-shortfall deduction</td><td class="num">{{ d.shortfall_deduction_days|n }}</td></tr>
+      <tr><td>Hours-shortfall deduction{% if editable and can_hr and d.shortfall_deduction_days %}
+        <button class="btn sm sec" type="button" style="margin-left:8px" onclick="HSCO.openDrawer('waive');setTimeout(()=>document.getElementById('wv-reason').focus(),50)">{{ ui.icon('badge-check','sm') }} Waive</button>{% endif %}</td>
+        <td class="num">{{ d.shortfall_deduction_days|n }}</td></tr>
       {% if d.wfh_deduction_days %}<tr><td>WFH over the limit ({{ (d.wfh_excess_days - (d.wfh_approved_days or 0))|n }} day{{ 's' if (d.wfh_excess_days - (d.wfh_approved_days or 0)) != 1 }} × {{ policy.wfh_excess_deduction_days|n }})</td><td class="num">{{ d.wfh_deduction_days|n }}</td></tr>{% endif %}
       <tr class="tot"><td>Leave deduction (to take from leave)</td><td class="num {{ 'neg' if d.deduction_days }}">{{ d.deduction_days|n }}</td></tr>
     </tbody></table></div></div>
@@ -181,6 +183,16 @@
 {% endif %}
 
 {# ---------- drawers ---------- #}
+{% if editable and can_hr and d.shortfall_deduction_days %}
+<aside class="drawer" id="waive" aria-label="Waive hours deduction"><form method="post" action="/flags/waive-shortfall" style="display:contents">{{ ui.csrf_field() }}
+<input type="hidden" name="period" value="{{ period.key }}"><input type="hidden" name="emp_no" value="{{ r.emp_no }}">
+<input type="hidden" name="back" value="/periods/{{ period.key }}/employee/{{ r.emp_no }}">
+<div class="dh"><div><div class="small muted">Hours shortfall → leave deduction ({{ d.shortfall_deduction_days|n }} {{ d.shortfall_deduction_days|plural('day') }})</div><h2>Waive: {{ r.name }}</h2></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
+<div class="db"><p class="small" style="margin-top:0;color:var(--text-2)">The hours-shortfall deduction is not taken this month (a WFH-over-limit deduction, if any, still applies). Saved as a month correction with your reason; undo it under Corrections.</p>
+  <div class="field"><label>Approved by / reason <span class="muted">(required — saved in the audit log)</span></label><textarea name="reason" id="wv-reason" rows="2" maxlength="300" required></textarea></div>
+  <div class="chips">{% for t in ['Waived by partner','Client work outside office hours','Medical — approved'] %}<button class="chip" type="button" onclick="document.getElementById('wv-reason').value=this.textContent">{{ t }}</button>{% endfor %}</div>
+</div><div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn">{{ ui.icon('check','sm') }} Waive — recalculate</button></div></form></aside><div class="scrim"></div>
+{% endif %}
 <aside class="drawer" id="day" aria-label="Day details"><div class="dh"><div><div class="small muted" id="dw-wd"></div><h2 id="dw-title">Day</h2></div><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
   <div class="db">
     <dl class="kv" id="dw-kv"></dl>

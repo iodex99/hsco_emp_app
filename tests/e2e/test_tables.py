@@ -275,13 +275,22 @@ def test_bulk_review_legend_filter_and_flag_links(page):
     pg.wait_for_selector("#emp-filter")
     assert "code=" in pg.url and "emp=T004" in pg.url
 
-    # ---- review queue: select rows → bulk mark reviewed with one note
+    # ---- review queue (v1.12: only WFH above the limit and Group not set): three people without a group + T004's WFH
+    from sqlalchemy import select
+    from app.db import session_scope
+    from app.models import Employee, Period
+    from app.services.compute import compute_period
+    with session_scope() as db:
+        for e in ("T003", "T005", "T006"):
+            db.get(Employee, e).group = ""
+        compute_period(db, db.scalar(select(Period)))
     pg.goto(pg.base + "/flags?period=2026-10&show=open")
     pg.wait_for_selector(f"{bar(pg, '#fl')} .tt-count")
     open_before = len(pg.query_selector_all("#fl tbody tr"))
+    assert open_before == 4
     assert pg.is_hidden("#bulk")
-    pg.check("#fl tbody tr:nth-child(1) input.sel")
-    pg.click("#fl tbody tr:nth-child(2) td:nth-child(5)")         # clicking the row toggles too
+    pg.check("#fl tbody tr:nth-child(2) input.sel")                # two of the Group-not-set rows
+    pg.click("#fl tbody tr:nth-child(3) td:nth-child(5)")         # clicking the row toggles too
     assert pg.inner_text("#bulk-n") == "2" and pg.is_visible("#bulk")
     pg.screenshot(path="test-results/bulk_bar.png")
     pg.click("#bulk-review")

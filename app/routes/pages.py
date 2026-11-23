@@ -66,7 +66,8 @@ def dashboard(period: Optional[str] = None, c: Ctx = Depends(viewer)):
         return pending_month(c, p)
     data = MX.period_metrics(c.db, p)
     wf = WF.status(c.db, p)
-    return render(c, "dashboard.html", period=p, m=data, labels=MX.FLAG_LABELS, wf=wf, policy=get_policy(c.db))
+    return render(c, "dashboard.html", period=p, m=data, labels=MX.FLAG_LABELS, wf=wf, policy=get_policy(c.db),
+                  review_codes=WF.REVIEW_CODES)
 
 
 @router.get("/insights", response_class=HTMLResponse)
@@ -316,7 +317,7 @@ def flags_page(period: Optional[str] = None, code: str = "", show: str = "open",
     p = pick_period(c, period)
     if p is None:
         return render(c, "empty.html")
-    all_rows = WF.actionable_flags(c.db, p)
+    all_rows = [f for f in WF.actionable_flags(c.db, p) if f["actionable"]]     # the two types that need a review
     emp = emp.strip().upper()
     rows = [f for f in all_rows if f["emp_no"] == emp] if emp else all_rows
     # WFH over the limit: what was deducted / approved (for the "Approve extra WFH" action)
@@ -341,7 +342,8 @@ def flags_page(period: Optional[str] = None, code: str = "", show: str = "open",
     act = [f for f in all_rows if f["actionable"]]
     return render(c, "flags.html", period=p, rows=rows, summary=summary, code=code, show=show, emp=emp,
                   emp_name=emp_name, total=len(act), reviewed=sum(1 for f in act if f["reviewed"]),
-                  labels=MX.FLAG_LABELS, wfh_info=wfh_info)
+                  labels=MX.FLAG_LABELS, wfh_info=wfh_info,
+                  review_types=[MX.FLAG_LABELS.get(x, x) for x in WF.REVIEW_CODES])
 
 
 @router.get("/exceptions", response_class=HTMLResponse)
@@ -406,14 +408,16 @@ def approve_extra_wfh(period: str = Form(...), emp_no: str = Form(...), days: st
 
 
 @router.post("/flags/waive-shortfall")
-def waive_shortfall(period: str = Form(...), emp_no: str = Form(...), reason: str = Form(""), c: Ctx = Depends(hr)):
+def waive_shortfall(period: str = Form(...), emp_no: str = Form(...), reason: str = Form(""), back: str = Form(""),
+                    c: Ctx = Depends(hr)):
     """A partner waived the hours-shortfall deduction for this month: month correction "shortfall_waived" (audited,
     with the reason), month recalculated (the flag becomes an info note). Undo on the employee's page (Corrections)."""
     from datetime import datetime
     from app.models import FlagReview, MonthOverrideRow
     from app.services.compute import compute_period
     p = pick_period(c, period)
-    back = f"/flags?period={p.key}" if p else "/flags"
+    if not (back.startswith("/periods/") and "//" not in back):           # (v1.12: Waive is on the employee's page)
+        back = f"/periods/{p.key}/employee/{emp_no.strip().upper()}" if p else "/"
     if p is None or p.status != "DRAFT":
         return redirect(back, "This month is finalised — re-open it to change a deduction.")
     if not reason.strip():
