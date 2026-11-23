@@ -19,9 +19,6 @@ class Config:
         self.db_url = os.environ.get("HSCO_DB_URL", f"sqlite:///{(self.data_dir / 'hsco.db').as_posix()}")
         self.secret_key = self._secret()
         self.org_name = os.environ.get("HSCO_ORG_NAME", "Hasmukh Shah & Co. LLP")
-        # WebAuthn relying party: must equal the hostname users type in the browser
-        self.rp_id = os.environ.get("HSCO_RP_ID", "localhost")
-        self.rp_origin = os.environ.get("HSCO_ORIGIN", "https://localhost:8443")
         self.secure_cookies = os.environ.get("HSCO_INSECURE_COOKIES", "0") != "1"
         self.session_hours = float(os.environ.get("HSCO_SESSION_HOURS", "10"))
         self.idle_minutes = float(os.environ.get("HSCO_IDLE_MINUTES", "60"))

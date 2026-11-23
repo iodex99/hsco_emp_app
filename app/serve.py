@@ -57,7 +57,6 @@ def main(argv=None) -> int:
     _watch_parent()
     if a.dev:
         os.environ.setdefault("HSCO_INSECURE_COOKIES", "1")
-        os.environ.setdefault("HSCO_ORIGIN", f"http://localhost:{a.port}")
     import uvicorn
 
     from app import updater

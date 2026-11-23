@@ -176,12 +176,11 @@
   <div class="minis mb">
     <div class="mini {{ 'good' if bk.check == 'ok' else 'bad' if bk.check else '' }}"><div class="v">{{ 'Healthy' if bk.check == 'ok' else (bk.check or 'not checked yet') }}</div><div class="l">Database check at start-up{% if bk.checked_at %} · {{ bk.checked_at.strftime('%d %b %Y, %H:%M') }}{% endif %}</div></div>
     <div class="mini {{ 'good' if bk.last_at else 'warn' }}"><div class="v">{{ bk.last_at.strftime('%d %b, %H:%M') if bk.last_at else 'none yet' }}</div><div class="l">Last backup{% if bk.last_reason %} ({{ bk.last_reason }}){% endif %} — automatic every day</div></div>
-    <div class="mini {{ 'good' if bk.key_copy else 'warn' }}"><div class="v">{{ 'Saved' if bk.key_copy else 'Not yet' }}</div><div class="l">Copy of the encryption key with the backups</div></div>
   </div>
   {% if backups %}<div class="tw"><table class="compact"><thead><tr><th>Backup</th><th>Type</th><th class="num">Size</th><th>Taken</th></tr></thead><tbody>
   {% for b in backups %}<tr><td class="mono small">{{ b.file }}</td><td><span class="tag">{{ b.kind }}</span></td><td class="num">{{ (b.size / 1048576)|round(1) }} MB</td><td class="small">{{ b.at.strftime('%d %b %Y, %H:%M') if b.at }}</td></tr>{% endfor %}
   </tbody></table></div>{% endif %}
-  <p class="small muted mt-s">{{ ui.icon('shield-check','sm') }} Every backup is checked before it is kept: the last 14 days in full, then one per month for 2 years; updates also take a backup first and are cancelled if it isn't sound. Updates never touch the data folder. For protection against a failed disk, also copy the whole data folder (with <span class="mono">backups</span> and <span class="mono">secret.key</span>) to another drive regularly. To restore: stop the app, then <span class="mono">python -m app.cli restore &lt;file&gt;</span>.</p>
+  <p class="small muted mt-s">{{ ui.icon('shield-check','sm') }} Every backup is checked before it is kept: the last 14 days in full, then one per month for 2 years; updates also take a backup first and are cancelled if it isn't sound. Updates never touch the data folder. For protection against a failed disk, also copy the whole data folder (with <span class="mono">backups</span>) to another drive regularly. To restore: stop the app, then <span class="mono">python -m app.cli restore &lt;file&gt;</span>.</p>
 </div></div>
 {% endif %}
 {% set B = brand_info() %}
@@ -204,17 +203,10 @@
     <div class="field"><label>Address</label><input name="org_address" value="{{ general.org_address }}"></div>
     <div class="row"><div class="field"><label>Groups</label><input name="groups" value="{{ general.groups|join(', ') }}"></div><div class="field"><label>Locations</label><input name="locations" value="{{ general.locations|join(', ') }}"></div></div>
   </div></div>
-  <div class="form-sec"><div><h3>Sign-in security</h3><p>Two-step verification protects employee data.</p></div><div>
-    <label class="check mb"><input type="checkbox" name="mfa_required" value="1" {{ 'checked' if general.mfa_required }}> Two-step verification is mandatory for everyone</label>
+  <div class="form-sec"><div><h3>Sign-in security</h3><p>Users sign in with their user name and password.</p></div><div>
     <div class="row"><div class="field"><label>Minimum password length</label><input name="password_min_length" value="{{ general.password_min_length }}"></div>
       <div class="field"><label>Lock account after … failed attempts</label><input name="lockout_threshold" value="{{ general.lockout_threshold }}"></div>
       <div class="field"><label>Lock for (minutes)</label><input name="lockout_minutes" value="{{ general.lockout_minutes }}"></div></div>
-  </div></div>
-  <div class="form-sec"><div><h3>Email sign-in codes</h3><p>Optional. Lets users receive a one-time code by email. Only the code is sent.</p></div><div>
-    <div class="row"><div class="field" style="flex:2"><label>SMTP server</label><input name="smtp_host" value="{{ general.smtp_host }}" placeholder="smtp.office365.com"></div><div class="field"><label>Port</label><input name="smtp_port" value="{{ general.smtp_port }}"></div></div>
-    <div class="row"><div class="field"><label>From address</label><input name="smtp_from" value="{{ general.smtp_from }}"></div><div class="field"><label>Username</label><input name="smtp_user" value="{{ general.smtp_user }}" autocomplete="off"></div>
-      <div class="field"><label>Password</label><input type="password" name="smtp_password" autocomplete="new-password" placeholder="unchanged"></div></div>
-    <label class="check"><input type="checkbox" name="smtp_starttls" value="1" {{ 'checked' if general.smtp_starttls }}> Use STARTTLS</label>
   </div></div>
   <div class="form-sec"><div><h3>Place names</h3><p>Coordinates are named offline by default, so they never leave the server.</p></div><div>
     <label class="check mb"><input type="checkbox" name="online_geocoding" value="1" {{ 'checked' if general.online_geocoding }}> <span>Also look up unknown places on OpenStreetMap <span class="help" style="display:block">Sends coordinates outside the server.</span></span></label>

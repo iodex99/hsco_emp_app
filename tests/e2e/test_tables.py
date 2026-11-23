@@ -29,8 +29,7 @@ def live(tmp_path_factory):
     import uvicorn
     port = _port()
     d = tmp_path_factory.mktemp("tables")
-    os.environ.update({"HSCO_DATA_DIR": str(d / "data"), "HSCO_INSECURE_COOKIES": "1", "HSCO_RP_ID": "localhost",
-                       "HSCO_ORIGIN": f"http://localhost:{port}"})
+    os.environ.update({"HSCO_DATA_DIR": str(d / "data"), "HSCO_INSECURE_COOKIES": "1"})
     from app.config import reset_config
     from app.db import reset_engine, session_scope
     reset_config()
@@ -46,12 +45,10 @@ def live(tmp_path_factory):
             import_file(db, fx[k].read_bytes(), fx[k].name, None)
     make_user()
     from sqlalchemy import select
-    from app.models import User, UserSession
+    from app.models import User
     from app.security import core as sec
     with session_scope() as db:
         tok = sec.create_session(db, db.scalar(select(User)), "127.0.0.1", "t")
-        for s in db.scalars(select(UserSession)):
-            s.mfa_passed = True
     srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
     th = threading.Thread(target=srv.run, daemon=True)
     th.start()

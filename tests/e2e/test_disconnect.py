@@ -32,8 +32,7 @@ def live(tmp_path, monkeypatch):
     import uvicorn
     port = _free_port()
     d = tmp_path / "data"
-    for k, v in {"HSCO_DATA_DIR": str(d), "HSCO_INSECURE_COOKIES": "1", "HSCO_RP_ID": "localhost",
-                 "HSCO_ORIGIN": f"http://localhost:{port}"}.items():
+    for k, v in {"HSCO_DATA_DIR": str(d), "HSCO_INSECURE_COOKIES": "1"}.items():
         monkeypatch.setenv(k, v)
     from app.config import reset_config
     from app.db import reset_engine
@@ -49,7 +48,7 @@ def live(tmp_path, monkeypatch):
         with session_scope() as db:
             import_file(db, fx[k].read_bytes(), fx[k].name, None)
     make_user()
-    # a signed-in, 2FA-verified session whose last_seen is old -> the next request writes it
+    # a signed-in session whose last_seen is old -> the next request writes it
     from app.models import User, UserSession
     from app.security import core as sec
     from sqlalchemy import select
@@ -59,7 +58,6 @@ def live(tmp_path, monkeypatch):
         for _ in range(2):
             tokens.append(sec.create_session(db, u, "127.0.0.1", "test"))
         for s in db.scalars(select(UserSession)):
-            s.mfa_passed = True
             s.last_seen = datetime.now() - timedelta(minutes=5)
     # make the overview slow so we can hang up mid-request
     import app.routes.pages as pages

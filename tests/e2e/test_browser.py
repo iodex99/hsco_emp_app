@@ -1,8 +1,8 @@
 """Browser end-to-end test (Playwright + Chromium) against a real uvicorn server.
 
-Covers: first-login TOTP enrolment, recovery codes, real-file upload, dashboard charts, payroll sheet filtering,
-employee drill-down, day correction, Excel downloads (payroll + punches & locations),
-passkey (WebAuthn) registration and sign-in via Chromium's virtual authenticator, and JS-error-free pages.
+Covers: password sign-in, real-file upload, dashboard charts, payroll sheet filtering, employee drill-down, day
+correction, Excel downloads (payroll + punches & locations), changing the password and signing in with it, and
+JS-error-free pages.
 Screenshots go to test-results/ (git-ignored).
 Run: .venv\\Scripts\\python -m pytest tests/e2e -q
 """
@@ -13,7 +13,6 @@ import threading
 import time
 from pathlib import Path
 
-import pyotp
 import pytest
 
 pw = pytest.importorskip("playwright.sync_api")
@@ -37,8 +36,7 @@ def server(tmp_path_factory):
     import uvicorn
     port = _free_port()
     d = tmp_path_factory.mktemp("e2e") / "data"
-    os.environ.update({"HSCO_DATA_DIR": str(d), "HSCO_INSECURE_COOKIES": "1", "HSCO_RP_ID": "localhost",
-                       "HSCO_ORIGIN": f"http://localhost:{port}"})
+    os.environ.update({"HSCO_DATA_DIR": str(d), "HSCO_INSECURE_COOKIES": "1"})
     from app.config import reset_config
     from app.db import reset_engine
     reset_config()
@@ -82,20 +80,14 @@ def test_full_browser_journey(server):
         page.on("pageerror", lambda e: errors.append(f"{page.url}: {e}"))
         page.on("console", lambda m: errors.append(f"{page.url}: console {m.text}") if m.type == "error" else None)
 
-        # ---- sign in + forced TOTP enrolment
+        # ---- sign in: user name + password and straight in (no two-step verification since v1.10)
         page.goto(base + "/")
         assert "/login" in page.url
+        page.screenshot(path=str(OUT / "01_login.png"))
         page.fill("#u", "admin")
         page.fill("#p", ADMIN_PW)
         page.click("button:has-text('Continue')")
-        page.wait_for_url(re.compile(r".*/security/enrol"))
-        secret = page.inner_text("#totp-secret").strip()
-        page.screenshot(path=str(OUT / "01_enrol.png"))
-        page.fill("input[name=code]", pyotp.TOTP(secret).now())
-        page.click("button:has-text('Verify')")
-        page.wait_for_selector("#codes")
-        assert len(page.query_selector_all("#codes div")) == 10
-        page.click("a:has-text('Continue')")
+        page.wait_for_url(lambda u: "/login" not in u)
         assert "set up your first month" in page.content()
         page.screenshot(path=str(OUT / "00_welcome.png"))
 
@@ -184,25 +176,22 @@ def test_full_browser_journey(server):
         assert page.locator("a:has-text('Download Excel')").count() == 1
         page.screenshot(path=str(OUT / "06_locations.png"), full_page=True)
 
-        # ---- passkey: register with a virtual authenticator, then sign in with it
-        cdp = ctx.new_cdp_session(page)
-        cdp.send("WebAuthn.enable")
-        cdp.send("WebAuthn.addVirtualAuthenticator", {"options": {
-            "protocol": "ctap2", "transport": "internal", "hasResidentKey": True, "hasUserVerification": True,
-            "isUserVerified": True}})
-        page.goto(base + "/security")
-        page.once("dialog", lambda d: d.accept("Virtual key"))
-        page.click("#addkey")
-        page.wait_for_selector("text=Virtual key", timeout=15_000)
-        page.screenshot(path=str(OUT / "08_security.png"), full_page=True)
+        # ---- account menu → Change password → sign out → sign in with the new password
+        page.click("#um-btn")
+        page.click("#um-menu a:has-text('Change password')")
+        page.wait_for_url(re.compile(r".*/security$"))
+        assert page.locator("text=Two-step").count() == 0 and page.locator("text=Recovery codes").count() == 0
+        page.fill("input[name=current]", ADMIN_PW)
+        page.fill("input[name=new]", "Fresh!Pass#2027x")
+        page.fill("input[name=confirm]", "Fresh!Pass#2027x")
+        page.click("button:has-text('Change password')")
+        page.wait_for_selector("text=Password changed")
+        page.screenshot(path=str(OUT / "08_password.png"))
         page.click("#um-btn")
         page.click("#um-menu button:has-text('Sign out')")
         page.fill("#u", "admin")
-        page.fill("#p", ADMIN_PW)
+        page.fill("#p", "Fresh!Pass#2027x")
         page.click("button:has-text('Continue')")
-        page.wait_for_selector("#pk")
-        page.screenshot(path=str(OUT / "09_mfa_choice.png"))
-        page.click("#pk")
         page.wait_for_url(re.compile(rf"^{re.escape(base)}/$"), timeout=15_000)
         assert "Month-end checklist" in page.content()
 

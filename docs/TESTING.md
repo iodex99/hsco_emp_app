@@ -228,3 +228,12 @@ script as generated (desktop path incl. a OneDrive desktop, shortcut file). **CI
 the real installer on a clean Windows runner from the unpacked release zip — HTTPS `/healthz` and `/login` with the
 certificate verified, database, scheduled task as SYSTEM, desktop icon, office-PC kit — then a second run and the same
 checks.
+
+## v1.10.0 — no two-step verification
+Replaced the TOTP / recovery / email-code / passkey tests with: password sign-in goes straight to the page asked for
+(no open redirect, last sign-in recorded); every former 2FA route is 404/405; Settings, Users, Security and the
+sign-in page show nothing about it; a temporary password leads straight to "Set your password" and nothing else opens
+until it is set (flash with an em dash still works); migration `remove_2fa_v1` empties the old tables, drops the
+2FA / SMTP settings (incl. the SMTP password) and runs once. Browser test: sign in with the password, then account
+menu → Change password → sign out → sign in with the new one. On the real-data copy: 6 methods and 60 recovery codes
+deleted, settings dropped, sign-in straight in, old pages 404, no console errors. Full suite **161 passed**.

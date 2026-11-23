@@ -1,7 +1,6 @@
 """Server-side administration commands.
 
   python -m app.cli create-admin            create the first administrator (interactive)
-  python -m app.cli reset-mfa <username>    remove a user's 2FA (break-glass, run on the server)
   python -m app.cli backup                  verified SQLite backup into data/backups (the app also does this daily)
   python -m app.cli restore [file]          restore a backup — stop the app first (lists backups without a file)
   python -m app.cli make-cert <hostname>    self-signed TLS certificate for HTTPS (data/certs)
@@ -19,7 +18,7 @@ from sqlalchemy import delete, select
 
 from app.config import get_config
 from app.db import init_db, session_scope
-from app.models import MfaMethod, RecoveryCode, User
+from app.models import User
 from app.security import core as sec
 
 
@@ -39,21 +38,7 @@ def create_admin(argv):
             print("User exists")
             sys.exit(1)
         db.add(User(username=username, full_name=username, role="admin", password_hash=sec.hash_password(pw)))
-    print(f"Admin '{username}' created. Sign in and set up two-step verification.")
-
-
-def reset_mfa(argv):
-    init_db()
-    with session_scope() as db:
-        u = db.scalar(select(User).where(User.username == argv[0].lower()))
-        if not u:
-            print("No such user")
-            sys.exit(1)
-        db.execute(delete(MfaMethod).where(MfaMethod.user_id == u.id))
-        db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == u.id))
-        u.locked_until = None
-        u.failed_attempts = 0
-    print("2FA reset; the user will enrol again at next sign-in.")
+    print(f"Admin '{username}' created. Sign in with this user name and password.")
 
 
 def backup(argv=None) -> Path:
@@ -126,7 +111,7 @@ def main():
         print(__doc__)
         return
     cmd, argv = sys.argv[1], sys.argv[2:]
-    {"create-admin": create_admin, "reset-mfa": reset_mfa, "backup": backup, "restore": restore, "make-cert": make_cert,
+    {"create-admin": create_admin, "backup": backup, "restore": restore, "make-cert": make_cert,
      "import": import_files}.get(cmd, lambda a: print(__doc__))(argv)
 
 

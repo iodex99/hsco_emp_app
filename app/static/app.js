@@ -122,30 +122,6 @@
     return j;
   };
 
-  // ---------- WebAuthn ----------
-  const b64uToBuf = (s) => { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer; };
-  const bufToB64u = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  H.registerPasskey = async function (label) {
-    if (!window.PublicKeyCredential) throw new Error("This browser does not support security keys / passkeys (HTTPS required).");
-    const o = await H.post("/security/webauthn/options");
-    o.challenge = b64uToBuf(o.challenge); o.user.id = b64uToBuf(o.user.id);
-    (o.excludeCredentials || []).forEach((c) => (c.id = b64uToBuf(c.id)));
-    const cred = await navigator.credentials.create({ publicKey: o });
-    return H.post("/security/webauthn/register", { label, credential: { id: cred.id, rawId: bufToB64u(cred.rawId), type: cred.type,
-      response: { clientDataJSON: bufToB64u(cred.response.clientDataJSON), attestationObject: bufToB64u(cred.response.attestationObject),
-        transports: cred.response.getTransports ? cred.response.getTransports() : [] },
-      clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {} } });
-  };
-  H.loginPasskey = async function (next) {
-    const o = await H.post("/mfa/webauthn/options");
-    o.challenge = b64uToBuf(o.challenge); (o.allowCredentials || []).forEach((c) => (c.id = b64uToBuf(c.id)));
-    const a = await navigator.credentials.get({ publicKey: o });
-    return H.post("/mfa/webauthn/verify", { next, credential: { id: a.id, rawId: bufToB64u(a.rawId), type: a.type,
-      response: { clientDataJSON: bufToB64u(a.response.clientDataJSON), authenticatorData: bufToB64u(a.response.authenticatorData),
-        signature: bufToB64u(a.response.signature), userHandle: a.response.userHandle ? bufToB64u(a.response.userHandle) : null },
-      clientExtensionResults: a.getClientExtensionResults ? a.getClientExtensionResults() : {} } });
-  };
-
   // ---------- self-update (admin) ----------
   const fmtMB = (b) => (b / 1048576).toFixed(1) + " MB";
   const ORDER = ["downloading", "verifying", "staging", "restarting", "done"];

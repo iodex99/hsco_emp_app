@@ -62,10 +62,37 @@ def migrate_data() -> None:
         if "holidays_by_category_v1" not in done:
             _holidays_by_category(db)
             done.add("holidays_by_category_v1")
+        if "remove_2fa_v1" not in done:
+            _remove_2fa(db)
+            done.add("remove_2fa_v1")
         if st is None:
             db.add(Setting(key="migrations", value={"done": sorted(done)}))
         else:
             st.value = {"done": sorted(done)}
+
+
+def _remove_2fa(db) -> None:
+    """v1.10 (owner): two-step verification removed. Its stored secrets, recovery codes and emailed codes are deleted
+    (the empty tables stay so an older version can still open the database) and the settings that only served it
+    (2FA switch, email server incl. its password) are dropped."""
+    from sqlalchemy import inspect, text
+    from app.models import Setting
+    from app.services.audit import audit
+    have = set(inspect(db.get_bind()).get_table_names())
+    removed = {}
+    for t in ("mfa_methods", "recovery_codes", "email_otps"):
+        if t in have:
+            removed[t] = db.execute(text(f"DELETE FROM {t}")).rowcount
+    g = db.get(Setting, "general")
+    dropped = []
+    if g is not None and isinstance(g.value, dict):
+        keep = {k: v for k, v in g.value.items() if not (k.startswith("smtp_") or k in ("mfa_required", "allowed_mfa"))}
+        dropped = sorted(set(g.value) - set(keep))
+        if dropped:
+            g.value = keep
+    if any(removed.values()) or dropped:
+        audit(db, None, "migration.remove_2fa", "security", "", {"deleted_rows": removed, "settings_dropped": dropped})
+    db.flush()
 
 
 def _holidays_by_category(db) -> None:

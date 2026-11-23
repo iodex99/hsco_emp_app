@@ -141,7 +141,7 @@ def _load(request: Request, db: Session) -> Ctx:
 
 
 async def partial_ctx(request: Request, db: Session = Depends(get_db, scope="function")) -> Ctx:
-    """Password verified, MFA may still be pending. Unsafe methods are CSRF-checked."""
+    """Signed in, any role, even with a temporary password (sign-out). Unsafe methods are CSRF-checked."""
     c = await anyio.to_thread.run_sync(_load, request, db)   # never block the event loop on SQLite
     if c.user is None:
         raise HTTPException(status_code=303, headers={"Location": "/login"})
@@ -156,8 +156,6 @@ def _require(role: str):
         if c.user is None:
             nxt = request.url.path if request.method == "GET" else "/"
             raise HTTPException(status_code=303, headers={"Location": f"/login?next={nxt}"})
-        if not c.session.mfa_passed:
-            raise HTTPException(status_code=303, headers={"Location": "/mfa"})
         if c.user.must_change_password and not request.url.path.startswith(("/security", "/logout")):
             raise HTTPException(status_code=303, headers={"Location": "/security?must_change=1"})
         if not c.can(role):
@@ -200,7 +198,7 @@ def current_period(c: Ctx, all_periods: list[Period], explicit=None) -> Period |
 
 
 def _update_status(c: Ctx):
-    if c.user is None or not (c.session and c.session.mfa_passed):
+    if c.user is None or not c.session:
         return None
     from app import updater
     try:
@@ -215,7 +213,7 @@ def render(c: Ctx, name: str, **kw) -> HTMLResponse:
     all_p = periods(c.db)
     cur = current_period(c, all_p, kw.get("period"))
     nav_open = 0
-    if cur is not None and c.user is not None and c.session and c.session.mfa_passed:
+    if cur is not None and c.user is not None and c.session:
         from app.services.workflow import actionable_flags
         nav_open = sum(1 for f in actionable_flags(c.db, cur) if f["actionable"] and not f["reviewed"])
     resp = templates.TemplateResponse(c.request, name, {

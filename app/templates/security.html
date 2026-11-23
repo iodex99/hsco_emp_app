@@ -1,48 +1,18 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
-{% block title %}Security & 2FA{% endblock %}
+{% block title %}Password{% endblock %}
 {% block content %}
-<div class="ph"><div><h1>Security &amp; two-step verification</h1><div class="sub">Signed in as {{ user.username }} · {{ user.role|capitalize }}</div></div></div>
+<div class="ph"><div><h1>Password</h1><div class="sub">Signed in as {{ user.username }} · {{ user.role|capitalize }}</div></div></div>
 {% if must_change %}<div class="alert warn">{{ ui.icon('key-round') }}<span><b>Set a new password to continue.</b> You signed in with a temporary password.</span></div>{% endif %}
-<div class="grid g-2-1" style="align-items:start">
-<div>
-  <div class="card"><div class="hd"><h2>Sign-in methods</h2><span class="sub">Add more than one so you're never locked out</span></div>
-  <div class="bd" style="padding-top:4px"><ul class="list">
-    {% for m in methods %}<li>
-      <span class="logo" style="width:36px;height:36px;background:var(--brand-50);color:var(--brand)">{{ ui.icon({'totp':'smartphone','webauthn':'fingerprint','email':'mail'}[m.kind]) }}</span>
-      <div><div class="strong">{{ m.label }}</div><div class="small muted">{{ {'totp':'Authenticator app','webauthn':'Security key / passkey','email':'Email code'}[m.kind] }} · added {{ m.created_at|dmy }}{% if m.last_used %} · last used {{ m.last_used|dmy }}{% endif %}</div></div>
-      <span class="r"><form method="post" action="/security/method/{{ m.id }}/delete" data-confirm="Remove {{ m.label }}?">{{ ui.csrf_field() }}<button class="btn sm ghost">Remove</button></form></span></li>
-    {% else %}<li class="muted">No methods yet.</li>{% endfor %}
-    <li><span class="logo" style="width:36px;height:36px;background:var(--surface-3);color:var(--text-2)">{{ ui.icon('key-round') }}</span>
-      <div><div class="strong">Recovery codes</div><div class="small muted">{{ recovery_left }} unused · each works once</div></div>
-      <span class="r"><form method="post" action="/security/recovery/regenerate" data-confirm="Create new codes? The old ones stop working.">{{ ui.csrf_field() }}<button class="btn sm sec">New codes</button></form></span></li>
-  </ul></div></div>
-  <div class="card"><div class="hd"><h2>Add a method</h2></div><div class="bd"><div class="grid g3">
-    <a class="kpi" href="/security/enrol"><div class="l">{{ ui.icon('smartphone','sm') }} Authenticator app</div><div class="small muted mt-s">Another phone, or a replacement.</div></a>
-    <button class="kpi" type="button" id="addkey" style="text-align:left;font:inherit;cursor:pointer"><div class="l">{{ ui.icon('fingerprint','sm') }} Security key / Windows Hello</div><div class="small muted mt-s">YubiKey, fingerprint or PC PIN.</div></button>
-    {% if smtp and user.email %}<form method="post" action="/security/email/enable" style="display:contents">{{ ui.csrf_field() }}<button class="kpi" style="text-align:left;font:inherit;cursor:pointer"><div class="l">{{ ui.icon('mail','sm') }} Email code</div><div class="small muted mt-s">Codes to {{ user.email }}</div></button></form>
-    {% else %}<div class="kpi" style="opacity:.6"><div class="l">{{ ui.icon('mail','sm') }} Email code</div><div class="small muted mt-s">Needs email settings and an email on your account.</div></div>{% endif %}
-  </div>
-  <div id="keymsg" class="help"></div>
-  {% if request.query_params.get('email_sent') %}
-  <form method="post" action="/security/email/confirm" class="row mt">{{ ui.csrf_field() }}
-    <div class="field" style="margin:0"><label>Code sent to {{ user.email }}</label><input class="otp" name="code" maxlength="6" required></div><button class="btn">Confirm</button></form>{% endif %}
-  <p class="help mt">Security keys and passkeys need the app opened over HTTPS at <code>{{ rp_id }}</code>.</p></div></div>
-</div>
+<div style="max-width:520px">
 <form class="card" method="post" action="/security/password">{{ ui.csrf_field() }}
-  <div class="hd"><h2>Change password</h2></div><div class="bd">
-  <div class="field"><label>Current password</label><input type="password" name="current" required autocomplete="current-password"></div>
+  <div class="hd"><h2>{{ 'Set your password' if must_change else 'Change password' }}</h2></div><div class="bd">
+  <div class="field"><label>{{ 'Temporary password' if must_change else 'Current password' }}</label><input type="password" name="current" required autocomplete="current-password"></div>
   <div class="field"><label>New password</label><input type="password" name="new" required autocomplete="new-password"></div>
   <div class="field"><label>Confirm new password</label><input type="password" name="confirm" required autocomplete="new-password">
-    <div class="help">At least {{ general.password_min_length }} characters, with upper and lower case, a number and a symbol.</div></div>
-  <button class="btn block">Change password</button>
-  <p class="help">Other devices will be signed out.</p></div>
+    <div class="help">At least {{ min_len }} characters, with upper and lower case, a number and a symbol.</div></div>
+  <button class="btn block">{{ 'Set password' if must_change else 'Change password' }}</button>
+  {% if not must_change %}<p class="help">Other devices will be signed out.</p>{% endif %}</div>
 </form>
 </div>
 {% endblock %}
-{% block scripts %}<script>
-document.getElementById('addkey').onclick=async()=>{const m=document.getElementById('keymsg');
-const label=prompt('Name this key (e.g. "YubiKey" or "Office PC Windows Hello")','Security key'); if(label===null)return;
-m.textContent='Touch your key or confirm with Windows Hello…';
-try{await HSCO.registerPasskey(label); location.reload();}catch(e){m.textContent='Could not add the key: '+e.message;}};
-</script>{% endblock %}

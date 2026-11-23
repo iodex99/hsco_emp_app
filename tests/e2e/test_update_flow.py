@@ -91,12 +91,10 @@ def installed(tmp_path, monkeypatch):
         with session_scope() as db:
             import_file(db, fx[k].read_bytes(), fx[k].name, None)
     from sqlalchemy import select
-    from app.models import User, UserSession
+    from app.models import User
     from app.security import core as sec
     with session_scope() as db:
         token = sec.create_session(db, db.scalar(select(User)), "127.0.0.1", "e2e")
-        for s in db.scalars(select(UserSession)):
-            s.mfa_passed = True
     reset_engine()
     reset_config()
     rel = Releases(z2, 2, "9.9.9", delay=0.08)

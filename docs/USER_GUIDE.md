@@ -6,9 +6,10 @@
 - **Admin**: + policy rules, security settings, users, re-open a finalised month.
 
 ## Signing in
-Username + password, then a second step: authenticator-app code, security key / Windows Hello, an emailed code, or a
-recovery code. First sign-in forces you to set up an authenticator app and shows 10 recovery codes — print/store them.
-Add more methods under **My security** (several phones, keys).
+User name + password — that's all (no second step since v1.10). A new user (or one whose password an admin reset)
+signs in with the temporary password and is asked to set their own straight away. Change your password any time:
+your initials (top right) → **Change password**. Five wrong passwords lock the account for 15 minutes (an admin can
+unlock it on the Users page).
 
 ## Finding your way
 - **Overview**: the month at a glance, with a **month-end checklist** that tells you the next step.

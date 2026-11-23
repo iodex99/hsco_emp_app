@@ -31,42 +31,10 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    mfa_methods: Mapped[list["MfaMethod"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
-class MfaMethod(Base):
-    __tablename__ = "mfa_methods"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    kind: Mapped[str] = mapped_column(String(16))           # totp | webauthn | email
-    label: Mapped[str] = mapped_column(String(64), default="")
-    secret: Mapped[str] = mapped_column(Text, default="")  # totp secret (encrypted)
-    credential_id: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
-    public_key: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
-    sign_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_totp_step: Mapped[int] = mapped_column(Integer, default=0)  # replay protection
-    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-    last_used: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    user: Mapped[User] = relationship(back_populates="mfa_methods")
-
-
-class RecoveryCode(Base):
-    __tablename__ = "recovery_codes"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    code_hash: Mapped[str] = mapped_column(String(128))
-    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-
-class EmailOtp(Base):
-    __tablename__ = "email_otps"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    code_hash: Mapped[str] = mapped_column(String(128))
-    expires_at: Mapped[datetime] = mapped_column(DateTime)
-    attempts: Mapped[int] = mapped_column(Integer, default=0)
-    used: Mapped[bool] = mapped_column(Boolean, default=False)
+# mfa_methods, recovery_codes, email_otps: two-step verification, removed in v1.10 (migration remove_2fa_v1 empties
+# them; the tables stay so an older version can still open the database).
 
 
 class UserSession(Base):
@@ -74,14 +42,14 @@ class UserSession(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    mfa_passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    mfa_passed: Mapped[bool] = mapped_column(Boolean, default=True)   # legacy (2FA removed v1.10): always true
     csrf_token: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=now)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     ip: Mapped[str] = mapped_column(String(64), default="")
     user_agent: Mapped[str] = mapped_column(String(256), default="")
-    pending: Mapped[dict] = mapped_column(JSON, default=dict)   # webauthn challenges, enrolment secrets
+    pending: Mapped[dict] = mapped_column(JSON, default=dict)   # legacy (2FA removed v1.10): unused
 
 
 class AuditLog(Base):

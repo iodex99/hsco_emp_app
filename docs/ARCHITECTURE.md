@@ -23,7 +23,7 @@ app/services/              settings, audit, imports (pipeline, remembered layout
                            rules, recompute_from), compute (DB→engine→results), metrics, insights
                            (scorecards, absence, heatmaps), attendance_stats (compact month summaries), geo,
                            maintenance (start-up background jobs)
-app/security/              core.py (passwords, sessions, CSRF, TOTP, recovery, email OTP), passkeys.py (WebAuthn)
+app/security/              core.py (passwords, sessions, CSRF)
 app/reports/               excel.py (payroll workbook; punches & locations workbook)
 app/routes/                auth, pages (dashboard/imports/flags/recon/audit), periods (sheet, drill-down, overrides,
                            finalise), employees, settings, users, reports (downloads, templates)
@@ -84,7 +84,7 @@ start child → /healthz == new build within 90 s ? done : restore previous code
 ## Database (SQLite file `DATA_DIR/hsco.db`)
 | Table | Purpose |
 |---|---|
-| users, mfa_methods, recovery_codes, email_otps, sessions | identity, 2FA, server-side sessions |
+| users, sessions | identity, server-side sessions (`mfa_methods`, `recovery_codes`, `email_otps`: 2FA, removed v1.10 — kept empty) |
 | audit_log | every login, import, override, setting, user change |
 | settings | `policy` and `general` JSON |
 | employees, categories, holiday_calendars, holidays, geofences, geo_cache | master data (`targeted_holidays` and `employees.holiday_calendar_id`: retired v1.9, kept empty) |
@@ -100,13 +100,12 @@ Schema is created with `create_all` at start-up (additive). For future column ch
 ## Security design
 - **Passwords**: argon2id; policy (length, mixed case, digit, symbol, no username); lockout after N failures.
 - **Sessions**: random 256-bit token in an HttpOnly, Secure, SameSite=Strict cookie; only its SHA-256 is stored;
-  absolute expiry (10 h) + idle timeout (60 min; 10 min while 2FA pending); sessions revoked on password change,
-  deactivation, 2FA reset.
-- **2FA** (mandatory by default; users may register several methods):
-  TOTP (RFC 6238, ±30 s, replay-protected, secret encrypted with a key derived from `secret.key`),
-  WebAuthn passkeys/security keys/Windows Hello (needs HTTPS + RP ID = host name),
-  email one-time codes (if SMTP configured; argon2-hashed, 10-min expiry, 5 attempts),
-  10 single-use recovery codes (argon2-hashed). Failed second factors count towards lockout.
+  absolute expiry (10 h) + idle timeout (60 min); sessions revoked on password change and deactivation.
+- **No two-step verification** (owner, v1.10): the password is the only factor; the app is used by Remote Desktop on
+  the server, so Windows sign-in is the outer lock. A user created or reset by an admin gets a temporary password and
+  must set their own before any page opens. (Until v1.9: TOTP, passkeys, email codes, recovery codes — migration
+  `remove_2fa_v1` deleted their stored secrets and the email-server settings incl. its password.)
+  `UserSession.mfa_passed` / `pending` are legacy columns (always true / unused). `secret.key` protects nothing now.
 - **CSRF**: per-session token checked on every POST (form field or `X-CSRF-Token`).
 - **Headers**: CSP (self only), HSTS, X-Frame-Options DENY, nosniff, no-store on data pages.
 - **Roles**: viewer (board, read-only) < hr (import, correct, finalise) < admin (rules, users, re-open).

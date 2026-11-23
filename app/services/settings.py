@@ -12,12 +12,9 @@ from app.models import Setting
 GENERAL_DEFAULTS = {
     "org_name": "Hasmukh Shah & Co. LLP",
     "org_address": "409/410 Dalamal Chambers, New Marine Lines, Mumbai 400020",
-    "mfa_required": True,
-    "allowed_mfa": ["totp", "webauthn", "email", "recovery"],
     "password_min_length": 10,
     "lockout_threshold": 5,
     "lockout_minutes": 15,
-    "smtp_host": "", "smtp_port": 587, "smtp_user": "", "smtp_password": "", "smtp_from": "", "smtp_starttls": True,
     "online_geocoding": False,
     "update_check": True,
     "update_interval_min": 10,

@@ -5,9 +5,9 @@ import secrets
 
 from fastapi import APIRouter, Depends, Form
 from fastapi.responses import HTMLResponse
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
-from app.models import MfaMethod, RecoveryCode, User
+from app.models import User
 from app.security import core as sec
 from app.services.audit import audit
 from app.web import ROLES, Ctx, admin, redirect, render
@@ -76,18 +76,6 @@ def reset_password(uid: int, c: Ctx = Depends(admin)):
     audit(c.db, c.user, "user.reset_password", "user", u.username, ip=c.ip)
     rows = c.db.scalars(select(User).order_by(User.username)).all()
     return render(c, "users.html", rows=rows, roles=list(ROLES), new_password=(u.username, pw))
-
-
-@router.post("/users/{uid}/reset-mfa")
-def reset_mfa(uid: int, c: Ctx = Depends(admin)):
-    u = c.db.get(User, uid)
-    if not u:
-        return redirect("/users", "Not found.")
-    c.db.execute(delete(MfaMethod).where(MfaMethod.user_id == u.id))
-    c.db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == u.id))
-    sec.destroy_user_sessions(c.db, u.id)
-    audit(c.db, c.user, "user.reset_mfa", "user", u.username, ip=c.ip)
-    return redirect("/users", f"2FA reset for {u.username}; they will enrol again at next sign-in.")
 
 
 @router.post("/users/{uid}/unlock")

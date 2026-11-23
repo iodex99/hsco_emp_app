@@ -57,7 +57,7 @@
         <button class="avatar" type="button" id="um-btn" aria-label="Account menu">{{ ui.initials(user.full_name or user.username) }}</button>
         <div class="menu" id="um-menu">
           <div class="who"><b>{{ user.full_name or user.username }}</b><span>{{ user.username }} · {{ user.role|capitalize }}</span></div>
-          <a href="/security">{{ ui.icon('shield-check','sm') }} Security &amp; 2FA</a>
+          <a href="/security">{{ ui.icon('key-round','sm') }} Change password</a>
           <form method="post" action="/logout">{{ ui.csrf_field() }}<button type="submit">{{ ui.icon('log-out','sm') }} Sign out</button></form>
         </div>
       </div>{% endif %}

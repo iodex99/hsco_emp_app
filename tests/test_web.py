@@ -4,7 +4,6 @@ import io
 import re
 import time
 
-import pyotp
 import pytest
 from openpyxl import load_workbook
 
@@ -50,45 +49,72 @@ def test_password_lockout(client):
     assert r.status_code == 401 and "locked" in r.text.lower()
 
 
-def test_forced_totp_enrolment_then_challenge(client):
+def test_password_sign_in_goes_straight_in(client):
+    """v1.10 (owner): no two-step verification — the right password opens the app, wrong ones lock the account."""
     make_user()
-    secret = login_full(client)
-    assert client.get("/").status_code == 200
-    # logout -> login again requires TOTP
+    r = client.post("/login", data={"username": "admin", "password": ADMIN_PW, "next": "/employees"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/employees"
+    assert client.get("/employees").status_code == 200
+    assert "Two-step" not in client.get("/").text and "Change password" in client.get("/").text
     client.post("/logout", data={"csrf": csrf_of(client)})
-    assert client.get("/", follow_redirects=False).status_code == 303
-    r = client.post("/login", data={"username": "admin", "password": ADMIN_PW, "next": "/"}, follow_redirects=True)
-    assert "Two-step verification" in r.text
-    csrf = _csrf(r.text)
-    # MFA not passed yet -> protected pages bounce to /mfa
-    assert client.get("/employees", follow_redirects=False).headers["location"] == "/mfa"
-    bad = client.post("/mfa/totp", data={"code": "000000", "csrf": csrf, "next": "/"}, follow_redirects=True)
-    assert "not accepted" in bad.text
-    code = pyotp.TOTP(secret).at(time.time() + 30)
-    ok = client.post("/mfa/totp", data={"code": code, "csrf": csrf, "next": "/employees"}, follow_redirects=False)
-    assert ok.headers["location"] == "/employees"
-    # replay of the same code is rejected
-    client.post("/logout", data={"csrf": csrf_of(client)})
-    r = client.post("/login", data={"username": "admin", "password": ADMIN_PW}, follow_redirects=True)
-    replay = client.post("/mfa/totp", data={"code": code, "csrf": _csrf(r.text), "next": "/"}, follow_redirects=True)
-    assert "not accepted" in replay.text
+    assert client.get("/", follow_redirects=False).headers["location"].startswith("/login")
+    r = client.post("/login", data={"username": "admin", "password": ADMIN_PW, "next": "//evil.example"},
+                    follow_redirects=False)
+    assert r.headers["location"] == "/"                                   # no open redirect
+    from app.db import session_scope
+    from app.models import User
+    from sqlalchemy import select
+    with session_scope() as db:
+        assert db.scalar(select(User.last_login).where(User.username == "admin")) is not None
 
 
-def test_recovery_codes_single_use(client):
+def test_two_step_verification_is_gone(client):
     make_user()
-    r = client.post("/login", data={"username": "admin", "password": ADMIN_PW}, follow_redirects=True)
-    secret = re.search(r'id="totp-secret">([A-Z2-7]+)<', r.text).group(1)
-    r2 = client.post("/security/totp/confirm", data={"code": pyotp.TOTP(secret).now(), "csrf": _csrf(r.text)})
-    codes = re.findall(r"<div>([0-9A-F]{6}-[0-9A-F]{6})</div>", r2.text)
-    assert len(codes) == 10
-    client.post("/logout", data={"csrf": csrf_of(client)})
-    r = client.post("/login", data={"username": "admin", "password": ADMIN_PW}, follow_redirects=True)
-    ok = client.post("/mfa/recovery", data={"code": codes[0].lower(), "csrf": _csrf(r.text), "next": "/"}, follow_redirects=False)
-    assert ok.headers["location"] == "/"
-    client.post("/logout", data={"csrf": csrf_of(client)})
-    r = client.post("/login", data={"username": "admin", "password": ADMIN_PW}, follow_redirects=True)
-    again = client.post("/mfa/recovery", data={"code": codes[0], "csrf": _csrf(r.text), "next": "/"}, follow_redirects=True)
-    assert "not accepted" in again.text
+    login_full(client)
+    csrf = csrf_of(client)
+    for path in ("/mfa", "/security/enrol"):
+        assert client.get(path).status_code == 404, path
+    for path in ("/mfa/totp", "/mfa/recovery", "/mfa/email", "/mfa/email/send", "/mfa/webauthn/options",
+                 "/security/totp/confirm", "/security/webauthn/options", "/security/recovery/regenerate",
+                 "/security/email/enable", "/users/1/reset-mfa"):
+        assert client.post(path, data={"csrf": csrf, "code": "123456"}).status_code in (404, 405), path
+    st = client.get("/settings").text
+    assert 'name="mfa_required"' not in st and 'name="smtp_host"' not in st and "Email sign-in codes" not in st
+    us = client.get("/users").text
+    assert "Two-step" not in us and "two-step" not in us and "reset-mfa" not in us
+    sec_page = client.get("/security").text
+    assert "Change password" in sec_page and "Recovery codes" not in sec_page and "Authenticator" not in sec_page
+    assert "Two-step verification" not in client.get("/login").text
+
+
+def test_migration_removes_stored_two_step_data(data_dir):
+    """remove_2fa_v1: secrets, recovery codes and emailed codes deleted; 2FA / email-server settings dropped; once."""
+    from sqlalchemy import select, text
+    from app.db import init_db, migrate_data, session_scope
+    from app.models import AuditLog, Setting
+    init_db()
+    with session_scope() as db:                       # what an older version left behind
+        db.execute(text("CREATE TABLE IF NOT EXISTS mfa_methods (id INTEGER PRIMARY KEY, user_id INTEGER, kind TEXT, secret TEXT)"))
+        db.execute(text("CREATE TABLE IF NOT EXISTS recovery_codes (id INTEGER PRIMARY KEY, user_id INTEGER, code_hash TEXT)"))
+        db.execute(text("INSERT INTO mfa_methods (user_id, kind, secret) VALUES (1, 'totp', 'x'), (1, 'email', '')"))
+        db.execute(text("INSERT INTO recovery_codes (user_id, code_hash) VALUES (1, 'h')"))
+        g = db.get(Setting, "general")
+        g.value = {**g.value, "mfa_required": True, "allowed_mfa": ["totp"], "smtp_host": "smtp.x",
+                   "smtp_password": "secret!", "org_name": "Kept"}
+        st = db.get(Setting, "migrations")
+        st.value = {"done": [x for x in st.value["done"] if x != "remove_2fa_v1"]}
+    migrate_data()
+    with session_scope() as db:
+        assert db.execute(text("SELECT COUNT(*) FROM mfa_methods")).scalar() == 0
+        assert db.execute(text("SELECT COUNT(*) FROM recovery_codes")).scalar() == 0
+        g = db.get(Setting, "general").value
+        assert g["org_name"] == "Kept" and not any(k.startswith("smtp_") or "mfa" in k for k in g)
+        a = db.scalar(select(AuditLog).where(AuditLog.action == "migration.remove_2fa"))
+        assert a.details["deleted_rows"] == {"mfa_methods": 2, "recovery_codes": 1} and "smtp_password" in a.details["settings_dropped"]
+    migrate_data()
+    with session_scope() as db:
+        assert len(list(db.scalars(select(AuditLog).where(AuditLog.action == "migration.remove_2fa")))) == 1
 
 
 def test_csrf_enforced(client):
@@ -100,34 +126,6 @@ def test_csrf_enforced(client):
     assert r.status_code == 400
 
 
-def test_email_otp_and_webauthn_options(client):
-    from app.security import core as sec
-    sent = {}
-    sec.send_email_otp._test_sink = lambda to, code: sent.update(to=to, code=code)
-    try:
-        make_user(email="admin@example.test")
-        login_full(client)
-        csrf = csrf_of(client, "/settings")
-        client.post("/settings/general#general", data={"csrf": csrf, "smtp_host": "smtp.local", "smtp_from": "app@example.test",
-                                                       "smtp_port": "25", "mfa_required": "1", "org_name": "Test Firm"})
-        client.post("/security/email/enable", data={"csrf": csrf_of(client)})
-        assert sent["to"] == "admin@example.test"
-        client.post("/security/email/confirm", data={"csrf": csrf_of(client), "code": sent["code"]})
-        assert "Email code" in client.get("/security").text
-        # sign in again with an email code
-        client.post("/logout", data={"csrf": csrf_of(client)})
-        r = client.post("/login", data={"username": "admin", "password": ADMIN_PW}, follow_redirects=True)
-        assert "Email me a code" in r.text
-        client.post("/mfa/email/send", data={"csrf": _csrf(r.text), "next": "/"})
-        ok = client.post("/mfa/email", data={"csrf": _csrf(r.text), "code": sent["code"], "next": "/"}, follow_redirects=False)
-        assert ok.headers["location"] == "/"
-        # passkey registration options are produced (browser ceremony itself is exercised in e2e)
-        j = client.post("/security/webauthn/options", headers={"X-CSRF-Token": csrf_of(client)}).json()
-        assert j["rp"]["id"] == "testserver" and j["challenge"]
-    finally:
-        del sec.send_email_otp._test_sink
-
-
 def test_roles_and_user_admin(client):
     make_user()
     login_full(client)
@@ -135,16 +133,17 @@ def test_roles_and_user_admin(client):
                                     "full_name": "Board Member"})
     temp = re.search(r'id="temp-pw"[^>]*>([^<]+)<', r.text).group(1)
     client.post("/logout", data={"csrf": csrf_of(client)})
-    # new user: password ok -> forced enrolment -> forced password change
-    r = client.post("/login", data={"username": "board1", "password": temp}, follow_redirects=True)
-    secret = re.search(r'id="totp-secret">([A-Z2-7]+)<', r.text).group(1)
-    client.post("/security/totp/confirm", data={"code": pyotp.TOTP(secret).now(), "csrf": _csrf(r.text)})
+    # new user: temporary password -> straight to "set your password"; nothing else opens until it is set
+    r = client.post("/login", data={"username": "board1", "password": temp}, follow_redirects=False)
+    assert r.headers["location"] == "/security?must_change=1"
+    assert "Set your password" in client.get(r.headers["location"]).text
     assert client.get("/", follow_redirects=False).headers["location"].startswith("/security")
     weak = client.post("/security/password", data={"csrf": csrf_of(client), "current": temp, "new": "short", "confirm": "short"},
                        follow_redirects=True)
     assert "Password needs" in weak.text
-    client.post("/security/password", data={"csrf": csrf_of(client), "current": temp, "new": "Board!Member#2026",
-                                            "confirm": "Board!Member#2026"})
+    r = client.post("/security/password", data={"csrf": csrf_of(client), "current": temp, "new": "Board!Member#2026",
+                                                "confirm": "Board!Member#2026"}, follow_redirects=True)
+    assert r.status_code == 200 and "Password set — welcome." in r.text   # a non-latin-1 flash (cookie) works
     assert client.get("/").status_code == 200
     for path in ("/imports", "/settings", "/users", "/audit"):
         assert client.get(path).status_code == 403, path
@@ -187,7 +186,7 @@ def test_all_pages_render(loaded):
     c = loaded
     pages = ["/", "/?period=2026-10", "/periods/2026-10", "/employees", "/employees/T001", "/employees/new", "/flags",
              "/flags?code=WFH_OVER_LIMIT", "/reconciliation", "/imports", "/settings", "/users", "/audit", "/exports",
-             "/security", "/security/enrol", "/insights", "/insights?period=2026-10"]
+             "/security", "/insights", "/insights?period=2026-10"]
     pages += [f"/periods/2026-10/employee/T00{i}" for i in range(1, 7)]
     for p in pages:
         r = c.get(p)
@@ -387,23 +386,6 @@ def test_bad_upload_reported(loaded):
     csrf = csrf_of(c, "/imports")
     r = c.post("/imports", data={"csrf": csrf}, files=[("files", ("notes.xlsx", b"not an excel file", "application/octet-stream"))])
     assert r.status_code == 200 and "Could not read" in r.text
-
-
-def test_enrol_without_pending_secret_and_unicode_flash(client):
-    """Regression: 'Enrolment expired — …' (em dash) crashed the latin-1 cookie header with HTTP 500."""
-    make_user()
-    r = client.post("/login", data={"username": "admin", "password": ADMIN_PW}, follow_redirects=True)
-    csrf = _csrf(r.text)
-    from app.db import session_scope
-    from app.models import UserSession
-    from sqlalchemy import select
-    with session_scope() as db:                      # simulate a lost/expired enrolment secret
-        for s in db.scalars(select(UserSession)):
-            s.pending = {}
-    r = client.post("/security/totp/confirm", data={"code": "123456", "csrf": csrf}, follow_redirects=False)
-    assert r.status_code == 303
-    page = client.get(r.headers["location"])
-    assert page.status_code == 200 and "Enrolment expired — scan the new QR code." in page.text
 
 
 def test_db_dependency_commits_before_response():

@@ -16,7 +16,8 @@ assistants), Trainee. HR software: **greytHR** (biometric device "Astra" + greyt
 - Sign-in reports show coordinates only — show a **location name** instead.
 - Allow **manual entries**.
 - Installed on the firm's **Windows server**; **data stays on the server**.
-- **2FA, with multiple 2FA methods configurable.**
+- ~~2FA, with multiple 2FA methods configurable.~~ **Removed by the owner on 2026-11-23 (v1.10): "remove 2fa
+  completely from the app"** — sign-in is user name + password (access is by Remote Desktop to the server).
 - Maintain `.md` files for the complete project as persistent memory; update after every change.
 - Commit & push to GitHub repo `iodex99/hsco_emp_app` (**public** → no client data in git).
 - (2026-11-17, v1.4) Location names must come **automatically** from coordinates — users won't type locations; use a
@@ -42,7 +43,7 @@ TOTP + passkeys/security keys + email codes + recovery codes; audit log; Windows
 | Persistent late = > 60 min late on ≥ 10 days | 15-min rule flagged 66 of 94 → not actionable (BUSINESS_RULES §7) |
 | WFH counted as distinct days | HR's swipes ÷ 2 gives half-days for mixed days |
 | Offline gazetteer for place names (admin-named places removed in v1.6.2); online OSM off by default | "Data stays on the server" |
-| 2FA mandatory by default | Requirement; admin can relax in Settings |
+| No two-step verification (v1.10) | Owner's decision; the app is reached through Remote Desktop on the server |
 | Place names from a bundled GeoNames India gazetteer (566k places, offline) rather than an online API | Automatic, free (CC-BY), and no coordinates leave the server |
 | Importer matches fields by meaning + checks values; unsure → user maps once, layout remembered | Never import a misread file silently; never ask twice for the same layout |
 | Attention score is a transparent weighted sum with listed reasons; absence as plain days (Bradford removed at the owner's request, 2026-11-18) | Board needs "who to talk to and why", explainable in one sentence (METRICS "Insights") |

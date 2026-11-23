@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.10.0 — 2026-11-23 — two-step verification removed
+Owner: "remove 2fa completely from the app".
+- Sign-in is **user name + password** and straight into the app. Gone: authenticator-app codes, security keys /
+  passkeys / Windows Hello, emailed codes, recovery codes, the forced set-up at first sign-in, *Reset two-step
+  verification* (Users), the 2FA switch and the email-server (SMTP) settings (Settings → Security & system), and
+  `app.cli reset-mfa`.
+- Kept: strong-password rules, lockout after failed attempts (Users → Unlock), sessions that expire, the forced change
+  of a temporary password (now straight after signing in with it), and the audit log of every sign-in.
+- The account menu has **Change password** (was *Security & 2FA*); the page is just the password form.
+- Update: the stored 2FA secrets, recovery codes and email codes are deleted, and the email-server settings (incl. its
+  password) are dropped — recorded in the audit log (*Two-step verification removed*). Python packages PyOTP,
+  qrcode and webauthn are no longer needed.
+
 ## 1.9.2 — 2026-11-20 — installer: Remote Desktop first
 Owner: "they use RDP, so the user will access it via RDP only … also, when I start the app on my PC it opens a command
 prompt, will that be the case on the client side as well".

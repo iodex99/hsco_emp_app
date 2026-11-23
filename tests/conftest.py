@@ -6,7 +6,6 @@ os.environ.setdefault("HSCO_DISABLE_UPDATE_THREAD", "1")
 os.environ.setdefault("HSCO_DISABLE_GEO_WARMUP", "1")
 from pathlib import Path
 
-import pyotp
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,8 +19,6 @@ def data_dir(tmp_path, monkeypatch):
     d = tmp_path / "data"
     monkeypatch.setenv("HSCO_DATA_DIR", str(d))
     monkeypatch.setenv("HSCO_INSECURE_COOKIES", "1")
-    monkeypatch.setenv("HSCO_ORIGIN", "http://testserver")
-    monkeypatch.setenv("HSCO_RP_ID", "testserver")
     from app.config import reset_config
     from app.db import reset_engine
     reset_config()
@@ -67,20 +64,7 @@ def csrf_of(client, path="/security"):
 
 
 def login_full(client, username="admin", pw=ADMIN_PW):
-    """Password + forced TOTP enrolment (first time) or TOTP challenge. Returns the TOTP secret."""
-    import re
+    """Sign in with user name and password (the only factor since v1.10)."""
     r = client.post("/login", data={"username": username, "password": pw, "next": "/"}, follow_redirects=True)
-    if "Set up two-step verification" in r.text or "/security/enrol" in str(r.url):
-        secret = re.search(r'id="totp-secret">([A-Z2-7]+)<', r.text).group(1)
-        csrf = re.search(r'name="csrf" value="([^"]+)"', r.text).group(1)
-        r2 = client.post("/security/totp/confirm", data={"code": pyotp.TOTP(secret).now(), "label": "phone", "csrf": csrf})
-        assert "recovery codes" in r2.text.lower(), r2.text[:500]
-        client.secret = secret
-        return secret
-    secret = getattr(client, "secret", None)
-    csrf = re.search(r'name="csrf" value="([^"]+)"', r.text).group(1)
-    import time
-    code = pyotp.TOTP(secret).at(time.time() + 30)  # next step (current step may be used already)
-    r2 = client.post("/mfa/totp", data={"code": code, "next": "/", "csrf": csrf}, follow_redirects=True)
-    assert r2.status_code == 200
-    return secret
+    assert r.status_code == 200, r.text[:300]
+    return r

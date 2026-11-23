@@ -22,13 +22,14 @@ fix) update the relevant docs in the same change:
 
 ## Non‑negotiables
 - **Data stays on the server.** No CDNs, no telemetry, no cloud APIs by default. All JS/CSS is vendored
-  under `app/static/vendor`. The only optional outbound calls are SMTP (email OTP) and online reverse
-  geocoding — both **off by default** and admin‑controlled — plus the **update check** (GET to the GitHub releases
+  under `app/static/vendor`. The only optional outbound call is online reverse geocoding — **off by default**
+  and admin‑controlled — plus the **update check** (GET to the GitHub releases
   API; sends no data; on by default, can be switched off in Settings → Updates).
 - **Real employee data never goes to git.** `reference/`, `data/`, `exports/`, `*.db`, certs are git‑ignored.
   The GitHub repo (`iodex99/hsco_emp_app`) is **public**. Tests that need real data skip when `reference/` is absent;
   synthetic fixtures (`tests/fixtures/make_fixtures.py`) cover CI.
-- 2FA is mandatory and multiple methods per user are supported (TOTP, WebAuthn/passkey, email OTP, recovery codes).
+- Sign-in is user name + password only — the owner had two-step verification removed (v1.10, 2026-11-23); keep
+  argon2 passwords, the strength rules, lockout, server-side sessions, CSRF and the forced change of temporary passwords.
 - Every manual change (override, master edit, setting) is audit‑logged with user + reason.
 - **Never block the event loop with SQLite.** DB work only in `def` handlers or via `anyio.to_thread`; no
   `BaseHTTPMiddleware`. Violating this caused the v1.0 "database is locked" 500s (ARCHITECTURE, Concurrency rule).
@@ -53,5 +54,5 @@ Keep `run_server.py` stdlib-only and backwards compatible. Never put data in the
 - `app/engine/` — pure calculation engine (no web deps). Start at `compute.py`.
 - `app/importers/` — parsers for each greytHR export; `detect.py` auto‑identifies uploads.
 - `app/reports/` — Excel workbooks (payroll + punches & locations). The HTML board pack was removed in v1.6.
-- `app/security/` — passwords, sessions, CSRF, TOTP, WebAuthn, email OTP, recovery codes.
+- `app/security/` — passwords, sessions, CSRF.
 - `app/routes/` — FastAPI routers; `app/templates/` — Jinja2 pages.

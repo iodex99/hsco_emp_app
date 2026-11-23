@@ -17,8 +17,8 @@
    *Only if other PCs open it over the network instead:* copy **`C:\HSCO\Office PC setup`** to each of them and
    double-click **`Set up this PC.cmd`** → *Yes* to the certificate question.
 
-Then sign in as the administrator, set up two-step verification (phone authenticator app), create the users (Users
-page) and do the first imports (below).
+Then sign in as the administrator, create the users (Users page — each gets a temporary password to share) and do
+the first imports (below).
 
 **What Install.cmd does** (`deploy\install_windows.ps1`, safe to run again — repair / upgrade keep everything):
 copies the app to `C:\HSCO\app`; finds Python 3.11+ or installs Python 3.13 for all users (winget, else python.org);
@@ -27,7 +27,7 @@ SYSTEM only) and machine settings; a security certificate for this PC's name, fu
 this PC); the first administrator; Scheduled Tasks **HSCO Attendance App** (at boot, as SYSTEM, restarts on failure)
 and **HSCO Attendance Backup** (02:00); a firewall rule for the office network only (port 8443); starts the app and
 checks it answers; the desktop icon; the **Office PC setup** folder (certificate, *Set up this PC.cmd*, *READ ME.txt*).
-Address: `https://<server PC name>:8443` (also by IP address; passkeys / security keys need the name).
+Address: `https://<server PC name>:8443` (also by IP address).
 
 Options (elevated PowerShell in the extracted folder): `powershell -ExecutionPolicy Bypass -File
 deploy\install_windows.ps1 -HostName hsco-app -DataDir D:\HSCOData -AppDir D:\HSCO\app -Port 8443 -ExtraNames
@@ -97,15 +97,12 @@ in it is part of the code, so reinstalling or updating the code leaves it as it 
 | Task | Command |
 |---|---|
 | Create another admin | `.venv\Scripts\python -m app.cli create-admin` |
-| User lost all 2FA methods & recovery codes | admin → Users → Reset 2FA, or on server `python -m app.cli reset-mfa <user>` |
+| User forgot their password | admin → Users → Manage → Reset password (a new temporary password) |
 | Import from command line | `python -m app.cli import file1.xlsx file2.xlsx` |
 | Dev / local test (HTTP) | `python run_server.py --dev` → http://localhost:8443 |
 | Run without supervisor (debug) | `python run_server.py --dev --no-supervisor` |
 | Last update result | `DATA_DIR\updates\last_result.json`; supervisor messages are prefixed `[supervisor]` in the console/log |
 | Logs | Task Scheduler history; run `run_server.py` in a console to see live logs |
-
-## Email codes (optional)
-Settings → Security & system → SMTP host/port/from/user/password. Only the 6-digit code is sent by email.
 
 ## Ports & network
 Single HTTPS port (default 8443, `HSCO_PORT`). Firewall rule is created for Domain/Private profiles only.

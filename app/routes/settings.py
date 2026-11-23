@@ -1,4 +1,4 @@
-"""Admin settings: policy rules, status codes, shifts, general/security/SMTP, holiday calendars, logo, backups."""
+"""Admin settings: policy rules, status codes, shifts, general/security, holiday calendars, logo, backups."""
 from __future__ import annotations
 
 from datetime import date
@@ -143,20 +143,14 @@ def _save_general(c: Ctx, form):
     data = {
         "org_name": form.get("org_name", g["org_name"]).strip() or g["org_name"],
         "org_address": form.get("org_address", "").strip(),
-        "mfa_required": bool(form.get("mfa_required")),
         "password_min_length": max(8, int(form.get("password_min_length") or 10)),
         "lockout_threshold": max(3, int(form.get("lockout_threshold") or 5)),
         "lockout_minutes": max(1, int(form.get("lockout_minutes") or 15)),
-        "smtp_host": form.get("smtp_host", "").strip(), "smtp_port": int(form.get("smtp_port") or 587),
-        "smtp_user": form.get("smtp_user", "").strip(), "smtp_from": form.get("smtp_from", "").strip(),
-        "smtp_starttls": bool(form.get("smtp_starttls")),
         "online_geocoding": bool(form.get("online_geocoding")),
         "geocode_max_km": float(form.get("geocode_max_km") or 15),
         "groups": [x.strip() for x in form.get("groups", "").split(",") if x.strip()],
         "locations": [x.strip() for x in form.get("locations", "").split(",") if x.strip()],
     }
-    if form.get("smtp_password"):
-        data["smtp_password"] = form.get("smtp_password")
     save_general(c.db, data)
     audit(c.db, c.user, "settings.general", details=data, ip=c.ip)
     return redirect("/settings#general", "Settings saved.")
