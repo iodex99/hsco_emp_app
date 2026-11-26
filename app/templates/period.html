@@ -50,7 +50,7 @@
   <th class="num" data-key="week" data-type="num" title="Total week days (E)">Week days</th><th class="num" data-key="hol" data-type="num" title="Holidays (F)">Holidays</th>
   <th class="num" data-key="leave" data-type="num" title="Leaves taken (G) — loss of pay counts as leave">Leave</th><th class="num" data-key="absent" data-type="num" data-label="Unapplied leave (absence)" title="Unapplied leave — absent without leave applied (H)">Unapplied leave</th><th class="num" data-key="present" data-type="num" title="Days present (I)">Present</th>
   <th class="num" data-key="wfh" data-type="num">WFH</th><th class="num" data-key="hours" data-type="num" title="Total hours present">Hours</th><th class="num" data-key="offh" data-type="num" title="Hours on weekly-off/holiday, excluded">Off-day h</th>
-  <th class="num" data-key="actual" data-type="num" title="Actual hours">Actual h</th><th class="num" data-key="required" data-type="num" title="Required hours">Required h</th><th class="num" data-key="balance" data-type="num" data-label="Hours +/−">+/− h</th>
+  <th class="num" data-key="actual" data-type="num" title="Actual hours">Actual h</th><th class="num" data-key="hpd" data-type="num" data-label="Hours per day" title="Required hours per day: the person's minimum-hours policy, own hours, category or the firm's">h / day</th><th class="num" data-key="required" data-type="num" title="Required hours = days present × hours per day">Required h</th><th class="num" data-key="balance" data-type="num" data-label="Hours +/−">+/− h</th>
   <th class="num" data-key="deduction" data-type="num" data-label="Deduction days">Deduction</th><th data-key="exempt" data-type="enum" data-label="Exempt (hours)">Exempt</th>
   <th data-key="remark" data-type="text">Remark</th><th class="num" data-key="flags" data-type="num" title="High/medium flags">Flags</th>
 </tr></thead>
@@ -63,7 +63,9 @@
   <td class="num {{ 'neg' if d.absent_days }}">{{ d.absent_days|n }}</td><td class="num">{{ d.days_present|n }}</td>
   <td class="num">{% if d.wfh_days > policy.wfh_limit_days %}<span class="badge b-warn">{{ d.wfh_days|n }}</span>{% else %}{{ d.wfh_days|n }}{% endif %}</td>
   <td class="num" data-v="{{ d.total_hours }}">{{ (d.total_hours*60)|hm }}</td><td class="num">{{ d.extra_hours|n }}</td>
-  <td class="num" data-v="{{ d.actual_hours }}">{{ d.actual_hours|n(1) }}</td><td class="num" data-v="{{ d.required_hours }}">{{ d.required_hours|n(1) }}</td>
+  <td class="num" data-v="{{ d.actual_hours }}">{{ d.actual_hours|n(1) }}</td>
+  <td class="num" data-v="{{ d.hours_per_day or policy.hours_per_day }}" data-csv="{{ d.hours_per_day or policy.hours_per_day }}">{% if (d.hours_from or '').startswith('policy ') %}<span class="badge b-violet" title="Minimum hours: {{ d.hours_from[7:] }}">{{ (d.hours_per_day or policy.hours_per_day)|n }}</span>{% elif d.hours_per_day and d.hours_per_day != policy.hours_per_day %}<span title="{{ 'Own hours (employee page)' if d.hours_from == 'employee' else 'Category ' ~ d.hours_from }}">{{ d.hours_per_day|n }}</span>{% else %}<span class="muted">{{ (d.hours_per_day or policy.hours_per_day)|n }}</span>{% endif %}</td>
+  <td class="num" data-v="{{ d.required_hours }}">{{ d.required_hours|n(1) }}</td>
   <td class="num {{ 'neg' if d.balance_hours < 0 else 'pos' }}" data-v="{{ d.balance_hours }}">{{ '+' if d.balance_hours > 0 }}{{ d.balance_hours|n(1) }}</td>
   <td class="num" data-v="{{ d.deduction_days }}">{% if d.deduction_days %}<span class="badge b-bad">{{ d.deduction_days|n }} d</span>{% elif d.exempt and d.balance_hours < 0 %}<span class="badge b-grey" title="{{ d.remark }}">exempt</span>{% else %}<span class="muted">—</span>{% endif %}</td>
   <td class="small">{{ 'Yes' if d.exempt else 'No' }}</td>
@@ -74,11 +76,11 @@
 <tfoot><tr class="tfoot"><td class="sticky">Total · <span data-count="#res">{{ rows|length }}</span> shown</td><td></td><td></td>
   <td class="num"></td><td class="num"></td><td data-sum class="num">{{ D|sum(attribute='leave_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='absent_days')|n }}</td><td data-sum class="num">{{ D|sum(attribute='days_present')|n }}</td>
   <td data-sum class="num">{{ D|sum(attribute='wfh_days')|n }}</td><td class="num"></td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='extra_hours')|n(0) }}</td>
-  <td data-sum data-dec="0" class="num">{{ D|sum(attribute='actual_hours')|n(0) }}</td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='required_hours')|n(0) }}</td><td class="num"></td>
+  <td data-sum data-dec="0" class="num">{{ D|sum(attribute='actual_hours')|n(0) }}</td><td class="num"></td><td data-sum data-dec="0" class="num">{{ D|sum(attribute='required_hours')|n(0) }}</td><td class="num"></td>
   <td data-sum data-unit=" d" class="num">{{ D|sum(attribute='deduction_days')|n }} d</td><td></td><td></td><td class="num" data-sum></td></tr></tfoot>
 </table></div></div>
 </div>
-<p class="help">Required hours = days present × {{ policy.hours_per_day|n }} h. Shortfall is deducted at ½ day per {{ policy.shortfall_block_hours|n }} h (rounded up). Exempt: {{ policy.exempt_groups|join(', ') }}. Click any row for the day-by-day record and to make corrections. Press <kbd>/</kbd> to find someone.</p>
+<p class="help">Required hours = days present × hours per day: {{ policy.hours_per_day|n }} h for the firm{% for x in hp_items %}; {{ x.hours|n }} h for “{{ x.name }}” ({{ x.emp_nos|length }}){% endfor %} — minimum-hours policies under Rules &amp; calendars. Shortfall is deducted at ½ day per {{ policy.shortfall_block_hours|n }} h (rounded up). Exempt: {{ policy.exempt_groups|join(', ') }}. Click any row for the day-by-day record and to make corrections. Press <kbd>/</kbd> to find someone.</p>
 
 {% if can_admin and period.status == 'FINALISED' %}
 <aside class="drawer" id="reopen" aria-label="Re-open month"><div class="dh"><h2>Re-open {{ period.label }}</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>

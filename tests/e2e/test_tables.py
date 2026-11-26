@@ -388,7 +388,7 @@ def test_overview_click_through_info_group_filter_and_pdf(page):
     pages, text = _pdf(dl.value.path())
     assert pages >= 3 and "Needs attention" in text and "Daily attendance" in text and "By group" in text
     assert "Page 1 of" in text and "Unapplied leave" in text and "LOP" not in text
-    assert dl.value.suggested_filename.startswith("HSCO Overview October 2026")
+    assert dl.value.suggested_filename.startswith("Attendance MIS - Overview October 2026")
     assert pg.locator(".pdf-cover").count() == 0 and not pg.evaluate("document.body.classList.contains('pdf-all')")
 
 
@@ -421,7 +421,7 @@ def test_full_report_pdf_has_every_report_with_contents(page):
     with pg.expect_download(timeout=120000) as dl:
         pg.click(".pdf-menu summary")
         pg.click("[data-pdf-full]")
-    assert dl.value.suggested_filename.startswith("HSCO Full report October 2026")
+    assert dl.value.suggested_filename.startswith("Attendance MIS - Full report October 2026")
     pages, text = _pdf(dl.value.path())
     names = ["Overview", "Insights", "Payroll leave sheet", "Review queue", "Punch exceptions", "Locations", "Reconciliation"]
     assert "Contents" in text and all(n in text for n in names)

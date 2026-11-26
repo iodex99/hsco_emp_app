@@ -2,13 +2,14 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="{{ csrf }}">
-<title>{% block title %}Sign in{% endblock %} · {{ org }}</title><link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
+<title>{% block title %}Sign in{% endblock %} · Attendance MIS · {{ org }}</title><link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
 {% set B = brand_info() %}{% if B.logo and B.kind == 'svg' %}<link rel="icon" type="image/svg+xml" href="/branding/favicon.svg?v={{ B.v }}">{% elif B.logo %}<link rel="icon" href="/branding/logo?v={{ B.v }}">{% endif %}</head>
 <body>
 <div class="auth">
   <section class="art">
     {% if B.logo %}<div class="logo-chip"><img src="/branding/logo?v={{ B.v }}" alt="{{ org }}"></div>
     {% else %}<div style="display:flex;gap:10px;align-items:center"><span class="logo" style="background:rgba(255,255,255,.15)">{{ ui.org_initials(org) }}</span><b>{{ org }}</b></div>{% endif %}
+    <div class="auth-app">Attendance MIS</div>
     <h2>Month-end attendance and leave, calculated in minutes.</h2>
     <p>Import the greytHR exports, review what needs attention, and hand payroll a finalised sheet.</p>
     <ul>

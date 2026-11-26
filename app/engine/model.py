@@ -103,6 +103,9 @@ class Employee:
     exempt_reason: str = ""
     holidays: Optional[dict] = None        # {date: name} from assigned calendar, None = use muster
     optional_holidays: dict = field(default_factory=dict)   # {date: name} optional holidays of that calendar (v1.7)
+    # weekly-off evidence from earlier months' muster for weekday slots this month cannot tell (e.g. the one 1st
+    # Saturday is a holiday): {slot: True = weekly off} — see engine.greythr_weekly_offs (v1.14)
+    off_slots_hint: dict = field(default_factory=dict)
     category: str = ""
 
 

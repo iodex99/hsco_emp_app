@@ -474,3 +474,65 @@ def test_restricted_holiday_rh_is_an_earned_holiday_without_comp_off():
                                [], POL)
     d7 = next(d for d in c.days if d.day.day == 7)
     assert d7.day_type == HOLIDAY and not any("differs" in n for n in d7.notes)
+
+
+# ---------------------------------------------------------------------------- v1.14: holiday on a weekly off
+def _with(rows, day, s1, s2=None):
+    dt = date(2026, 10, day)
+    return [r for r in rows if r.day != dt] + [MusterDay("E1", dt, s1, s2 or s1)]
+
+
+def test_holiday_on_a_weekly_off_counts_as_weekly_off():
+    """Owner: a holiday falling on the firm's weekly off is a weekly off, not a holiday."""
+    base = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, month(), [], POL)
+    # greytHR marks Sunday 11-Oct and closed Saturday 17-Oct "H" (holidays in its list) — the person follows greytHR
+    rows = _with(_with(month(), 11, "H"), 17, "H")
+    hol = {date(2026, 10, 20): "Dussehra", date(2026, 10, 11): "Sunday festival", date(2026, 10, 17): "Saturday festival"}
+    r = compute_employee_month(Employee("E1", group="BSS", holidays=hol), 2026, 10, rows, [], POL)
+    days = {dd.day.day: dd for dd in r.days}
+    assert days[11].day_type == "WEEKLY_OFF" and days[17].day_type == "WEEKLY_OFF" and days[20].day_type == "HOLIDAY"
+    assert any("falls on a weekly off" in n for n in days[11].notes)
+    assert (r.total_week_days, r.holidays, r.days_present, r.required_hours) == \
+        (base.total_week_days, base.holidays, base.days_present, base.required_hours)          # 23, 1, 22 — unchanged
+    # a holiday on the 1st Saturday (a working Saturday for the firm) stays a holiday
+    r1 = compute_employee_month(Employee("E1", group="BSS", holidays={date(2026, 10, 3): "Festival", **hol}),
+                                2026, 10, _with(rows, 3, "H"), [], POL)
+    d3 = next(dd for dd in r1.days if dd.day.day == 3)
+    assert d3.day_type == "HOLIDAY" and r1.holidays == 2
+    # someone greytHR gives Wednesdays off: a holiday on a Wednesday is their weekly off
+    wed = [MusterDay("E1", r.day, "OFF", "OFF") if r.day.weekday() == 2 else r for r in month()]
+    rw = compute_employee_month(Employee("E1", group="BSS", holidays={date(2026, 10, 14): "Wed festival"}), 2026, 10,
+                                _with(wed, 14, "H"), [], POL)
+    assert next(dd for dd in rw.days if dd.day.day == 14).day_type == "WEEKLY_OFF"
+    # an own pattern (all Saturdays off) decides by itself, also against greytHR's H
+    rp = compute_employee_month(Employee("E1", group="BSS", weekly_off="ALL_SAT_OFF", holidays={date(2026, 10, 3): "F"}),
+                                2026, 10, _with(month(), 3, "H"), [], POL)
+    assert next(dd for dd in rp.days if dd.day.day == 3).day_type == "WEEKLY_OFF" and rp.holidays == 0
+    # worked on a holiday that is a weekly off: off-day work as on any weekly off (comp-off rule unchanged)
+    rx = compute_employee_month(Employee("E1", group="BSS", holidays=hol), 2026, 10,
+                                [r for r in rows if r.day.day != 11] + [MusterDay("E1", date(2026, 10, 11), "H", "H",
+                                datetime(2026, 10, 11, 10), datetime(2026, 10, 11, 16), 360)], [], POL)
+    dx = next(dd for dd in rx.days if dd.day.day == 11)
+    assert dx.day_type == "WEEKLY_OFF" and dx.is_extra_work and dx.compoff_earned
+
+
+def test_firm_weekly_off_without_evidence():
+    from app.engine.compute import firm_weekly_off
+    assert firm_weekly_off(date(2026, 11, 8), POL)                 # Sunday
+    assert firm_weekly_off(date(2026, 8, 15), POL)                 # 3rd Saturday: office closed
+    assert not firm_weekly_off(date(2026, 8, 1), POL)              # 1st Saturday: office open
+    assert not firm_weekly_off(date(2026, 8, 14), POL)             # Friday
+
+
+def test_holiday_on_the_only_first_saturday_uses_earlier_months():
+    """A month has one 1st Saturday: when it is a holiday, earlier months tell whether it is the person's weekly off."""
+    from app.engine.compute import _slot
+    rows = _with(month(), 3, "H")
+    hol = {date(2026, 10, 3): "Festival", date(2026, 10, 20): "Dussehra"}
+    k = _slot(date(2026, 10, 3), POL)
+    works = compute_employee_month(Employee("E1", group="BSS", holidays=hol, off_slots_hint={k: False}), 2026, 10, rows, [], POL)
+    off = compute_employee_month(Employee("E1", group="BSS", holidays=hol, off_slots_hint={k: True}), 2026, 10, rows, [], POL)
+    none = compute_employee_month(Employee("E1", group="BSS", holidays=hol), 2026, 10, rows, [], POL)
+    d = lambda r: next(dd.day_type for dd in r.days if dd.day.day == 3)  # noqa: E731
+    assert (d(works), d(off), d(none)) == ("HOLIDAY", "WEEKLY_OFF", "HOLIDAY")      # none: the firm's 1st Saturday works
+    assert off.total_week_days == works.total_week_days - 1 and off.holidays == works.holidays - 1

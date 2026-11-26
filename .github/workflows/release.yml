@@ -79,7 +79,7 @@ jobs:
           Check "offline place names copied (app\data)" { Test-Path "C:/HSCO/app/app/data/in_places.csv.gz" }
           Check "database in C:\HSCOData" { Test-Path "C:/HSCOData/hsco.db" }
           foreach ($f in "Set up this PC.cmd", "hsco-server.crt", "READ ME.txt") { Check "office PC kit: $f" { Test-Path "C:/HSCO/Office PC setup/$f" } }
-          Check "desktop icon" { Test-Path "$env:PUBLIC/Desktop/HSCO Attendance.url" }
+          Check "desktop icon" { Test-Path "$env:PUBLIC/Desktop/Attendance MIS.url" }
           Check "start-at-boot task runs as SYSTEM" { (Get-ScheduledTask -TaskName "HSCO Attendance App").Principal.UserId -eq "SYSTEM" }
           if ($bad) { exit 1 }
       - name: Run the installer again (repair / upgrade keeps everything)

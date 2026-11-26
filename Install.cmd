@@ -1,5 +1,5 @@
 @echo off
-rem HSCO Attendance & Leave - one-click install / repair / upgrade on the server PC.
+rem Attendance MIS (HSCO) - one-click install / repair / upgrade on the server PC.
 rem Double-click it. Windows asks for administrator rights; everything else is automatic
 rem (details: docs\DEPLOYMENT.md). Safe to run again at any time.
 setlocal
@@ -10,7 +10,7 @@ if errorlevel 1 (
   powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
   exit /b
 )
-title Installing HSCO Attendance ^& Leave
+title Installing Attendance MIS
 rem started from PowerShell 7? its module path breaks Windows PowerShell 5.1 modules - use the default one
 set "PSModulePath="
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy\install_windows.ps1" %*

@@ -20,8 +20,11 @@ router = APIRouter()
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+PRODUCT = "Attendance MIS"      # every downloaded file starts with the product name (owner, v1.14)
+
+
 def _fname(p: Period, ext: str) -> str:
-    return f"Attendance_Leave_{p.year}-{p.month:02d}{'_FINAL' if p.status == 'FINALISED' else '_DRAFT'}.{ext}"
+    return f"{PRODUCT} - {p.label} - {'FINAL' if p.status == 'FINALISED' else 'DRAFT'}.{ext}"
 
 
 @router.get("/exports", response_class=HTMLResponse)
@@ -51,7 +54,7 @@ def export_locations(key: str, c: Ctx = Depends(viewer)):
     data = build_locations_workbook(c.db, p)
     audit(c.db, c.user, "export.locations", "period", p.key, ip=c.ip)
     return Response(data, media_type=XLSX, headers={
-        "Content-Disposition": f'attachment; filename="Punches_and_Locations_{p.year}-{p.month:02d}.xlsx"'})
+        "Content-Disposition": f'attachment; filename="{PRODUCT} - Punches and locations - {p.label}.xlsx"'})
 
 
 def _wb(headers: list[str], rows: list[list], note: str, lists: dict | None = None, dates: tuple = (),
@@ -162,4 +165,5 @@ def template(name: str, c: Ctx = Depends(hr)):
                    dates=("Date",), width={"Holiday": 30, "Category": 30})
     else:
         raise HTTPException(404, "Unknown template")
-    return Response(data, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{name}_template.xlsx"'})
+    nice = {"employee_master": "Employee master", "holidays": "Holiday list"}.get(name, name.replace("_", " ").capitalize())
+    return Response(data, media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{PRODUCT} - {nice} template.xlsx"'})

@@ -21,7 +21,7 @@
   {{ ui.kpi('Days present', d.days_present|n, 'calendar-days', '', none, 'of ' ~ ((d.total_week_days - d.holidays)|n) ~ ' working days · ' ~ (d.holidays|n) ~ ' holiday(s)',
        tip='Week days − holidays − leave − unapplied leave (absence). Includes WFH and on-duty days.') }}
   {{ ui.kpi('Hours vs required', ('+' if d.balance_hours > 0 else '') ~ (d.balance_hours|n(1)) ~ ' h', 'clock', 'bad' if d.balance_hours < 0 else 'good', none,
-       (d.actual_hours|n(1)) ~ ' worked · ' ~ (d.required_hours|n(1)) ~ ' required',
+       (d.actual_hours|n(1)) ~ ' worked · ' ~ (d.required_hours|n(1)) ~ ' required · ' ~ ((d.hours_per_day or policy.hours_per_day)|n) ~ ' h/day' ~ ((' (' ~ d.hours_from ~ ')') if (d.hours_from or '').startswith('policy ') else ''),
        tip='Actual hours (hours on weekly offs and holidays excluded) − required hours (days present × ' ~ ((d.hours_per_day or policy.hours_per_day)|n) ~ ' h).') }}
   {{ ui.kpi('Leave deduction', (d.deduction_days|n) ~ ' d', 'calendar', 'bad' if d.deduction_days else '', none,
        d.remark if d.remark else 'no deduction',

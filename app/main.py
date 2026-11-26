@@ -58,7 +58,7 @@ class SecurityHeaders:
 def create_app() -> FastAPI:
     get_config()
     init_db()
-    app = FastAPI(title="HSCO Attendance & Leave Intelligence", version=VERSION, docs_url=None, redoc_url=None,
+    app = FastAPI(title="Attendance MIS", version=VERSION, docs_url=None, redoc_url=None,
                   openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 

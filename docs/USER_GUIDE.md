@@ -248,3 +248,14 @@ Click **PDF ▾** (next to Excel) on the Overview, Insights, Payroll leave sheet
 - **Full report** — everything for the month in one file: a cover with contents (click a line to jump there), then the
   Overview, Insights, Payroll leave sheet, Review queue, Punch exceptions, Locations and Reconciliation. It takes about
   10 seconds; the page shows "Preparing the PDF…" meanwhile. The PDF is made in your browser — nothing leaves the server.
+
+## v1.14 — Minimum hours, holidays on weekly offs, new name
+- **Minimum hours policies**: Rules & calendars → **Minimum hours**. Create a policy (name + hours per day, e.g. *8-hour
+  day*, 8), then in its card search or pick a group, tick the employees and **Add**. Someone already in another policy is
+  moved. Remove with ✕; change the name or hours and **Save**; delete with the bin. Or choose the policy on the employee's
+  page (*Minimum hours policy*). The payroll sheet's *h / day* column shows each person's hours (policy values in
+  purple); draft months are recalculated straight away.
+- **A holiday on a weekly off** counts as a weekly off (the day says so). Nothing to set — the app reads each person's
+  weekly offs from their pattern or from greytHR's muster.
+- The app is now called **Attendance MIS**; downloaded files start with "Attendance MIS - …", and the desktop icon is
+  "Attendance MIS" after the next re-install (the old icon still works until then).

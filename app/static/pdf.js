@@ -424,11 +424,11 @@
       P.font(8.5, "normal", GREY); doc.text(clean(P.title), M + doc.getTextWidth(org) + 4, 10);
       doc.text("Generated " + clean(stamp), W - M, 10, { align: "right" });
       doc.setDrawColor(...LINE); doc.line(M, PH - 9, W - M, PH - 9);
-      P.font(7.5, "normal", GREY); doc.text("Attendance & Leave - data stays on this server", M, PH - 5);
+      P.font(7.5, "normal", GREY); doc.text("Attendance MIS - data stays on this server", M, PH - 5);
       doc.text(`Page ${i} of ${n}`, W - M, PH - 5, { align: "right" });
     }
     const z = (x) => String(x).padStart(2, "0");
-    const file = `HSCO ${clean(P.title).replace(/[\\/:*?"<>|]+/g, "-")} ${when.getFullYear()}${z(when.getMonth() + 1)}${z(when.getDate())}-${z(when.getHours())}${z(when.getMinutes())}.pdf`;
+    const file = `Attendance MIS - ${clean(P.title).replace(/[\\/:*?"<>|]+/g, "-")} - ${when.getFullYear()}${z(when.getMonth() + 1)}${z(when.getDate())}-${z(when.getHours())}${z(when.getMinutes())}.pdf`;
     doc.save(file);
     return { pages: n, file, toc: P.toc };
   }
@@ -440,7 +440,7 @@
     P.font(13, "normal", INK); doc.text(clean(sub), M + 20, 57);
     const stamp = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
     P.font(9, "normal", GREY);
-    doc.text("Generated " + clean(stamp) + " from the app's figures at that moment. Attendance & Leave - data stays on this server.", M + 20, 68);
+    doc.text("Generated " + clean(stamp) + " from the app's figures at that moment. Attendance MIS - data stays on this server.", M + 20, 68);
   }
 
   const busy = (on) => {
@@ -479,7 +479,7 @@
     const P = Writer(`Full report ${label || key}`);
     const c = busy(true);
     try {
-      coverPage(P, "Attendance & leave report", label || key);
+      coverPage(P, "Attendance MIS report", label || key);
       for (const [path, name] of H.REPORT_PAGES) {
         const url = path.includes("{k}") ? path.replace("{k}", key) : `${path}?period=${encodeURIComponent(key)}`;
         if (c) c.querySelector("small").textContent = " — " + name;

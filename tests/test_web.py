@@ -1440,7 +1440,7 @@ def test_location_exports(loaded):
     assert any("Andheri East" in v and "Office biometric" not in v for v in dd) and any("“At Acme Pharma (BKC)”" in v for v in dd)
     # punches & locations workbook (any month with punches)
     r = c.get("/exports/2026-10/locations.xlsx")
-    assert r.status_code == 200 and "Punches_and_Locations_2026-10.xlsx" in r.headers["content-disposition"]
+    assert r.status_code == 200 and "Attendance MIS - Punches and locations - October 2026.xlsx" in r.headers["content-disposition"]
     lw = load_workbook(io.BytesIO(r.content))
     assert lw.sheetnames == ["Punches", "Places", "By person"]
     rows = [[cell.value for cell in row] for row in lw["Punches"].iter_rows(min_row=6)]
@@ -2046,3 +2046,121 @@ def test_pages_may_be_framed_only_by_the_app_itself(loaded):
     r = loaded.get("/?period=2026-10")
     assert r.headers["x-frame-options"] == "SAMEORIGIN"
     assert "frame-ancestors 'self'" in r.headers["content-security-policy"]
+
+
+# ---------------------------------------------------------------------------------------------- v1.14 (owner, 26-Nov)
+def test_minimum_hours_policies_apply_everywhere(loaded):
+    """Owner: several minimum-hours policies, each targeted at chosen employees (e.g. 8 h while the firm's is 8.5 h);
+    the hours apply everywhere — required hours, shortfall, deduction, payroll sheet, Excel, employee page."""
+    from app.db import session_scope
+    from app.models import AuditLog
+    from app.services import hours_policies as HP
+    c = loaded
+    before = _result("T001")[0]
+    assert before["hours_per_day"] == 8.5
+    csrf = csrf_of(c, "/settings")
+    # validation
+    assert "between" in c.post("/settings/hours-policies/new", data={"csrf": csrf, "name": "Silly", "hours": "30"},
+                               follow_redirects=True).text
+    r = c.post("/settings/hours-policies/new", data={"csrf": csrf, "name": "8-hour day", "hours": "8"}, follow_redirects=True)
+    assert "8-hour day" in r.text and "created" in r.text
+    assert "already exists" in c.post("/settings/hours-policies/new", data={"csrf": csrf, "name": "8-HOUR DAY", "hours": "8"},
+                                      follow_redirects=True).text
+    c.post("/settings/hours-policies/new", data={"csrf": csrf, "name": "Seven and a half", "hours": "7:30"})
+    with session_scope() as db:
+        p8, p75 = sorted(HP.all_policies(db), key=lambda x: -x["hours"])
+    assert (p8["hours"], p75["hours"]) == (8.0, 7.5)
+    page = c.get("/settings").text
+    assert 'data-tab="hours"' in page and "Minimum hours policies" in page
+    assert f'action="/settings/hours-policies/{p8["id"]}/members"' in page
+    # target employees
+    r = c.post(f"/settings/hours-policies/{p8['id']}/members", data={"csrf": csrf, "emp": ["T001", "T002"]},
+               follow_redirects=True)
+    assert "2 employee(s) added" in r.text and "recalculated" in r.text
+    d1 = _result("T001")[0]
+    assert d1["hours_per_day"] == 8.0 and d1["hours_from"] == "policy 8-hour day"
+    assert d1["required_hours"] == pytest.approx(d1["days_present"] * 8.0)
+    assert d1["required_hours"] < before["required_hours"] and d1["balance_hours"] > before["balance_hours"]
+    assert d1["deduction_days"] <= before["deduction_days"]
+    # moving T002 to the other policy takes it out of the first
+    r = c.post(f"/settings/hours-policies/{p75['id']}/members", data={"csrf": csrf, "emp": ["T002"]}, follow_redirects=True)
+    assert "moved from another policy" in r.text
+    with session_scope() as db:
+        asg = HP.assignments(db)
+    assert asg["T001"][0] == "8-hour day" and asg["T002"][0] == "Seven and a half"
+    assert _result("T002")[0]["hours_per_day"] == 7.5
+    # payroll sheet, employee page, Excel
+    sheet = c.get("/periods/2026-10").text
+    assert 'data-key="hpd"' in sheet and "Minimum hours: 8-hour day" in sheet and "8 h for “8-hour day” (1)" in sheet
+    emp = c.get("/periods/2026-10/employee/T001").text
+    assert "8 h/day (policy 8-hour day)" in emp
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    ws = wb["Payroll Leave Sheet"]
+    rows = {ws.cell(row=i, column=1).value: i for i in range(6, ws.max_row + 1)}
+    assert ws.cell(row=rows["T001"], column=20).value == 8.0 and ws.cell(row=rows["T003"], column=20).value == 8.5
+    rules = {r_[0]: r_[1] for r_ in wb["Rules Applied"].iter_rows(min_row=6, values_only=True)}
+    assert "8-hour day = 8 h (1 employees: T001)" in rules["Minimum hours policies"]
+    # the employee form: the policy is chosen there too, and wins over the own value
+    ef = c.get("/employees/T001").text
+    assert 'name="hours_policy"' in ef and f'<option value="{p8["id"]}" selected' in ef
+    base = {"emp_no": "T001", "name": "Asha Rao", "group": "BSS", "cat_fields": "1", "weekly_off": "CATEGORY",
+            "is_active": "1", "hours_per_day": "9"}
+    c.post("/employees/save", data={**base, "csrf": csrf_of(c, "/employees/T001"), "hours_policy": str(p75["id"])})
+    assert _result("T001")[0]["hours_per_day"] == 7.5                           # policy over own 9 h
+    c.post("/employees/save", data={**base, "csrf": csrf_of(c, "/employees/T001"), "hours_policy": "none"})
+    assert _result("T001")[0]["hours_per_day"] == 9.0 and _result("T001")[0]["hours_from"] == "employee"
+    # rename / remove / delete
+    c.post(f"/settings/hours-policies/{p75['id']}/save", data={"csrf": csrf, "name": "Short day", "hours": "7"})
+    assert _result("T002")[0]["hours_per_day"] == 7.0 and _result("T002")[0]["hours_from"] == "policy Short day"
+    c.post(f"/settings/hours-policies/{p75['id']}/remove", data={"csrf": csrf, "emp_no": "T002"})
+    assert _result("T002")[0]["hours_per_day"] == 8.5
+    c.post(f"/settings/hours-policies/{p8['id']}/delete", data={"csrf": csrf})
+    with session_scope() as db:
+        assert [x["name"] for x in HP.all_policies(db)] == ["Short day"]
+        acts = {a.action for a in db.scalars(select(AuditLog).where(AuditLog.action.like("settings.hours_policy%")))}
+    assert {"settings.hours_policy.create", "settings.hours_policy.assign", "settings.hours_policy.update",
+            "settings.hours_policy.remove", "settings.hours_policy.delete"} <= acts
+
+
+def test_holiday_on_a_weekly_off_through_the_app(loaded):
+    """A holiday list with a holiday on a Sunday and on a closed Saturday: those days stay weekly offs — Total Week
+    Days and Holidays unchanged, a note on the day."""
+    from datetime import date as D
+    from app.db import session_scope
+    from app.models import Holiday, HolidayCalendar
+    before = _result("T001")[0]
+    with session_scope() as db:
+        cal = db.scalar(select(HolidayCalendar).where(HolidayCalendar.is_default.is_(True)))
+        if cal is None:
+            cal = HolidayCalendar(name="Default", is_default=True)
+            db.add(cal)
+            db.flush()
+        have = {h.day for h in cal.holidays}
+        for d, n in ((D(2026, 10, 20), "Dussehra"), (D(2026, 10, 11), "Sunday festival"), (D(2026, 10, 17), "Saturday festival")):
+            if d not in have:
+                db.add(Holiday(calendar_id=cal.id, day=d, name=n))
+    _recompute_oct()
+    after = _result("T001")[0]
+    assert (after["total_week_days"], after["holidays"]) == (before["total_week_days"], before["holidays"])
+    days = {d["date"]: d for d in _result_days("T001")}
+    assert days["2026-10-11"]["type"] == "WEEKLY_OFF" and days["2026-10-17"]["type"] == "WEEKLY_OFF"
+    assert days["2026-10-20"]["type"] == "HOLIDAY"
+
+
+def test_app_is_called_attendance_mis_and_so_are_its_files(loaded):
+    c = loaded
+    html = c.get("/").text
+    assert "<small>Attendance MIS</small>" in html and "· Attendance MIS ·" in html and "Attendance &amp; Leave" not in html
+    c.post("/logout", data={"csrf": csrf_of(c)})
+    assert "Attendance MIS" in c.get("/login").text
+    login_full(c)
+    r = c.get("/exports/2026-10.xlsx")
+    assert 'filename="Attendance MIS - October 2026 - DRAFT.xlsx"' in r.headers["content-disposition"]
+    wb = load_workbook(io.BytesIO(r.content))
+    assert wb.properties.title == "Attendance MIS — October 2026"
+    assert str(wb["Payroll Leave Sheet"]["A3"].value).startswith("Attendance MIS — leave calculation, October 2026")
+    for t, nice in (("employee_master", "Employee master"), ("holidays", "Holiday list")):
+        cd = c.get(f"/exports/templates/{t}.xlsx").headers["content-disposition"]
+        assert f'filename="Attendance MIS - {nice} template.xlsx"' in cd
+    js = c.get("/static/table.js").text + c.get("/static/pdf.js").text
+    assert "`Attendance MIS - ${this.t.dataset.csv" in js and "`Attendance MIS - ${clean(P.title)" in js and "hsco-${" not in js

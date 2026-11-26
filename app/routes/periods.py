@@ -69,8 +69,9 @@ def period_results(key: str, f: str = "", c: Ctx = Depends(viewer)):
     for r in rows:
         for x in MX.live_flags(r.flags):            # (retired codes of older finalised months never shown)
             flag_emps.setdefault(x["code"], []).append(r.emp_no)
+    from app.services.hours_policies import all_policies
     return render(c, "period.html", period=p, rows=rows, policy=policy, request_f=f, flag_emps=flag_emps,
-                  flag_labels=MX.FLAG_LABELS)
+                  flag_labels=MX.FLAG_LABELS, hp_items=all_policies(c.db))
 
 
 @router.post("/periods/{key}/recompute")

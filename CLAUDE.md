@@ -1,6 +1,6 @@
 # CLAUDE.md — read this first in every session
 
-This repository is **HSCO Attendance & Leave Intelligence** — an on‑premise web app for
+This repository is **Attendance MIS** (renamed from “HSCO Attendance & Leave Intelligence” in v1.14) — an on‑premise web app for
 **Hasmukh Shah & Co. LLP** (a CA firm, Mumbai + Delhi) that automates month‑end leave
 calculation before payroll and produces board‑level employee metrics.
 

@@ -352,3 +352,17 @@ headings are drawn by the next `P.need()` together with their first content; tab
 content and give short columns their measured width (`doc.getTextWidth`). Menu: `ui.pdf_menu(title, key, label)`
 (`details.pdf-menu`; buttons `[data-pdf]`, `[data-pdf-full]`). Headers: `frame-ancestors 'self'`,
 `X-Frame-Options: SAMEORIGIN` (app/main.py).
+
+## v1.14 — weekly-off evidence, hours policies, product name
+- Engine: `_slot(d)` (weekday; Saturdays split open / closed), `greythr_weekly_offs(muster, policy, skip)` → (off slots,
+  slots with evidence), `firm_weekly_off(d)`; in `compute_employee_month` a WORKDAY with a holiday on it becomes
+  WEEKLY_OFF for pattern-MUSTER people when its slot is off (this month's evidence → `emp.off_slots_hint` from the 3
+  previous months, filled by `services/compute._weekly_off_history` → firm). RULES_VERSION 13.
+- `services/hours_policies.py`: setting `hours_policies` = {next, items: [{id, name, hours, emp_nos}]}; `assignments()`
+  → {emp_no: (name, hours, id)} is passed to `categories.effective(…, hp=)`, which puts the policy first
+  (`hours_from = "policy <name>"`, stored per result as `data["hours_from"]`). Routes `POST /settings/hours-policies/new`,
+  `/{id}/save`, `/{id}/delete`, `/{id}/members` (emp=[…]), `/{id}/remove`; employee form field `hours_policy`
+  ("keep" | "none" | id). Audit actions `settings.hours_policy.*`.
+- Name: "Attendance MIS" (base.html, auth_base.html, FastAPI title, Excel titles / properties, pdf.js); download names
+  `routes/reports.PRODUCT`, table.js CSV and pdf.js file names. Installer: desktop icon `Attendance MIS.url` (old one
+  removed); task names "HSCO Attendance App" / "HSCO Attendance Backup" unchanged (updates and data folder rely on them).

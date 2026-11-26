@@ -39,7 +39,13 @@
       <div class="chips mb">{% set offs = (e.off_weekdays or '').split(',') %}{% for n in weekday_names %}<label class="chip" style="margin:0"><input type="checkbox" name="off_weekdays" value="{{ loop.index0 }}" {{ 'checked' if (loop.index0|string) in offs }}> {{ n }}</label>{% endfor %}</div>
       <div class="field"><label>Saturdays that are still working</label><input name="working_saturdays" value="{{ e.working_saturdays }}" placeholder="e.g. 1 or 1,3"><div class="help">Only used when Saturday is ticked as an off day.</div></div>
     </div>
-    <div class="row"><div class="field"><label>Required hours per day</label><input name="hours_per_day" value="{{ e.hours_per_day if e.hours_per_day else '' }}" inputmode="decimal" placeholder="{{ ('category: ' ~ (via.hours_per_day|n)) if via.hours_per_day else 'policy default' }}"></div>
+    <div class="row"><div class="field"><label>Minimum hours policy {{ ui.info('A named hours-per-day policy (Rules & calendars → Minimum hours), e.g. an 8-hour day. When one is chosen it decides this person’s required hours per day — over the value below, the category and the firm’s ' ~ (firm_hours|n) ~ ' h.') }}</label>
+        <select name="hours_policy"><option value="none">None — {{ ('own ' ~ (e.hours_per_day|n) ~ ' h') if e.hours_per_day else ('category ' ~ (via.hours_per_day|n) ~ ' h') if via.hours_per_day else ('firm ' ~ (firm_hours|n) ~ ' h') }}</option>
+          {% for x in hp_items %}<option value="{{ x.id }}" {{ 'selected' if hp_cur and hp_cur[2] == x.id }}>{{ x.name }} — {{ x.hours|n }} h a day</option>{% endfor %}</select>
+        {% if not hp_items %}<div class="help">No policies yet — create them under Rules &amp; calendars → Minimum hours.</div>{% endif %}</div>
+      <div class="field"><label>Required hours per day (own)</label><input name="hours_per_day" value="{{ e.hours_per_day if e.hours_per_day else '' }}" inputmode="decimal" placeholder="{{ ('category: ' ~ (via.hours_per_day|n)) if via.hours_per_day else ('firm: ' ~ (firm_hours|n)) }}">
+        {% if hp_cur %}<div class="help">Not used while the policy “{{ hp_cur[0] }}” ({{ hp_cur[1]|n }} h) applies.</div>{% endif %}</div></div>
+    <div class="row">
       <div class="field"><label>Holidays</label><div style="padding:8px 0;font-weight:600">{{ via_cal }}</div><div class="help">Holidays follow the category ({{ via.calendar_from }}) — change the category or its list under Rules &amp; calendars.</div></div></div>
   </div></div>
   <div class="form-sec"><div><h3>Hours-shortfall deduction</h3><p>Partners, support staff, articles and trainees are exempt by group. Use this for individual cases.</p></div><div>

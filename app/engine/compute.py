@@ -130,13 +130,39 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
 # 11 = v1.12.0: greytHR status RH = an earned (restricted) holiday: no absence, no comp-off for work that day.
 # 10 = v1.9.0: holidays only by category (no per-employee calendar, no location / group / person targeting); leave
 #      balances are not calculated (no ledger, salary deduction or payroll LOP).
-RULES_VERSION = 12
+RULES_VERSION = 13
 
 
 def office_closed_saturday(d: date, policy: Policy) -> bool:
     """A Saturday on which the branches are closed (policy.office_open_saturdays = nth Saturdays open; () = all)."""
     open_ = tuple(policy.office_open_saturdays or ())
     return bool(open_) and d.weekday() == 5 and ((d.day - 1) // 7 + 1) not in open_
+
+
+def _slot(d: date, policy: Policy) -> tuple:
+    """Weekday 'slot' for weekly-off evidence: Saturdays the office is open and closed are told apart."""
+    return (5, office_closed_saturday(d, policy)) if d.weekday() == 5 else (d.weekday(), None)
+
+
+def firm_weekly_off(d: date, policy: Policy) -> bool:
+    """The firm's weekly off when there is no other evidence: Sundays and the Saturdays the office is closed."""
+    return d.weekday() == 6 or office_closed_saturday(d, policy)
+
+
+def greythr_weekly_offs(muster: dict, policy: Policy, skip: set) -> tuple[set, set]:
+    """(slots greytHR marks as this person's weekly off this month, slots with any evidence). A slot is a weekly off
+    when most of its days (holidays left out) are marked OFF in the muster (v1.14: a holiday on a weekly off)."""
+    off: dict = defaultdict(int)
+    seen: dict = defaultdict(int)
+    for d, m in muster.items():
+        s1, s2 = (m.s1 or "").strip().upper(), (m.s2 or "").strip().upper()
+        if d in skip or "H" in (s1, s2) or s1 in RH_CODES or s2 in RH_CODES:
+            continue
+        k = _slot(d, policy)
+        seen[k] += 1
+        if s1 and s1 == s2 and policy.status_map.get(s1) == B_OFF:
+            off[k] += 1
+    return {k for k, n in seen.items() if 2 * off[k] > n}, set(seen)
 
 
 def compute_employee_month(
@@ -175,6 +201,8 @@ def compute_employee_month(
 
     # ---------- per-day classification ----------
     by_day = {m.day: m for m in muster}
+    hol_dates = set(emp.holidays or {}) | set(emp.optional_holidays or {})
+    g_offs, g_seen = greythr_weekly_offs(by_day, policy, hol_dates)
     days_in_scope = sorted(by_day.keys() | {d for d in day_overrides.keys()})
     for d in days_in_scope:
         if emp.doj and d < emp.doj:
@@ -203,6 +231,17 @@ def compute_employee_month(
         ptype = pattern_day_type(d, emp.weekly_off, emp.working_saturdays, emp.off_weekdays)
         day_type = ptype or (WEEKLY_OFF if muster_type == WEEKLY_OFF else WORKDAY)
         holiday_name = ""
+        # a holiday falling on the person's weekly off counts as a weekly off, not a holiday (owner, v1.14). With a
+        # working pattern of their own, the pattern already decided above; following greytHR, its muster shows H on
+        # such a day — the weekly off is then read from how greytHR marks the same weekday for them this month
+        # (Saturdays the office is open / closed apart), else the firm's (Sundays, closed Saturdays).
+        hol_off = ""
+        if ptype is None and day_type == WORKDAY and (muster_type == HOLIDAY or d in hol_dates or is_rh)                 and (_slot(d, policy) in g_offs if _slot(d, policy) in g_seen
+                     else emp.off_slots_hint[_slot(d, policy)] if _slot(d, policy) in emp.off_slots_hint
+                     else firm_weekly_off(d, policy)):
+            day_type = WEEKLY_OFF
+            hol_off = ((emp.holidays or {}).get(d) or (emp.optional_holidays or {}).get(d) or
+                       ("Restricted holiday" if is_rh else "Holiday (greytHR)"))
         if day_type == WORKDAY:
             if emp.holidays is not None:
                 if d in emp.holidays:
@@ -226,6 +265,8 @@ def compute_employee_month(
         if ov and ov.day_type:
             day_type = ov.day_type
         notes = [opt_note] if opt_note else []
+        if hol_off and not (ov and ov.day_type):
+            notes.append(f"{hol_off} falls on a weekly off — counted as a weekly off, not a holiday")
         if emp.holidays is not None and d not in emp.optional_holidays and (muster_type == HOLIDAY) != (day_type == HOLIDAY) \
                 and day_type != WEEKLY_OFF and not is_rh:
             notes.append("Holiday calendar differs from greytHR")

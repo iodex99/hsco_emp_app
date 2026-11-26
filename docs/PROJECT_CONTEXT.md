@@ -99,3 +99,10 @@ clicking bars shows exactly those employees, across the app; totals wherever app
 card explaining the calculation; a PDF export next to Excel with all coloured charts, tables and cards.
 Decision (developer): LOP / LWP days are counted as **leave** (as HR's manual MIS and the app's default already did), so
 no payroll figure changes.
+
+## Owner requests, 26-Nov-2026 (v1.14)
+A holiday falling on the firm's weekly off counts as a weekly off, not a holiday. Several minimum-hours policies (e.g.
+8 h while the firm's is 8.5 h) targeted at chosen employees, effective everywhere. Rename the tool "Attendance MIS",
+including exported file names. Decision (developer): for people following greytHR, "weekly off" is read from their
+own muster (same weekday that month, then the 3 months before), the firm's rule (Sundays, closed Saturdays) only when
+there is no evidence; a policy beats the person's own hours setting.

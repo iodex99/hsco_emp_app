@@ -1,5 +1,5 @@
 <#
-  HSCO Attendance & Leave Intelligence - Windows installer (server PC).
+  Attendance MIS (HSCO) - Windows installer (server PC).
 
   Normal use: double-click Install.cmd in the extracted release folder. No questions except the first administrator's
   user name and password. Safe to run again (repair / upgrade): existing folders, server name and data are kept.
@@ -102,7 +102,7 @@ $Url = "https://$HostName`:$Port"
 $py = Find-Python
 
 Say ""
-Say "HSCO Attendance & Leave - installer" "White"
+Say "Attendance MIS - installer" "White"
 Say "  App folder : $AppDir"
 Say "  Data folder: $DataDir"
 Say "  Address    : $Url"
@@ -245,7 +245,9 @@ for ($i = 0; $i -lt 90 -and -not $up; $i++) {
 if ($up) { Say "Running" "Green" } else { Say "It has not answered yet - give it a minute (Task Scheduler > '$TaskName')." "Yellow" }
 
 $shortcut = "[InternetShortcut]`r`nURL=$Url/`r`n"
-Set-Content -Path "$env:PUBLIC\Desktop\HSCO Attendance.url" -Value $shortcut -Encoding ASCII
+Set-Content -Path "$env:PUBLIC\Desktop\Attendance MIS.url" -Value $shortcut -Encoding ASCII
+# the icon was called "HSCO Attendance" before v1.14 (app renamed Attendance MIS)
+Remove-Item "$env:PUBLIC\Desktop\HSCO Attendance.url" -Force -ErrorAction SilentlyContinue
 
 # everything the other office PCs need, in one folder to copy (USB stick / shared drive)
 $kit = Join-Path $Home_ "Office PC setup"
@@ -253,7 +255,7 @@ New-Item -ItemType Directory -Force $kit | Out-Null
 if (Test-Path $crt) { Copy-Item $crt "$kit\hsco-server.crt" -Force }
 $setup = @"
 @echo off
-title HSCO Attendance - set up this PC
+title Attendance MIS - set up this PC
 cd /d "%~dp0"
 echo.
 echo   This PC will trust the HSCO app's security certificate and get a desktop icon.
@@ -266,17 +268,18 @@ if errorlevel 1 (
   exit /b 1
 )
 for /f "usebackq delims=" %%d in (``powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"``) do set "DESK=%%d"
-(echo [InternetShortcut]& echo URL=$Url/) > "%DESK%\HSCO Attendance.url"
+(echo [InternetShortcut]& echo URL=$Url/) > "%DESK%\Attendance MIS.url"
+if exist "%DESK%\HSCO Attendance.url" del "%DESK%\HSCO Attendance.url"
 start "" "$Url/"
-echo   Done. Next time use the "HSCO Attendance" icon on the desktop.
+echo   Done. Next time use the "Attendance MIS" icon on the desktop.
 echo.
 pause
 "@
 Set-Content -Path "$kit\Set up this PC.cmd" -Value $setup -Encoding ASCII
 $alt = if ($ips) { "https://$($ips[0])`:$Port" } else { "" }
 $readme = @"
-HSCO Attendance & Leave - office PCs
-====================================
+Attendance MIS - office PCs
+===========================
 
 Address: $Url
 $(if ($alt) { "(if the name does not open: $alt)" })
@@ -286,7 +289,7 @@ Not needed when people use the app by Remote Desktop on the server - only for PC
 On each such PC (once):
   1. Copy this folder to the PC (or open it from a shared drive / USB stick).
   2. Double-click  "Set up this PC.cmd"  and click YES when Windows asks about the certificate.
-  3. Use the "HSCO Attendance" icon it puts on the desktop.
+  3. Use the "Attendance MIS" icon it puts on the desktop.
 
 No installation is needed on office PCs - the app runs in Chrome or Edge.
 
@@ -297,12 +300,12 @@ Set-Content -Path "$kit\READ ME.txt" -Value $readme -Encoding UTF8
 
 Say ""
 Say "==============================================================" "Green"
-Say " HSCO Attendance & Leave is installed and running." "Green"
+Say " Attendance MIS is installed and running." "Green"
 Say ""
 Say "  Open it at   $Url" "White"
 if ($alt) { Say "  (or         $alt)" }
 Say "  Users:       everyone who signs in to this PC (Remote Desktop included) has the"
-Say "               'HSCO Attendance' icon on their desktop - nothing else to set up."
+Say "               'Attendance MIS' icon on their desktop - nothing else to set up."
 Say "  It runs in the background (no window) and starts by itself whenever this PC starts."
 Say "  (Only if other PCs ever open it over the network: '$kit')"
 Say "  Data:        $DataDir  (backed up every night; copy it off this PC now and then)"

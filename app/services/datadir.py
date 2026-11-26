@@ -149,7 +149,7 @@ def move(target: Path) -> dict:
     os.replace(tmp, C.POINTER)
     try:
         (src / "MOVED.txt").write_text(
-            f"The HSCO Attendance data was moved to {target} on {datetime.now():%d-%b-%Y %H:%M}.\n"
+            f"The Attendance MIS data was moved to {target} on {datetime.now():%d-%b-%Y %H:%M}.\n"
             "This folder is no longer used. Keep it until you have checked the app, then it can be deleted.\n",
             encoding="utf-8")
     except OSError:

@@ -18,7 +18,7 @@ from app.services import holidays as TH
 from app.services import branding
 from app.services.audit import audit
 from app.services.compute import compute_period
-from app.services.settings import get_general, get_policy_json, save_general, save_policy
+from app.services.settings import get_general, get_policy, get_policy_json, save_general, save_policy
 from app.web import Ctx, admin, hr, redirect, render
 
 router = APIRouter()
@@ -77,7 +77,90 @@ def settings_page(c: Ctx = Depends(hr)):
                   buckets=BUCKETS, cals=cals, shift_names=shift_names,
                   cat_rows=cat_rows, cal_use=cal_use, conflicts=conflicts, conflict_period=latest,
                   uncategorised=CAT.uncategorised(c.db), patterns=PATTERNS, weekday_names=WEEKDAY_NAMES,
-                  this_year=this_year, th_categories=[r["c"].name for r in cat_rows])
+                  this_year=this_year, th_categories=[r["c"].name for r in cat_rows], **_hours_ctx(c))
+
+
+def _hours_ctx(c: Ctx) -> dict:
+    """Settings → Minimum hours: the policies, who is in each, and everyone who can be added."""
+    from app.services import hours_policies as HP
+    from app.services.scope import employees as scoped
+    items = HP.all_policies(c.db)
+    asg = HP.assignments(c.db)
+    people = [{"emp_no": e.emp_no, "name": e.name or e.emp_no, "group": e.group or "", "policy": asg.get(e.emp_no, ("",))[0],
+               "own": e.hours_per_day} for e in scoped(c.db, order=Employee.name) if not e.dol]
+    names = {p["emp_no"]: p for p in people}
+    for x in items:
+        x["members"] = [names.get(e) or {"emp_no": e, "name": e, "group": "", "own": None} for e in x.get("emp_nos") or []]
+    return {"hp_items": items, "hp_people": people, "hp_groups": sorted({p["group"] for p in people if p["group"]}),
+            "hp_firm": get_policy(c.db).hours_per_day}
+
+
+def _hours_changed(c: Ctx, action: str, details: dict, msg: str):
+    audit(c.db, c.user, action, "hours_policy", str(details.get("id", "")), details, c.ip)
+    c.db.commit()
+    _recompute_drafts(c)
+    return redirect("/settings#hours", msg + " Draft months recalculated.")
+
+
+@router.post("/settings/hours-policies/new")
+def hours_policy_new(name: str = Form(""), hours: str = Form(""), c: Ctx = Depends(hr)):
+    from app.services import hours_policies as HP
+    try:
+        x = HP.create(c.db, name, hours)
+    except ValueError as ex:
+        return redirect("/settings#hours", str(ex))
+    return _hours_changed(c, "settings.hours_policy.create", {"id": x["id"], "name": x["name"], "hours": x["hours"]},
+                          f"Policy “{x['name']}” ({x['hours']:g} h a day) created — now add the employees it applies to.")
+
+
+@router.post("/settings/hours-policies/{pid}/save")
+def hours_policy_save(pid: int, name: str = Form(""), hours: str = Form(""), c: Ctx = Depends(hr)):
+    from app.services import hours_policies as HP
+    old = HP.get(c.db, pid)
+    try:
+        x = HP.update(c.db, pid, name, hours)
+    except ValueError as ex:
+        return redirect("/settings#hours", str(ex))
+    return _hours_changed(c, "settings.hours_policy.update",
+                          {"id": pid, "name": [old["name"] if old else "", x["name"]], "hours": [old["hours"] if old else "", x["hours"]]},
+                          f"Policy “{x['name']}” saved ({x['hours']:g} h a day).")
+
+
+@router.post("/settings/hours-policies/{pid}/delete")
+def hours_policy_delete(pid: int, c: Ctx = Depends(hr)):
+    from app.services import hours_policies as HP
+    try:
+        x = HP.delete(c.db, pid)
+    except ValueError as ex:
+        return redirect("/settings#hours", str(ex))
+    return _hours_changed(c, "settings.hours_policy.delete", {"id": pid, "name": x["name"], "employees": x.get("emp_nos")},
+                          f"Policy “{x['name']}” deleted — its {len(x.get('emp_nos') or [])} employee(s) follow their own / category / firm hours again.")
+
+
+@router.post("/settings/hours-policies/{pid}/members")
+def hours_policy_members(pid: int, emp: list[str] = Form([]), c: Ctx = Depends(hr)):
+    from app.services import hours_policies as HP
+    if not emp:
+        return redirect("/settings#hours", "Tick the employees to add first.")
+    try:
+        r = HP.assign(c.db, pid, emp)
+    except ValueError as ex:
+        return redirect("/settings#hours", str(ex))
+    x = HP.get(c.db, pid)
+    moved = f" ({len(r['moved'])} moved from another policy)" if r["moved"] else ""
+    return _hours_changed(c, "settings.hours_policy.assign", {"id": pid, "name": x["name"], "added": emp, "moved_from": r["moved"]},
+                          f"{r['added']} employee(s) added to “{x['name']}”{moved}.")
+
+
+@router.post("/settings/hours-policies/{pid}/remove")
+def hours_policy_remove(pid: int, emp_no: str = Form(""), c: Ctx = Depends(hr)):
+    from app.services import hours_policies as HP
+    x = HP.get(c.db, pid)
+    if x is None:
+        return redirect("/settings#hours", "That policy no longer exists.")
+    HP.remove(c.db, pid, emp_no.strip().upper())
+    return _hours_changed(c, "settings.hours_policy.remove", {"id": pid, "name": x["name"], "removed": emp_no},
+                          f"{emp_no} removed from “{x['name']}”.")
 
 
 @router.post("/settings/policy")

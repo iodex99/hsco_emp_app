@@ -39,7 +39,9 @@ def employees(ignored: int = 0, c: Ctx = Depends(viewer)):
     cals = {cal.id: cal.name for cal in c.db.scalars(select(HolidayCalendar))}
     cats = CAT.by_key(c.db)
     dcal = CAT.default_calendar_id(c.db)
-    eff = {e.emp_no: CAT.effective(e, cats, dcal) for e in emps}
+    from app.services.hours_policies import assignments
+    hp = assignments(c.db)
+    eff = {e.emp_no: CAT.effective(e, cats, dcal, None, hp) for e in emps}
     return render(c, "employees.html", emps=emps, last=last, latest=latest, patterns=PATTERNS, cals=cals, eff=eff,
                   n_ignored=len(skip), showing_ignored=bool(ignored), ignored_groups=get_policy(c.db).ignored_groups)
 
@@ -58,10 +60,13 @@ def _form(c: Ctx, e: Employee, new: bool = False, history=None):
                      weekly_off=CAT.FOLLOW, hours_per_day=None)
     via = CAT.effective(probe, cats, CAT.default_calendar_id(c.db))
     cal_names = {x.id: x.name for x in cals}
+    from app.services import hours_policies as HP
+    hp_items, hp_cur = HP.all_policies(c.db), HP.assignments(c.db).get(e.emp_no)
     return render(c, "employee_form.html", e=e, new=new, patterns=PATTERNS, cals=cals, groups=g.get("groups", []),
                   locations=g.get("locations", []), weekday_names=WEEKDAY_NAMES, history=history or [],
                   categories=sorted(x.name for x in c.db.scalars(select(Category))), via=via,
-                  via_cal=cal_names.get(via.calendar_id, "greytHR's holiday marks"), follow=CAT.FOLLOW)
+                  via_cal=cal_names.get(via.calendar_id, "greytHR's holiday marks"), follow=CAT.FOLLOW,
+                  hp_items=hp_items, hp_cur=hp_cur, firm_hours=get_policy(c.db).hours_per_day)
 
 
 @router.get("/employees/{emp_no}", response_class=HTMLResponse)
@@ -85,7 +90,7 @@ def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Fo
                         working_saturdays: str = Form(""), hours_per_day: str = Form(""), exempt: str = Form(""),
                         exempt_reason: str = Form(""), doj: str = Form(""),
                         dol: str = Form(""), is_active: str = Form(""), notes: str = Form(""), new: str = Form(""),
-                        c: Ctx = Depends(hr)):
+                        hours_policy: str = Form("keep"), c: Ctx = Depends(hr)):
     emp_no = emp_no.strip().upper()
     if not emp_no:
         return redirect("/employees/new", "Employee number is required.")
@@ -122,6 +127,13 @@ def save_employee(emp_no: str = Form(...), name: str = Form(""), group: str = Fo
     e.notes = notes
     after = {f: str(getattr(e, f, "")) for f in FIELDS}
     changes = {k: [before[k], after[k]] for k in FIELDS if before[k] != after[k]}
+    if hours_policy not in ("keep", ""):              # minimum-hours policy (v1.14): "none", else the policy id
+        from app.services import hours_policies as HP
+        cur = HP.assignments(c.db).get(emp_no)
+        want = int(hours_policy) if hours_policy.isdigit() and HP.get(c.db, int(hours_policy)) else None
+        if (cur[2] if cur else None) != want:
+            HP.assign(c.db, want, [emp_no]) if want is not None else HP.remove(c.db, cur[2], emp_no)
+            changes["hours_policy"] = [cur[0] if cur else "", HP.get(c.db, want)["name"] if want is not None else ""]
     audit(c.db, c.user, "employee.create" if new else "employee.update", "employee", emp_no, changes, c.ip)
     c.db.flush()
     for p in c.db.scalars(select(Period).where(Period.status == "DRAFT", Period.computed_at.is_not(None))

@@ -290,3 +290,14 @@ no wrapped dates, colours kept, no screen hints, footer "Page x of y" on every p
 `tests/e2e/test_tables.py::test_full_report_pdf_has_every_report_with_contents` downloads the full report and reads it
 back (every report and section, page count, no hints / LOP / missing punch / escaped units); the Overview has three
 KPI cards; `test_web::test_pages_may_be_framed_only_by_the_app_itself` (SAMEORIGIN / frame-ancestors 'self').
+
+## v1.14.0 — holiday on a weekly off, minimum-hours policies, Attendance MIS
+Engine: holidays on greytHR-marked Sunday / closed Saturday → weekly off (week days, holidays, required hours
+unchanged), 1st Saturday stays a holiday, Wednesday-off person, own pattern, work on such a day = off-day work with
+comp-off; firm fallback; earlier months' hint for the one 1st Saturday. Web: `test_minimum_hours_policies_apply_everywhere`
+(validation, create, add, move, payroll sheet / employee page / Excel column T + Rules Applied, employee form choice
+over own hours, rename, remove, delete, audit), `test_holiday_on_a_weekly_off_through_the_app`,
+`test_app_is_called_attendance_mis_and_so_are_its_files`. Real-data copy: policy created and 3 people added through the
+browser (176 = 22 × 8 h required), Excel T = 8 / 8.5, file names checked for Excel, locations, CSV and PDF; test holidays
+on 11 / 17 / 3 Oct with greytHR H — 62 people weekly off on Sun / closed Sat and holiday on the 1st Saturday, the people
+whose 1st Saturday is off (September evidence) weekly off.

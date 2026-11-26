@@ -231,3 +231,16 @@ never waits in the review queue and is not counted as open.
   employee's group (or the setting) brings them back at the next calculation. Employees page: "N ignored · Show them".
 - **Missing punches** and **present without any punch** are removed everywhere (counts, flags, chips, lists, calendar
   marks, Excel columns, attention score). Calculation rules version 12 (draft months recalculated once).
+
+## v1.14 (owner, 26-Nov-2026)
+**Holiday on a weekly off.** A holiday (category list, optional holiday, greytHR H or a restricted holiday) on a day
+that is the person's weekly off counts as a **weekly off**, not a holiday: it is not in Total Week Days (E) or Holidays
+(F), needs no hours, and work done that day is off-day work as on any weekly off. Whose weekly off: the person's own
+pattern if they have one; following greytHR (pattern MUSTER, greytHR shows H on such a day), the weekday's marks for
+that person in the month (most of the same weekday OFF → weekly off; Saturdays the office is open and closed are
+separate), else the 3 months before, else the firm's — Sundays and the Saturdays the office is closed
+(`office_open_saturdays`). Engine: `greythr_weekly_offs`, `firm_weekly_off`, `Employee.off_slots_hint`.
+
+**Hours per day** = the person's **minimum-hours policy** (Rules & calendars → Minimum hours; `services/hours_policies.py`)
+→ their own hours (employee page) → their category's → the firm's (`hours_per_day`, 8.5). Required hours = days present
+× that value; the shortfall, deduction and every report follow.

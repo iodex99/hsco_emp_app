@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.14.0 — 2026-11-26 — holiday on a weekly off, minimum-hours policies, renamed "Attendance MIS"
+Owner: "if in the holiday calendar, a holiday is falling on a weekly off of the firm, then … it shall be counted as a
+weekly off and not as a holiday / allow the user to set additional policies for minimum hours to be targetted to
+certain employees … multiple such minimum hours policies … the affect will be everywhere / change the name of the tool
+to "Attendance MIS" also the names of exported files".
+- **Holiday on a weekly off = weekly off** (not in Total Week Days or Holidays; a note on the day). People with a working
+  pattern of their own: the pattern decides. People following greytHR (whose muster shows H on such a day): their
+  weekly off is read from how greytHR marks the same weekday for them that month — Saturdays the office is open and
+  closed kept apart — else from the 3 months before (the one 1st Saturday of a month), else the firm's (Sundays and
+  the Saturdays the office is closed). Real October data with test holidays on Sun 11, Sat 17 and 1st-Sat 3 Oct:
+  Sunday and closed Saturday became weekly offs for everyone; the working 1st Saturday stayed a holiday except for
+  the people whose 1st Saturday is off. Calculation rules version 13.
+- **Minimum hours policies** (Rules & calendars → *Minimum hours*): create any number of named policies (e.g. "8-hour
+  day" = 8 h; 7:30 also accepted), add employees to each (search + group filter; someone already in another policy is
+  moved), remove them, rename / change the hours, delete. Also chosen on the employee's page. A policy decides the
+  person's hours per day over their own value, their category and the firm's 8.5 h — required hours, shortfall,
+  deduction, payroll sheet (new *h / day* column, policy values in purple), employee page, Insights, Excel (column T and
+  *Rules Applied*), PDFs. Every change is audit-logged and recalculates the draft months.
+- **Renamed "Attendance MIS"**: sidebar, browser tab, sign-in page, Excel titles and properties, PDF header / footer /
+  cover, installer messages and the desktop icon ("Attendance MIS"; the old "HSCO Attendance" icon is removed on
+  re-install). Downloaded files: `Attendance MIS - October 2026 - DRAFT.xlsx`, `Attendance MIS - Punches and locations -
+  October 2026.xlsx`, `Attendance MIS - Employee master template.xlsx`, `Attendance MIS - <table> - <time>.csv`,
+  `Attendance MIS - <page> - <time>.pdf`. (The Windows task names stay, so installed servers keep updating.)
+
 ## 1.13.1 — 2026-11-24 — the PDF rebuilt; a full report with every report; Attendance rate card removed
 Owner: "the pdf is not rendering properly, need to really work upon it, i want all the reports in it, and before
 committing … check each and every page thoroughly" / "remove the attendance rate card from the overview section".

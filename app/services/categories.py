@@ -96,13 +96,15 @@ class Effective:
     hours_per_day: Optional[float]
     calendar_id: Optional[int]
     pattern_from: str          # "employee" | category name | "greytHR"
-    hours_from: str            # "employee" | category name | "policy"
+    hours_from: str            # "policy <name>" (minimum-hours policy, v1.14) | "employee" | category name | "firm"
     calendar_from: str         # category name | "default" | "greytHR" (holidays never per employee, v1.9)
 
 
-def effective(e: Employee, cats: dict, default_cal: Optional[int], loaded: Optional[set] = None) -> Effective:
+def effective(e: Employee, cats: dict, default_cal: Optional[int], loaded: Optional[set] = None,
+              hp: Optional[dict] = None) -> Effective:
     """What applies to employee e. cats = by_key(db). loaded = ids of calendars with holidays in the year being
-    calculated: a list not loaded for that year is passed over (next in the chain, finally greytHR's marks)."""
+    calculated: a list not loaded for that year is passed over (next in the chain, finally greytHR's marks).
+    hp = hours_policies.assignments(db): a minimum-hours policy the person is in decides their hours per day."""
     chain = [c for c in (cats.get(key(e.category)), cats.get(key(e.additional_category))) if c is not None]
     if e.weekly_off and e.weekly_off != FOLLOW and e.weekly_off in PATTERNS:
         pat, offs, sats, pfrom = e.weekly_off, e.off_weekdays, e.working_saturdays, "employee"
@@ -112,11 +114,13 @@ def effective(e: Employee, cats: dict, default_cal: Optional[int], loaded: Optio
             pat, offs, sats, pfrom = src.weekly_off, src.off_weekdays, src.working_saturdays, src.name
         else:
             pat, offs, sats, pfrom = P_MUSTER, "5,6", "", "greytHR"
-    if e.hours_per_day:
+    if hp and e.emp_no in hp:
+        hpd, hfrom = hp[e.emp_no][1], f"policy {hp[e.emp_no][0]}"
+    elif e.hours_per_day:
         hpd, hfrom = e.hours_per_day, "employee"
     else:
         src = next((c for c in chain if c.hours_per_day), None)
-        hpd, hfrom = (src.hours_per_day, src.name) if src is not None else (None, "policy")
+        hpd, hfrom = (src.hours_per_day, src.name) if src is not None else (None, "firm")
     # holidays follow the category only (owner, v1.9): category → additional category → default → greytHR
     cands = [(c.holiday_calendar_id, c.name) for c in chain if c.holiday_calendar_id] + \
         ([(default_cal, "default")] if default_cal else [])

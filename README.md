@@ -1,4 +1,4 @@
-# HSCO Attendance & Leave Intelligence
+# Attendance MIS (HSCO)
 
 On-premise web app for a CA firm that turns monthly **greytHR** exports into the **payroll leave calculation**
 (hours shortfall + WFH over the limit → leave deduction, comp-off earned / taken, LOP) and **board-level employee metrics** — with

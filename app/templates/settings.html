@@ -9,6 +9,7 @@
 <div class="tabs" data-tabs id="set-tabs">
   <button class="on" data-tab="policy">{{ ui.icon('sliders-horizontal','sm') }} Calculation rules</button>
   <button data-tab="categories">{{ ui.icon('layers','sm') }} Categories</button>
+  <button data-tab="hours">{{ ui.icon('timer','sm') }} Minimum hours{% if hp_items %} <span class="n">{{ hp_items|length }}</span>{% endif %}</button>
   <button data-tab="holidays">{{ ui.icon('calendar','sm') }} Holiday calendars</button>
   <button data-tab="general">{{ ui.icon('shield-check','sm') }} Security &amp; system</button>
   <button data-tab="updates">{{ ui.icon('refresh-cw','sm') }} Updates{% if upd and upd.available %} <span class="n" style="background:var(--brand-100);color:var(--brand-700)">new</span>{% endif %}</button>
@@ -107,6 +108,43 @@
   <div class="field" style="margin:0"><label>New category</label><input name="name" placeholder="e.g. HSCO (Pune)" maxlength="64" required></div>
   <button class="btn sec">{{ ui.icon('plus','sm') }} Add category</button></form>
 </div></div>
+</section>
+
+<section class="pane" data-pane="hours">
+<div class="card"><div class="hd"><h2>Minimum hours policies {{ ui.info('Required hours per day = days present × the hours per day that apply to the person. Order: their minimum-hours policy → their own hours (employee page) → their category → the firm’s ' ~ (hp_firm|n) ~ ' h (Calculation rules). It changes required hours, the shortfall, the deduction, the payroll sheet and Excel, Insights and PDFs.') }}</h2>
+  <span class="sub">firm: {{ hp_firm|n }} h a day · {{ hp_items|length }} polic{{ 'y' if hp_items|length == 1 else 'ies' }} · changes recalculate draft months</span></div>
+  <div class="bd">
+    <p class="small" style="margin-top:0;color:var(--text-2)">Create a policy for each different day length (e.g. <b>8-hour day</b> = 8 h) and add the employees it applies to. An employee is in at most one policy — adding them to another moves them.</p>
+    <form method="post" action="/settings/hours-policies/new" class="row" style="align-items:flex-end">{{ ui.csrf_field() }}
+      <div class="field" style="margin:0;flex:2"><label>New policy name</label><input name="name" required maxlength="80" placeholder="e.g. 8-hour day"></div>
+      <div class="field" style="margin:0;flex:1"><label>Hours per day</label><input name="hours" required inputmode="decimal" placeholder="e.g. 8 or 7:30"></div>
+      <button class="btn" style="margin-bottom:1px">{{ ui.icon('plus','sm') }} Create policy</button></form>
+  </div></div>
+{% for x in hp_items %}
+<div class="card hp-card" id="hp-{{ x.id }}"><div class="hd"><h2>{{ x.name }}</h2><span class="sub">{{ x.hours|n }} h a day · {{ x.members|length }} employee{{ 's' if x.members|length != 1 }}</span>
+  <div class="tools"><form method="post" action="/settings/hours-policies/{{ x.id }}/delete" data-confirm="Delete the policy “{{ x.name }}”? Its {{ x.members|length }} employee(s) go back to their own / category / firm hours.">{{ ui.csrf_field() }}<button class="btn sm ghost" title="Delete policy">{{ ui.icon('trash-2','sm') }}</button></form></div></div>
+  <div class="bd">
+    <form method="post" action="/settings/hours-policies/{{ x.id }}/save" class="row mb" style="align-items:flex-end">{{ ui.csrf_field() }}
+      <div class="field" style="margin:0;flex:2"><label>Name</label><input name="name" value="{{ x.name }}" maxlength="80"></div>
+      <div class="field" style="margin:0;flex:1"><label>Hours per day</label><input name="hours" value="{{ x.hours|n }}" inputmode="decimal"></div>
+      <button class="btn sec" style="margin-bottom:1px">Save</button></form>
+    <div class="grid g2" style="align-items:start">
+      <div><h3 style="font-size:13.5px;margin:0 0 6px">Employees in this policy</h3>
+        <ul class="list hp-members">{% for m in x.members %}<li>{{ ui.person(m.name, m.emp_no ~ (' · ' ~ m.group if m.group else ''), '/employees/' ~ m.emp_no) }}
+          {% if m.own %}<span class="muted small" title="Own hours on the employee page — not used while in this policy">own {{ m.own|n }} h</span>{% endif %}
+          <span class="r"><form method="post" action="/settings/hours-policies/{{ x.id }}/remove" style="display:inline">{{ ui.csrf_field() }}<input type="hidden" name="emp_no" value="{{ m.emp_no }}"><button class="btn sm ghost" title="Remove from this policy">{{ ui.icon('x','sm') }}</button></form></span></li>
+        {% else %}<li class="muted">Nobody yet — add employees on the right.</li>{% endfor %}</ul></div>
+      <form method="post" action="/settings/hours-policies/{{ x.id }}/members" class="hp-pick">{{ ui.csrf_field() }}
+        <h3 style="font-size:13.5px;margin:0 0 6px">Add employees</h3>
+        <div class="row" style="gap:6px;margin-bottom:6px"><input type="search" class="hp-q" placeholder="Search name or ID" style="flex:2">
+          <select class="hp-g" style="flex:1"><option value="">All groups</option>{% for g in hp_groups %}<option>{{ g }}</option>{% endfor %}</select></div>
+        <div class="hp-list">{% for p in hp_people if p.policy != x.name %}<label data-q="{{ (p.name ~ ' ' ~ p.emp_no)|lower }}" data-g="{{ p.group }}"><input type="checkbox" name="emp" value="{{ p.emp_no }}"> <span>{{ p.name }} <span class="muted">{{ p.emp_no }}{{ ' · ' ~ p.group if p.group }}</span></span>{% if p.policy %}<span class="badge b-grey" title="Adding moves them from this policy">in {{ p.policy }}</span>{% endif %}</label>{% endfor %}</div>
+        <div class="row" style="justify-content:space-between;margin-top:8px"><span class="small muted"><b class="hp-n">0</b> ticked · <button type="button" class="tt-clear hp-all">tick all shown</button></span>
+          <button class="btn sm">{{ ui.icon('plus','sm') }} Add to {{ x.name }}</button></div>
+      </form>
+    </div>
+  </div></div>
+{% endfor %}
 </section>
 
 <section class="pane" data-pane="holidays">
@@ -274,7 +312,18 @@
 </div>
 </section>
 {% endblock %}
-{% block scripts %}<script>
+{% block scripts %}
+<script>
+// Minimum hours: search / group filter / count on each "Add employees" list
+document.querySelectorAll('.hp-pick').forEach((f) => {
+  const q = f.querySelector('.hp-q'), g = f.querySelector('.hp-g'), labs = [...f.querySelectorAll('.hp-list label')], n = f.querySelector('.hp-n');
+  const apply = () => { const s = q.value.trim().toLowerCase(), gv = g.value;
+    labs.forEach((l) => { l.hidden = !((!s || l.dataset.q.includes(s)) && (!gv || l.dataset.g === gv)); }); };
+  const count = () => { n.textContent = f.querySelectorAll('.hp-list input:checked').length; };
+  q.addEventListener('input', apply); g.addEventListener('change', apply); f.addEventListener('change', count);
+  f.querySelector('.hp-all').addEventListener('click', () => { labs.forEach((l) => { if (!l.hidden) l.querySelector('input').checked = true; }); count(); });
+});
+</script><script>
 // holiday for several categories: at least one category
 (function(){
   const f=document.getElementById('multi-form');

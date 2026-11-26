@@ -120,7 +120,7 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
             for ci in cols:
                 if row[ci - 1].value:
                     row[ci - 1].number_format = "dd-mmm-yyyy hh:mm"
-    _finish(wb, f"Punches & locations — {period.label}", org, "FINAL" if period.status == "FINALISED" else "DRAFT",
+    _finish(wb, f"Attendance MIS — punches & locations, {period.label}", org, "FINAL" if period.status == "FINALISED" else "DRAFT",
             guide=[("Punches", NAVY, ""), ("Places", "2E7D32", ""), ("By person", "2E7D32", "")])
     buf = io.BytesIO()
     wb.save(buf)
@@ -208,7 +208,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
     # ------------------------------------------------------------------ 1. payroll leave sheet
     ws = wb.active
     ws.title = "Payroll Leave Sheet"
-    title = f"Attendance & Leave Calculation — {period.label} ({'FINAL' if period.status == 'FINALISED' else 'DRAFT'})"
+    title = f"Attendance MIS — leave calculation, {period.label} ({'FINAL' if period.status == 'FINALISED' else 'DRAFT'})"
     heads = ["Employee No", "Name", "Group", "Location", "Total Week Days", "Holiday", "Days Leaves Taken",
              "Days Absent", "Days Present", "WFH", "Total Hours Present (HH:MM)", "Extra Working Days",
              "Total Days Worked", "Hours Required", "Total Hours Present (decimal)", "Off-day / holiday hours (excluded)",
@@ -254,14 +254,14 @@ def build_workbook(db: Session, period: Period) -> bytes:
             if emp == r.emp_no and field in fmap:
                 c = ws.cell(row=i, column=fmap[field])
                 c.fill = OVR
-                c.comment = Comment(f"Manual override by {o.created_by}: {o.reason}", "HSCO app")
+                c.comment = Comment(f"Manual override by {o.created_by}: {o.reason}", "Attendance MIS")
         if d.get("deduction_days"):
             ws.cell(row=i, column=22).fill = RED
     last = HR_ + len(res)
     ws.cell(row=HR_, column=22).comment = Comment(
         f"½ day per {pol.shortfall_block_hours:g} h short (rounded up; none when column U is Yes / Waived) + "
         f"{pol.wfh_excess_deduction_days:g} day per WFH day over {pol.wfh_limit_days:g} not approved by a manager / partner",
-        "HSCO app")
+        "Attendance MIS")
     ws.auto_filter.ref = f"A{HR_}:{get_column_letter(len(heads))}{last}"
     ws.conditional_formatting.add(f"R{HR_ + 1}:R{last}", CellIsRule(operator="lessThan", formula=["0"], fill=RED))
     ws.conditional_formatting.add(f"J{HR_ + 1}:J{last}", CellIsRule(operator="greaterThan", formula=[str(pol.wfh_limit_days)], fill=AMBER))
@@ -597,8 +597,14 @@ def build_workbook(db: Session, period: Period) -> bytes:
 
     # ------------------------------------------------------------------ notes
     ws = wb.create_sheet("Rules Applied")
+    from app.services.hours_policies import all_policies
+    hps = all_policies(db)
     notes = [
-        ("Required hours", f"{pol.hours_per_day:g} h × days present (E − F − G − H); per-employee hours/day where set"),
+        ("Required hours", f"Hours per day (column T) × days present (E − F − G − H). Hours per day: the person's "
+                           f"minimum-hours policy, else their own, else their category's, else the firm's {pol.hours_per_day:g} h"),
+        ("Minimum hours policies", "; ".join(f"{x['name']} = {x['hours']:g} h ({len(x.get('emp_nos') or [])} employees: "
+                                             f"{', '.join(x.get('emp_nos') or []) or 'none'})" for x in hps) or "none"),
+        ("Holiday on a weekly off", "Counted as a weekly off, not a holiday (not in Total Week Days or Holidays)"),
         ("Holiday / off-day work", "Hours worked on weekly-offs and holidays are excluded from actual hours"),
         ("Deduction", f"Shortfall above {pol.shortfall_grace_hours:g} h → {pol.deduction_per_block_days:g} day per "
                       f"{pol.shortfall_block_hours:g} h block (rounded up)"),
@@ -622,7 +628,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
     status = "FINAL" if period.status == "FINALISED" else "DRAFT"
     kk = m.get("kpis", {})
     open_flags = sum(1 for f in m["flags"] if f["code"] in REVIEW_CODES and not rv.get((f["emp_no"], f["code"])))
-    _finish(wb, f"Attendance & leave — {period.label}", org, status, contents_lines=[
+    _finish(wb, f"Attendance MIS — {period.label}", org, status, contents_lines=[
         ("Month", f"{period.label} ({status})"),
         ("Employees", len(res)),
         ("People with a leave deduction", sum(1 for r in res if (r.data or {}).get("deduction_days"))),

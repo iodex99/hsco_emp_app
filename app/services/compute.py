@@ -93,6 +93,24 @@ def _serialize_day(dd: M.DayDetail) -> dict:
     }
 
 
+def _weekly_off_history(db: Session, period: Period, employees: dict, policy) -> None:
+    """Weekly-off evidence from the 3 months before (greytHR muster), for weekday slots a month cannot tell by itself
+    — a holiday on the only 1st Saturday of the month (v1.14: a holiday on a weekly off is a weekly off)."""
+    from app.engine.compute import greythr_weekly_offs
+    keys = [((period.year * 12 + period.month - 1) - i) for i in (1, 2, 3)]
+    ids = [p.id for p in db.scalars(select(Period)) if (p.year * 12 + p.month - 1) in keys]
+    if not ids:
+        return
+    by_emp: dict = {}
+    for r in db.execute(select(MusterRow.emp_no, MusterRow.day, MusterRow.s1, MusterRow.s2)
+                        .where(MusterRow.period_id.in_(ids))):
+        if r[0] in employees:
+            by_emp.setdefault(r[0], {})[r[1]] = M.MusterDay(r[0], r[1], r[2] or "", r[3] or "")
+    for emp_no, days in by_emp.items():
+        offs, seen = greythr_weekly_offs(days, policy, set())
+        employees[emp_no].off_slots_hint = {k: k in offs for k in seen}
+
+
 def compute_period(db: Session, period: Period) -> dict:
     """Calculate one month. Months are independent (no balance carries forward), so nothing else is touched."""
     policy = get_policy(db)
@@ -103,9 +121,11 @@ def compute_period(db: Session, period: Period) -> dict:
     cal_days, default_cal, cal_opt, cal_loaded = calendars_for_month(db, y, m)
     from app.services import categories as CAT
     cats = CAT.by_key(db)
+    from app.services.hours_policies import assignments
+    hp = assignments(db)                               # minimum-hours policies (v1.14)
     employees, effs = {}, {}
     for k, e in emps_db.items():
-        eff = effs[k] = CAT.effective(e, cats, default_cal, cal_loaded)
+        eff = effs[k] = CAT.effective(e, cats, default_cal, cal_loaded, hp)
         cal_id = eff.calendar_id
         employees[k] = engine_employee(e, cal_days.get(cal_id) if cal_id else None, eff,
                                        cal_opt.get(cal_id) if cal_id else None)
@@ -131,6 +151,7 @@ def compute_period(db: Session, period: Period) -> dict:
                 continue
         m_ovr.setdefault(o.emp_no, {})[o.field] = v
 
+    _weekly_off_history(db, period, employees, policy)
     results = compute_month(y, m, employees, muster, swipes, policy, d_ovr, m_ovr)
     from app.services.location_checks import flags_by_employee
     loc_flags = flags_by_employee(swipes, {k: e.name for k, e in emps_db.items()})
@@ -141,6 +162,7 @@ def compute_period(db: Session, period: Period) -> dict:
         data["category"] = (emps_db[emp_no].category or "") if emp_no in emps_db else ""
         data["additional_category"] = (emps_db[emp_no].additional_category or "") if emp_no in emps_db else ""
         data["calendar_from"] = effs[emp_no].calendar_from if emp_no in effs else ""
+        data["hours_from"] = effs[emp_no].hours_from if emp_no in effs else ""
         for k, v in list(data.items()):
             if isinstance(v, float):
                 data[k] = round(v, 4)

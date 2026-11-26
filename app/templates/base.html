@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="{{ csrf }}">
-<title>{% block title %}Attendance & Leave{% endblock %} · {{ org or "HSCO" }}</title>
+<title>{% block title %}Attendance MIS{% endblock %} · Attendance MIS · {{ org or "HSCO" }}</title>
 <link rel="preload" href="/static/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
 {% set B = brand_info() %}{% if B.logo and B.kind == 'svg' %}<link rel="icon" type="image/svg+xml" href="/branding/favicon.svg?v={{ B.v }}">{% elif B.logo %}<link rel="icon" href="/branding/logo?v={{ B.v }}">{% endif %}
@@ -13,8 +13,8 @@
 <body>
 <div class="app">
   <aside class="side" id="side">
-    {% if B.logo %}<a class="brand brand-img" href="/" style="color:inherit" title="{{ org }}"><img src="/branding/logo?v={{ B.v }}" alt="{{ org or 'Logo' }}"><small>Attendance &amp; Leave</small></a>
-    {% else %}<a class="brand" href="/" style="color:inherit"><span class="logo">{{ ui.org_initials(org) }}</span><span><b>{{ org or "HSCO" }}</b><small>Attendance &amp; Leave</small></span></a>{% endif %}
+    {% if B.logo %}<a class="brand brand-img" href="/" style="color:inherit" title="{{ org }}"><img src="/branding/logo?v={{ B.v }}" alt="{{ org or 'Logo' }}"><small>Attendance MIS</small></a>
+    {% else %}<a class="brand" href="/" style="color:inherit"><span class="logo">{{ ui.org_initials(org) }}</span><span><b>{{ org or "HSCO" }}</b><small>Attendance MIS</small></span></a>{% endif %}
     <nav class="nav" aria-label="Main">
       {% set pk = cur_period.key if cur_period else '' %}
       <a href="/{{ '?period=' ~ pk if pk }}" class="{{ 'on' if path == '/' }}">{{ ui.icon('layout-dashboard') }}Overview</a>
