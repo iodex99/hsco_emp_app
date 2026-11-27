@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.16.1 — 2026-11-27 — Import files lists all six greytHR reports
+Owner: "here there should be 6 reports now right?" — *Every month, export these from greytHR* now lists Attendance
+Muster Report and Employee Swipe Details (required), Date Of Joining Report, Date Of Leaving, Permission Report and
+Attendance Summary Report (optional), in three columns. User guide month-end step updated.
+
 ## 1.16.0 — 2026-11-27 — Date of Leaving and Permission reports, new checklist, Overview reorganised
 Owner's list (with screenshots of the Overview).
 - **Two more greytHR reports** (recognised automatically on Import files):

@@ -61,12 +61,14 @@
 </tbody></table></div></div></div>{% endif %}
 
 <div class="card"><div class="hd"><h2>Every month, export these from greytHR</h2></div><div class="bd">
-  <div class="grid g4">
+  <div class="grid g3" style="row-gap:20px">
     {% for t, d, req in [('Attendance Muster Report','Day-wise status, in/out times and hours. The core input.', True),
                          ('Employee Swipe Details','Every punch, with office / client / WFH location.', True),
                          ('Date Of Joining Report','Joiners and the active list (exits are suggested).', False),
-                         ('Attendance Summary Report','Optional — used to cross-check greytHR.', False)] %}
-    <div><div class="strong">{{ loop.index }}. {{ t }}</div><div class="small muted mt-s">{{ d }}</div>{% if req %}<span class="badge b-info mt-s">required</span>{% endif %}</div>
+                         ('Date Of Leaving','Leaving dates — upload the whole list each time; only the people in the app are used.', False),
+                         ('Permission Report','WFH, On Duty and Regularization requests (shown under Permission on the Overview).', False),
+                         ('Attendance Summary Report','Used to cross-check greytHR.', False)] %}
+    <div><div class="strong">{{ loop.index }}. {{ t }}</div><div class="small muted mt-s">{{ d }}</div>{% if req %}<span class="badge b-info mt-s">required</span>{% else %}<span class="badge b-grey mt-s">optional</span>{% endif %}</div>
     {% endfor %}
   </div>
 </div></div>

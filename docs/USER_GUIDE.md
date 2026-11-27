@@ -44,7 +44,8 @@ unlock it on the Users page).
 
 ## Month end (≈ 10 minutes)
 1. In greytHR export for the month: **Attendance Muster Report**, **Employee Swipe Details**,
-   **Date Of Joining Report** (and optionally **Attendance Summary Report**). No need to remove filters or extra sheets.
+   **Date Of Joining Report**, **Date Of Leaving** (the whole list), **Permission Report** (and optionally
+   **Attendance Summary Report**) — six reports, the first two required. No need to remove filters or extra sheets.
 2. **Import exports** → select all files → *Import & calculate*. The app recognises each file and the month, even if
    columns were moved or renamed (expand *Columns used* to see how each column was read).
    Warnings show possible exits (people missing from the active list) and missing coordinates.

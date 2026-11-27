@@ -2450,3 +2450,13 @@ def test_insights_is_called_details_and_people_tab_headcount(loaded):
     page = loaded.get("/insights?period=2026-10").text
     assert "<h1>Details</h1>" in page and 'data-pdf="Details October 2026"' in page
     assert '["/insights", "Details"]' in loaded.get("/static/pdf.js").text
+
+def test_import_page_lists_the_six_greythr_reports(loaded):
+    """Owner (v1.16.1): the 'Every month, export these from greytHR' card names all six reports the app reads."""
+    from app.importers import parsers as P
+    html = loaded.get("/imports").text
+    card = html.split("Every month, export these from greytHR")[1].split("Import history")[0]
+    names = ["Attendance Muster Report", "Employee Swipe Details", "Date Of Joining Report", "Date Of Leaving",
+             "Permission Report", "Attendance Summary Report"]
+    assert all(f"{i}. {n}" in card for i, n in enumerate(names, 1)) and card.count(">required<") == 2
+    assert {"muster", "swipes", "doj", "leavers", "permissions", "summary"} <= set(P.SCHEMAS)

@@ -327,3 +327,7 @@ copy: Date of Leaving (173 rows → 3 October leavers with greytHR's dates 10 / 
 Permission Report (shifted to October): glance 5 tiles, head count list (97), exits list with dates, checklist
 Made in greytHR → green, Excel from step 4 → green, Permission → WFH 7 people / 7 days, On Duty 7 / 12, arrival
 ranges, Permissions sheet, Details page, employee page "left 10-Oct-2026", Overview + full PDF; no console errors.
+
+## v1.16.1 — six reports on Import files
+`test_import_page_lists_the_six_greythr_reports` (names, order, two required, every kind has a schema). Checked in
+the browser at 1440 and 1100 px wide.
