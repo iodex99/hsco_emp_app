@@ -2,8 +2,8 @@
 
 ## Roles
 - **Viewer** (partners/board): dashboard, payroll sheet, flags, employees, reconciliation, downloads.
-- **HR**: + import, corrections, employee master, holiday lists, finalise.
-- **Admin**: + policy rules, security settings, users, re-open a finalised month.
+- **HR**: + import, corrections, employee master, holiday lists, lock a month.
+- **Admin**: + policy rules, security settings, users, unlock a locked month.
 
 ## Signing in
 User name + password — that's all (no second step since v1.10). A new user (or one whose password an admin reset)
@@ -63,7 +63,7 @@ unlock it on the Users page).
    - *Click the day* in the calendar: change day type, session status (P, A, PL, COF…) or hours.
    - *Corrections tab, Adjust a figure*: e.g. grant an exception (Exempt this month = yes), set required hours, override
      deduction days, or a remark. **A reason is mandatory**; everything is in the Audit log and highlighted in Excel.
-5. **Payroll leave sheet** → *Finalise for payroll* (locks the month) → **Download Excel** for payroll.
+5. **Download Excel** for payroll; once the MIS is done, **Lock month** (Overview or payroll sheet).
    Columns E–S mirror the old MIS sheet; extra columns give deduction days, leave / comp-off / unapplied leave and comp-off
    earned. Leave balances stay in greytHR — apply the deduction days there.
 6. Partners and the board use the app itself (give them the *viewer* role): Overview, Insights, Locations and every
@@ -120,7 +120,9 @@ month's Attendance Muster Report is imported.
 
 ## Logo
 Settings → Security & system → **Logo**: upload the firm's logo (SVG is sharpest). It appears in the sidebar, on the
-sign-in page and in the browser tab. *Remove* goes back to the firm's initials.
+sign-in page, in the browser tab, on every PDF page and at the top of every Excel sheet (v1.15). *Remove* goes back to
+the firm's initials. For Excel the app needs a PNG copy of an SVG logo: it is made automatically the first time an HR
+or admin user opens any page after the logo is set.
 
 ## Where to see punch locations
 - **Locations** (sidebar): every mobile sign-in with its place name, tag, remark and phone; *Download Excel*
@@ -133,7 +135,7 @@ export had none). Import it like any other file, at any time in the month.
 ## Are the downloads up to date?
 Yes — every Excel is created the moment you click, from the app's current figures, so it always includes the
 corrections and reviews made so far. *Corrections* lists each correction with reason, who and when; *Flags* shows
-which exceptions were reviewed and the note. For a month you have finalised, the figures are frozen.
+which exceptions were reviewed and the note. For a month you have locked, the figures are frozen.
 
 ## Backups
 The app backs itself up every day (Settings → Security & system → *Backups & data safety*; *Back up now* for an
@@ -198,7 +200,7 @@ Uploaded the wrong file? Import files → **Import history** → the bin icon on
 removed — the file's attendance days / punches / summary rows for that month, the holidays it put in the lists, or the
 employee details it changed (put back as they were) — then give a reason and confirm. The month is recalculated at
 once; with no attendance left it shows as waiting for files again. Upload the right file afterwards. Not possible in
-a finalised month (re-open it first).
+a locked month (unlock it first).
 
 ## Review queue (v1.12)
 Only two kinds of exception wait for you: **WFH above monthly limit** (approve extra WFH or mark reviewed) and
@@ -259,3 +261,13 @@ Click **PDF ▾** (next to Excel) on the Overview, Insights, Payroll leave sheet
   weekly offs from their pattern or from greytHR's muster.
 - The app is now called **Attendance MIS**; downloaded files start with "Attendance MIS - …", and the desktop icon is
   "Attendance MIS" after the next re-install (the old icon still works until then).
+
+## v1.15 — the month at a glance, last month, lock month
+- The **Overview** starts with the month at a glance: head count, new joinees, left employees, total attendance,
+  people present all days and unapplied leave (absent). Click *Present all days* or *Unapplied leave* to see who.
+- Every report shows **▲ / ▼ vs last month** (with last month's figure in brackets). Green is better, red worse.
+- *Hours* tab: people with more than 20 h shortfall / excess, comp-offs earned (people in red, days below) — click any
+  of them for the names. *Punctuality*: people who sat late on more than 10 days.
+- **Lock month**: when the MIS is done, click *Lock month* on the Overview. Imports and corrections close; an admin can
+  unlock it (*unlock* link next to "Locked by …", a reason is required).
+- Excel files no longer say "DRAFT"; a locked month's file ends "- Locked".

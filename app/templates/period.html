@@ -8,25 +8,26 @@
 {% set fl = request_f[3:] if request_f and request_f.startswith('fl-') else '' %}
 <div class="ph">
   <div><h1>Payroll leave sheet</h1>
-    <div class="sub">{{ period.label }} · {{ ui.status_badge(period) }}{% if period.finalised_by %} <span class="muted small">by {{ period.finalised_by }} on {{ period.finalised_at|dmy }}</span>{% endif %}</div></div>
+    <div class="sub">{{ period.label }} · {{ ui.status_badge(period) }}{% if period.status == 'FINALISED' and period.finalised_by %} <span class="muted small">by {{ period.finalised_by }} on {{ period.finalised_at|dmy }}</span>{% endif %}</div></div>
   <div class="actions">
     <a class="btn sec" href="/exports/{{ period.key }}.xlsx">{{ ui.icon('download','sm') }} Excel for payroll</a>
     {{ ui.pdf_menu('Payroll leave sheet ' ~ period.label, period.key, period.label) }}
     {% if can_hr and period.status == 'DRAFT' %}
     <form method="post" action="/periods/{{ period.key }}/recompute" class="inline">{{ ui.csrf_field() }}<button class="btn ghost" title="Recalculate after changes">{{ ui.icon('refresh-cw','sm') }} Recompute</button></form>
-    <form method="post" action="/periods/{{ period.key }}/finalise" class="inline" data-confirm="Finalise {{ period.label }}? Imports and corrections will be locked until an admin re-opens the month.">{{ ui.csrf_field() }}<button class="btn">{{ ui.icon('lock','sm') }} Finalise for payroll</button></form>
+    <form method="post" action="/periods/{{ period.key }}/finalise" class="inline" data-confirm="Lock {{ period.label }}? Do this once the MIS is done: imports and corrections are closed until an admin unlocks the month.">{{ ui.csrf_field() }}<button class="btn" title="Lock the month once the MIS is done">{{ ui.icon('lock','sm') }} Lock month</button></form>
     {% endif %}
-    {% if can_admin and period.status == 'FINALISED' %}<button class="btn danger" type="button" onclick="HSCO.openDrawer('reopen')">{{ ui.icon('lock-open','sm') }} Re-open</button>{% endif %}
+    {% if can_admin and period.status == 'FINALISED' %}<button class="btn danger" type="button" id="unlock-btn" onclick="HSCO.openDrawer('reopen')">{{ ui.icon('lock-open','sm') }} Unlock month</button>{% endif %}
     {% if can_admin and period.status == 'DRAFT' %}<button class="btn ghost" type="button" onclick="HSCO.openDrawer('delmonth')" title="Remove a month imported by mistake">{{ ui.icon('trash-2','sm') }}</button>{% endif %}
   </div>
 </div>
 
+{% set pk = prev_kpis %}
 <div class="minis mb">
-  <div class="mini"><div class="v">{{ rows|length }}</div><div class="l">Employees {{ ui.info('Everyone in this month’s muster (groups ignored by the app, e.g. OTHERS, are left out).') }}</div></div>
-  <div class="mini {{ 'bad' if ded }}"><div class="v">{{ ded|length }} <small class="muted" style="font-size:13px">· {{ ded|sum(attribute='deduction_days')|n }} d</small></div><div class="l">Leave deductions {{ ui.info('People with a leave deduction and the total days: hours shortfall (½ day per ' ~ (policy.shortfall_block_hours|n) ~ ' h short) + WFH days over the limit.') }}</div></div>
-  <div class="mini"><div class="v">{{ D|sum(attribute='pl_days')|n }}</div><div class="l">Leave taken {{ ui.info('Leave on working days (PL, CL, SL … and loss of pay, which counts as leave).') }}</div></div>
-  <div class="mini"><div class="v">{{ D|sum(attribute='cof_days')|n }}</div><div class="l">Comp-off taken {{ ui.info('Comp-off (COF) taken on working days.') }}</div></div>
-  <div class="mini {{ 'bad' if absn }}"><div class="v">{{ D|sum(attribute='unauth_absent_days')|n }}</div><div class="l">Unapplied leave (absence) {{ ui.info('Working days absent without leave applied (greytHR “A”) — column Absent.') }}</div></div>
+  {{ ui.mini('Employees', rows|length, rows|length, pk.headcount if pk else none, 'Everyone in this month’s muster (groups ignored by the app, e.g. OTHERS, are left out).', neutral=True) }}
+  {{ ui.mini('Leave deductions', ded|length ~ (' person' if ded|length == 1 else ' people'), ded|length, pk.deduction_employees if pk else none, 'People with a leave deduction; below, the total days: hours shortfall (½ day per ' ~ (policy.shortfall_block_hours|n) ~ ' h short) + WFH days over the limit.', 'bad' if ded else '', under=(ded|sum(attribute='deduction_days')|n) ~ ' days') }}
+  {{ ui.mini('Leave taken', D|sum(attribute='pl_days')|n, D|sum(attribute='pl_days'), pk.leave_days if pk else none, 'Leave on working days (PL, CL, SL … and loss of pay, which counts as leave), in days.', neutral=True) }}
+  {{ ui.mini('Comp-off taken', D|sum(attribute='cof_days')|n, D|sum(attribute='cof_days'), pk.compoff_days if pk else none, 'Comp-off (COF) taken on working days, in days.', neutral=True) }}
+  {{ ui.mini('Unapplied leave (absent)', absn|length ~ (' person' if absn|length == 1 else ' people'), absn|length, pk.absent_people if pk else none, 'People absent on a working day without leave applied (greytHR “A”); below, their days — column Unapplied leave.', 'bad' if absn else '', under=(D|sum(attribute='unauth_absent_days')|n) ~ ' days') }}
 </div>
 
 <div class="card flush">
@@ -48,7 +49,7 @@
 <thead><tr>
   <th class="sticky" data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="category" data-type="enum">Category</th>
   <th class="num" data-key="week" data-type="num" title="Total week days (E)">Week days</th><th class="num" data-key="hol" data-type="num" title="Holidays (F)">Holidays</th>
-  <th class="num" data-key="leave" data-type="num" title="Leaves taken (G) — loss of pay counts as leave">Leave</th><th class="num" data-key="absent" data-type="num" data-label="Unapplied leave (absence)" title="Unapplied leave — absent without leave applied (H)">Unapplied leave</th><th class="num" data-key="present" data-type="num" title="Days present (I)">Present</th>
+  <th class="num" data-key="leave" data-type="num" title="Leaves taken (G) — loss of pay counts as leave">Leave</th><th class="num" data-key="absent" data-type="num" data-label="Unapplied leave (absent)" title="Unapplied leave — absent without leave applied (H)">Unapplied leave</th><th class="num" data-key="present" data-type="num" title="Days present (I)">Present</th>
   <th class="num" data-key="wfh" data-type="num">WFH</th><th class="num" data-key="hours" data-type="num" title="Total hours present">Hours</th><th class="num" data-key="offh" data-type="num" title="Hours on weekly-off/holiday, excluded">Off-day h</th>
   <th class="num" data-key="actual" data-type="num" title="Actual hours">Actual h</th><th class="num" data-key="hpd" data-type="num" data-label="Hours per day" title="Required hours per day: the person's minimum-hours policy, own hours, category or the firm's">h / day</th><th class="num" data-key="required" data-type="num" title="Required hours = days present × hours per day">Required h</th><th class="num" data-key="balance" data-type="num" data-label="Hours +/−">+/− h</th>
   <th class="num" data-key="deduction" data-type="num" data-label="Deduction days">Deduction</th><th data-key="exempt" data-type="enum" data-label="Exempt (hours)">Exempt</th>
@@ -83,11 +84,12 @@
 <p class="help">Required hours = days present × hours per day: {{ policy.hours_per_day|n }} h for the firm{% for x in hp_items %}; {{ x.hours|n }} h for “{{ x.name }}” ({{ x.emp_nos|length }}){% endfor %} — minimum-hours policies under Rules &amp; calendars. Shortfall is deducted at ½ day per {{ policy.shortfall_block_hours|n }} h (rounded up). Exempt: {{ policy.exempt_groups|join(', ') }}. Click any row for the day-by-day record and to make corrections. Press <kbd>/</kbd> to find someone.</p>
 
 {% if can_admin and period.status == 'FINALISED' %}
-<aside class="drawer" id="reopen" aria-label="Re-open month"><div class="dh"><h2>Re-open {{ period.label }}</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
+<aside class="drawer" id="reopen" aria-label="Unlock month"><div class="dh"><h2>Unlock {{ period.label }}</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
 <form method="post" action="/periods/{{ period.key }}/reopen" style="display:contents">{{ ui.csrf_field() }}
-<div class="db"><div class="alert warn">{{ ui.icon('triangle-alert') }}<span>Payroll may already have used this sheet. Re-opening allows imports and corrections again; it is recorded in the audit log.</span></div>
+<div class="db"><div class="alert warn">{{ ui.icon('triangle-alert') }}<span>Payroll may already have used this sheet. Unlocking allows imports and corrections again; it is recorded in the audit log.</span></div>
 <div class="field"><label>Reason</label><textarea name="reason" rows="3" required placeholder="e.g. Late regularisation approved by partner"></textarea></div></div>
-<div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn danger">Re-open month</button></div></form></aside><div class="scrim"></div>
+<div class="df"><button class="btn sec" type="button" onclick="HSCO.closeDrawer()">Cancel</button><button class="btn danger">Unlock month</button></div></form></aside><div class="scrim"></div>
+<script>if (location.hash === '#unlock') setTimeout(() => HSCO.openDrawer('reopen'), 60);</script>
 {% endif %}
 {% if can_admin and period.status == 'DRAFT' %}
 <aside class="drawer" id="delmonth" aria-label="Delete month"><div class="dh"><h2>Delete {{ period.label }}?</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>

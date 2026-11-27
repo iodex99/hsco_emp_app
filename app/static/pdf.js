@@ -37,6 +37,19 @@
   }
 
   // ------------------------------------------------------------------------------------------------ the writer
+  // the firm's logo as a PNG (any format the browser shows: SVG, PNG, JPEG, WebP), or null when there is none
+  async function loadLogo() {
+    if (window.HSCO_LOGO === false) return null;          // no logo set: nothing to fetch
+    try {
+      // same-origin URL straight into the image (a blob: URL is refused by the page's img-src policy)
+      const im = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = "/branding/logo?v=" + Date.now(); });
+      const h = 180, w0 = im.naturalWidth || 600, h0 = im.naturalHeight || 180, w = Math.max(1, Math.round(w0 * h / h0));
+      const cv = document.createElement("canvas"); cv.width = Math.min(w, 3000); cv.height = h;
+      cv.getContext("2d").drawImage(im, 0, 0, cv.width, h);
+      return { data: cv.toDataURL("image/png"), ratio: cv.width / h };
+    } catch (e) { return null; }
+  }
+
   function Writer(title) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
@@ -106,22 +119,42 @@
     }
 
     // KPI cards / small figures: boxes in a row (wraps)
+    // it.l label · it.v value (it.s its small grey part) · it.u grey line under the value · it.f description · it.c comparison with last month
     function boxes(items, big) {
       if (!items.length) return;
-      const per = Math.min(items.length, big ? 4 : 6), gap = 3, bw = (CW - gap * (per - 1)) / per, bh = big ? 24 : 15;
+      const per = Math.min(items.length, big ? 4 : 6), gap = 3, bw = (CW - gap * (per - 1)) / per;
+      const extra = (it) => (it.u ? 1 : 0) + (it.f && big ? 1 : 0) + (it.c ? 1 : 0);
+      const lines = Math.max(...items.map(extra));
+      const bh = (big ? 17 : 13) + lines * 3.6 + 2;
       items.forEach((it, i) => {
         const col = i % per;
         if (col === 0) { if (i) P.y += bh + gap; P.need(bh); }
         const x = M + col * (bw + gap);
         doc.setDrawColor(...LINE); doc.setFillColor(...(big ? [255, 255, 255] : SOFT)); doc.roundedRect(x, P.y, bw, bh, 2, 2, "FD");
         P.font(big ? 8 : 7, "normal", GREY); doc.text(doc.splitTextToSize(it.l, bw - 6)[0] || "", x + 3, P.y + (big ? 5.5 : 4.5));
-        P.font(big ? 15 : 11, "bold", TONE[it.tone] || INK); doc.text(doc.splitTextToSize(it.v, bw - 6)[0] || "", x + 3, P.y + (big ? 13 : 10.5));
-        if (big && it.f) { P.font(7, "normal", GREY); doc.text(doc.splitTextToSize(it.f, bw - 6).slice(0, 2), x + 3, P.y + 18); }
+        P.font(big ? 15 : 11, "bold", TONE[it.tone] || INK); const vt = doc.splitTextToSize(it.v, bw - 6)[0] || "";
+        doc.text(vt, x + 3, P.y + (big ? 13 : 10.5));
+        if (it.s) {                                   // the value's small grey part, as on the page (e.g. "81 days")
+          const vw = doc.getTextWidth(vt); P.font(big ? 10 : 8, "normal", GREY);
+          doc.text(doc.splitTextToSize(it.s, Math.max(10, bw - 8 - vw))[0] || "", x + 4.5 + vw, P.y + (big ? 13 : 10.5));
+        }
+        let ly = P.y + (big ? 17.5 : 14);
+        const line = (t, size, color, style) => { P.font(size, style || "normal", color); doc.text(doc.splitTextToSize(t, bw - 6)[0] || "", x + 3, ly); ly += 3.6; };
+        if (it.u) line(it.u, 7.5, GREY, "bold");
+        if (big && it.f) line(it.f, 7, GREY);
+        if (it.c) line(it.c, 6.8, it.c.startsWith("+") || it.c.startsWith("-") ? [52, 64, 84] : GREY);
       });
       P.y += bh + 5;
     }
-    const kpis = (el) => boxes([...el.querySelectorAll(":scope > .kpi")].filter(shown).map((k) => ({ l: txt(k.querySelector(".l")), v: txt(k.querySelector(".v")), f: txt(k.querySelector(".f")), tone: toneOf(k) })), true);
-    const minis = (el) => boxes([...el.querySelectorAll(":scope > .mini")].filter(shown).map((k) => ({ l: txt(k.querySelector(".l")), v: txt(k.querySelector(".v")), tone: toneOf(k) })), false);
+    const fOf = (k) => { const fs = [...k.querySelectorAll(":scope > .f")]; return { f: txt(fs.find((x) => !x.classList.contains("cmp")) || null), c: txt(k.querySelector(":scope > .f.cmp")) }; };
+    const vOf = (k) => {                              // a KPI value and its <small> part, apart
+      const v = k.querySelector(".v"); if (!v) return { v: "", s: "" };
+      const sm = v.querySelector(":scope > small"); if (!sm) return { v: txt(v), s: "" };
+      const cl = v.cloneNode(true); cl.querySelector(":scope > small").remove();
+      return { v: txt(cl), s: txt(sm) };
+    };
+    const kpis = (el) => boxes([...el.querySelectorAll(":scope > .kpi")].filter(shown).map((k) => ({ l: txt(k.querySelector(".l")), ...vOf(k), ...fOf(k), tone: toneOf(k) })), true);
+    const minis = (el) => boxes([...el.querySelectorAll(":scope > .mini")].filter(shown).map((k) => ({ l: txt(k.querySelector(".l")), v: txt(k.querySelector(".v")), u: txt(k.querySelector(":scope > .u")), c: txt(k.querySelector(":scope > .f")), tone: toneOf(k) })), false);
 
     // a chart drawn again off-screen at print size (wMM × hMM), animation off, then placed as an image
     function chartPng(canvas, wMM, hMM) {
@@ -140,7 +173,7 @@
         events: [], onClick: null, onHover: null, plugins, scales });
       let png = null;
       try {
-        const ch = new window.Chart(cv, { type: src.config.type, data: src.config.data, options: opts });
+        const ch = new window.Chart(cv, { type: src.config.type, data: src.config.data, options: opts, plugins: src.config.plugins || [] });
         png = ch.toBase64Image("image/png", 1); ch.destroy();
       } catch (e) { console.error("chart for PDF", e); }
       holder.remove();
@@ -420,8 +453,10 @@
       doc.setPage(i);
       doc.setFillColor(...NAVY); doc.rect(0, 0, W, 3, "F");
       if (cover && i === 1) continue;
-      P.font(8.5, "bold", NAVY); doc.text(org, M, 10);
-      P.font(8.5, "normal", GREY); doc.text(clean(P.title), M + doc.getTextWidth(org) + 4, 10);
+      let tx = M;
+      if (P.logo) { const lh = 7, lw = Math.min(lh * P.logo.ratio, 60); doc.addImage(P.logo.data, "PNG", M, 5, lw, lh, "logo", "FAST"); tx = M + lw + 4; }
+      else { P.font(8.5, "bold", NAVY); doc.text(org, M, 10); tx = M + doc.getTextWidth(org) + 4; }
+      P.font(8.5, "normal", GREY); doc.text(clean(P.title), tx, 10);
       doc.text("Generated " + clean(stamp), W - M, 10, { align: "right" });
       doc.setDrawColor(...LINE); doc.line(M, PH - 9, W - M, PH - 9);
       P.font(7.5, "normal", GREY); doc.text("Attendance MIS - data stays on this server", M, PH - 5);
@@ -435,7 +470,8 @@
   function coverPage(P, heading, sub) {
     const doc = P.doc, org = clean(window.HSCO_ORG || "HSCO");
     doc.setFillColor(238, 243, 255); doc.rect(0, 3, W, 76, "F");
-    P.font(12, "bold", NAVY); doc.text(org, M + 20, 28);
+    if (P.logo) { const lh = 15, lw = Math.min(lh * P.logo.ratio, 120); doc.addImage(P.logo.data, "PNG", M + 20, 13, lw, lh, "logo", "FAST"); }
+    else { P.font(12, "bold", NAVY); doc.text(org, M + 20, 28); }
     P.font(26, "bold", NAVY); doc.text(clean(heading), M + 20, 46);
     P.font(13, "normal", INK); doc.text(clean(sub), M + 20, 57);
     const stamp = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -455,6 +491,7 @@
     const P = Writer(title);
     busy(true);
     try {
+      P.logo = await loadLogo();
       await render(P, window, document.querySelector("main.content") || document.body, {});
       return finish(P, false);
     } finally { busy(false); }
@@ -479,6 +516,7 @@
     const P = Writer(`Full report ${label || key}`);
     const c = busy(true);
     try {
+      P.logo = await loadLogo();
       coverPage(P, "Attendance MIS report", label || key);
       for (const [path, name] of H.REPORT_PAGES) {
         const url = path.includes("{k}") ? path.replace("{k}", key) : `${path}?period=${encodeURIComponent(key)}`;

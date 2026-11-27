@@ -9,11 +9,23 @@
   <div class="actions">
     <a class="btn sec" href="/exports/{{ key }}.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Excel</a>
     {{ ui.pdf_menu('Overview ' ~ period.label, period.key, period.label) }}
+    {% if can_hr and period.status == 'DRAFT' %}<form method="post" action="/periods/{{ key }}/finalise" class="inline" data-confirm="Lock {{ period.label }}? Do this once the MIS is done: imports and corrections are closed until an admin unlocks the month.">{{ ui.csrf_field() }}<input type="hidden" name="back" value="/?period={{ key }}"><button class="btn" title="Lock the month once the MIS is done">{{ ui.icon('lock','sm') }} Lock month</button></form>
+    {% elif period.status == 'FINALISED' %}<span class="muted small" style="align-self:center">{{ ui.icon('lock','sm') }} Locked{{ (' by ' ~ period.finalised_by) if period.finalised_by }}{{ (' on ' ~ (period.finalised_at|dmy)) if period.finalised_at }}{% if can_admin %} · <a href="/periods/{{ key }}#unlock">unlock</a>{% endif %}</span>{% endif %}
   </div>
 </div>
 
+{# first (owner, v1.15): the month at a glance, each figure against last month #}
+<div class="minis top6 mb" id="glance">
+  {{ ui.mini('Total head count', k.headcount, k.headcount, pk.headcount if pk else none, 'Everyone in this month’s muster (ignored groups such as OTHERS left out).', neutral=True) }}
+  {{ ui.mini('New joinees', k.new_joinees, k.new_joinees, pk.new_joinees if pk else none, 'Date of joining in this month (employee master).', 'good' if k.new_joinees else '', neutral=True, attrs='data-drill="joiners" role="button" tabindex="0"') }}
+  {{ ui.mini('Left employees', k.exits, k.exits, pk.exits if pk else none, 'Date of leaving in this month (employee master).', 'warn' if k.exits else '', attrs='data-drill="exits" role="button" tabindex="0"') }}
+  {{ ui.mini('Total attendance', (k.attendance_rate|n(1)) ~ '%', k.attendance_rate, pk.attendance_rate if pk else none, 'Days present ÷ working days (week days − holidays) of everyone in the muster. Present includes WFH and on-duty days.', good_up=True, unit='%', under=(k.present_days|n) ~ ' present days') }}
+  {{ ui.mini('Present all days', k.present_all_days ~ (' person' if k.present_all_days == 1 else ' people'), k.present_all_days, pk.present_all_days if pk else none, 'People present on every working day of the month (no leave, no unapplied leave, no half day).', 'good' if k.present_all_days else '', good_up=True, attrs='data-drill="present_all" role="button" tabindex="0"') }}
+  {{ ui.mini('Unapplied leave (absent)', k.absent_people ~ (' person' if k.absent_people == 1 else ' people'), k.absent_people, pk.absent_people if pk else none, 'People absent on a working day without leave applied (greytHR “A”); the days below are their total, in half days.', 'bad' if k.absent_people else '', under=(k.absent_days|n) ~ ' days', attrs='data-drill="absent" role="button" tabindex="0"') }}
+</div>
+
 {% if can_hr and wf %}
-<div class="card"><div class="hd"><h2>Month-end checklist {{ ui.info('The five steps before payroll: import the files, check the calculation, review the open exceptions (WFH above the limit and Group not set), download the payroll Excel, finalise the month.') }}</h2><span class="sub">{{ 'Finalised for payroll' if wf.final else 'Step ' ~ (wf.current + 1) ~ ' of 5' }}</span>
+<div class="card"><div class="hd"><h2>Month-end checklist {{ ui.info('The five steps before payroll: import the files, check the calculation, review the open exceptions (WFH above the limit and Group not set), download the payroll Excel, lock the month.') }}</h2><span class="sub">{{ 'Locked' if wf.final else 'Step ' ~ (wf.current + 1) ~ ' of 5' }}</span>
   <div class="tools">{% set s = wf.steps[wf.current] %}{% if not wf.final %}<a class="btn sm" href="{{ s.url }}">{{ s.title }} {{ ui.icon('arrow-right','sm') }}</a>{% endif %}</div></div>
   <div class="bd"><div class="steps">
   {% for s in wf.steps %}
@@ -27,10 +39,10 @@
 
 <div class="kpis k3">
   {{ ui.kpi('Leave deductions', k.deduction_employees, 'calendar-days', 'bad' if k.deduction_employees else '', '/periods/' ~ key ~ '?f=deduction',
-       ui.delta(k.deduction_employees, pk.deduction_employees if pk else none) or 'people with a leave deduction (hours or WFH)', 'people · ' ~ (k.deduction_days|n) ~ ' days',
+       'people with a leave deduction (hours or WFH)', 'people · ' ~ (k.deduction_days|n) ~ ' days', cmp=ui.vs(k.deduction_employees, pk.deduction_employees if pk else none),
        tip='People who lose leave this month: ½ day per ' ~ (policy.shortfall_block_hours|n) ~ ' h short of the required hours (exempt groups excepted) plus ' ~ (policy.wfh_excess_deduction_days|n) ~ ' day per WFH day above ' ~ (policy.wfh_limit_days|n) ~ ' not approved. Days = their total deduction.') }}
-  {{ ui.kpi('Unapplied leave (absence)', k.absent_days|n, 'calendar-x', 'bad' if k.absent_days else '', '/periods/' ~ key ~ '?f=absent',
-       ui.delta(k.absent_days, pk.absent_days if pk else none) or 'days absent without leave applied', 'days · ' ~ k.absent_people ~ (' person' if k.absent_people == 1 else ' people'),
+  {{ ui.kpi('Unapplied leave (absent)', k.absent_people ~ (' person' if k.absent_people == 1 else ' people'), 'calendar-x', 'bad' if k.absent_people else '', '/periods/' ~ key ~ '?f=absent',
+       'absent without leave applied', (k.absent_days|n) ~ ' days', cmp=ui.vs(k.absent_people, pk.absent_people if pk else none),
        tip='Working days marked absent (greytHR “A”) with no leave applied, in half days. Leave, comp-off and loss of pay (counted as leave) are not included.') }}
   {{ ui.kpi('Exceptions to review', nav_open, 'list-checks', 'warn' if nav_open else 'good', '/flags?period=' ~ key,
        (wf.flags_reviewed ~ ' of ' ~ wf.flags_total ~ ' reviewed') if wf else 'high & medium flags',
@@ -65,30 +77,22 @@
   <button class="on" data-tab="att">Attendance {{ ui.info('Who was present, on leave or absent each working day, and who had unapplied leave.') }}</button><button data-tab="punct">Punctuality {{ ui.info('First and last punches, late arrivals and regularisations. Groups left out of these metrics (Settings) are not counted.') }}</button>
   <button data-tab="loc">Work location {{ ui.info('Where punches were made (office biometric, client, WFH, on duty…) and who worked from home.') }}</button><button data-tab="hours">Hours {{ ui.info('Hours worked against hours required, extra days and comp-offs earned.') }}</button>
   <button data-tab="groups">By group {{ ui.info('The month’s totals for each employee group.') }}</button><button data-tab="people">People {{ ui.info('Joiners, exits, anniversaries and length of service.') }}</button>
-  {% if m.trend|length > 1 %}<button data-tab="trend">Trend {{ ui.info('The last months side by side. Click a month to open it.') }}</button>{% endif %}
 </div>
 
 <section class="pane on" data-pane="att">
-  <div class="minis mb">
-    <div class="mini"><div class="v">{{ k.attendance_rate|n(1) }}%</div><div class="l">Attendance rate {{ ui.info('Days present ÷ working days (week days − holidays).') }}</div></div>
-    <div class="mini"><div class="v">{{ k.leave_days|n }}</div><div class="l">Leave days {{ ui.info('Leave taken on working days (PL, CL, SL … and loss of pay), in half days.') }}</div></div>
-    <div class="mini"><div class="v">{{ k.compoff_days|n }}</div><div class="l">Comp-off days {{ ui.info('Comp-off (COF) taken on working days.') }}</div></div>
-    <div class="mini {{ 'bad' if k.absent_days }}"><div class="v">{{ k.absent_days|n }}</div><div class="l">Unapplied leave (absence) {{ ui.info('Working days absent without leave applied (greytHR “A”), in half days.') }}</div></div>
-    <div class="mini {{ 'bad' if k.no_attendance }}"><div class="v">{{ k.no_attendance }}</div><div class="l">No attendance all month {{ ui.info('People with no day present and no hours worked in the whole month.') }}</div></div>
-  </div>
   <div class="grid g-2-1">
-    <div class="card"><div class="hd"><h2>Daily attendance {{ ui.info('Each working day: people present, on leave (incl. comp-off) and with unapplied leave (half days count ½). The line is people working from home. Hover for the day and totals; click a bar to see who.') }}</h2><span class="sub">people per working day · click a bar to see who</span></div><div class="bd"><div class="chartbox"><canvas id="cDaily"></canvas></div></div></div>
-    <div class="card"><div class="hd"><h2>Unapplied leave (absence) {{ ui.info('Everyone with unapplied leave this month — days absent without leave applied, highest first.') }}</h2></div><div class="bd" style="padding-top:4px">{{ ui.toplist(m.top.absent, 'days', key) }}</div></div>
+    <div class="card"><div class="hd"><h2>Daily attendance {{ ui.info('Each working day: people present, on leave (incl. comp-off) and with unapplied leave (half days count ½). The line is people working from home. Dates in red, weekdays in grey. Hover for the day and totals; click a bar to see who.') }}</h2><span class="sub">people per working day · click a bar to see who</span></div><div class="bd"><div class="chartbox"><canvas id="cDaily"></canvas></div></div></div>
+    <div class="card"><div class="hd"><h2>Unapplied leave (absent) {{ ui.info('Everyone with unapplied leave this month — days absent without leave applied, highest first.') }}</h2></div><div class="bd" style="padding-top:4px">{{ ui.toplist(m.top.absent, 'days', key) }}</div></div>
   </div>
 </section>
 
 <section class="pane" data-pane="punct">
   <div class="minis mb">
-    <div class="mini"><div class="v">{{ k.avg_in_time }}</div><div class="l">Average first punch {{ ui.info('Average of each person’s average first punch on days present.') }}</div></div>
-    <div class="mini"><div class="v">{{ k.avg_out_time }}</div><div class="l">Average last punch {{ ui.info('Average of each person’s average last punch (same day) on days present.') }}</div></div>
-    <div class="mini {{ 'warn' if k.persistent_late }}"><div class="v">{{ k.persistent_late }}</div><div class="l">Persistently late (&gt; 1 h) {{ ui.info('People more than ' ~ policy.very_late_min ~ ' min late on at least ' ~ policy.persistent_late_days ~ ' days.') }}</div></div>
-    <div class="mini {{ 'warn' if k.persistent_regularisation }}"><div class="v">{{ k.persistent_regularisation }}</div><div class="l">Persistent regularisation {{ ui.info('People with at least ' ~ policy.persistent_regularisation_days ~ ' regularised days (permission requests or times changed in greytHR).') }}</div></div>
-    <div class="mini"><div class="v">{{ k.late_sitting_days }}</div><div class="l">Late-sitting days {{ ui.info('Days someone’s last punch was after ' ~ policy.late_sitting_after.strftime('%H:%M') ~ ' (or the next morning).') }}</div></div>
+    {{ ui.mini('Average first punch', k.avg_in_time, k.avg_in_min, pk.avg_in_min if pk else none, 'Average of each person’s average first punch on days present. ▲ = later than last month.', unit=' min') }}
+    {{ ui.mini('Average last punch', k.avg_out_time, k.avg_out_min, pk.avg_out_min if pk else none, 'Average of each person’s average last punch (same day) on days present.', unit=' min', neutral=True) }}
+    {{ ui.mini('Persistently late (> 1 h)', k.persistent_late, k.persistent_late, pk.persistent_late if pk else none, 'People more than ' ~ policy.very_late_min ~ ' min late on at least ' ~ policy.persistent_late_days ~ ' days.', 'warn' if k.persistent_late else '') }}
+    {{ ui.mini('Persistent regularisation', k.persistent_regularisation, k.persistent_regularisation, pk.persistent_regularisation if pk else none, 'People with at least ' ~ policy.persistent_regularisation_days ~ ' regularised days (permission requests or times changed in greytHR).', 'warn' if k.persistent_regularisation else '') }}
+    {{ ui.mini('Late sitting > 10 days', k.late_sitting_people ~ (' person' if k.late_sitting_people == 1 else ' people'), k.late_sitting_people, pk.late_sitting_people if pk else none, 'People whose last punch was after ' ~ policy.late_sitting_after.strftime('%H:%M') ~ ' (or the next morning) on more than 10 days this month.', neutral=True, attrs='data-drill="late_sitting" role="button" tabindex="0"') }}
   </div>
   <div class="grid g2 mb">
     <div class="card"><div class="hd"><h2>First punch of the day {{ ui.info('Days by the time of the first punch, in half-hour steps. Orange = after ' ~ policy.default_shift_start.strftime('%H:%M') ~ '. Click a bar to see who arrived then.') }}</h2><span class="sub">orange = after shift start · click a bar</span></div><div class="bd"><div class="chartbox"><canvas id="cIn"></canvas></div></div></div>
@@ -113,9 +117,9 @@
     </div></div>
     <div class="card"><div class="hd"><h2>Work from home {{ ui.info('A WFH day = a working day the person was present with a sign-in tagged Work from home (WFH on a Saturday the office is closed is listed but not counted). Allowed: ' ~ (policy.wfh_limit_days|n) ~ ' days a month; each day over the limit takes ' ~ (policy.wfh_excess_deduction_days|n) ~ ' day of leave unless approved.') }}</h2><span class="sub">allowed: {{ policy.wfh_limit_days|n }} days a month</span></div><div class="bd" style="padding-top:4px">
       <div class="minis mb" style="grid-template-columns:repeat(3,1fr)">
-        <div class="mini"><div class="v">{{ k.wfh_days|n }}</div><div class="l">WFH days (instances) {{ ui.info('All WFH days of everyone this month.') }}</div></div>
-        <div class="mini"><div class="v">{{ k.wfh_people }}</div><div class="l">People who worked from home</div></div>
-        <div class="mini {{ 'warn' if k.wfh_over_limit }}"><div class="v">{{ k.wfh_over_limit }} <small class="muted" style="font-size:12px">· {{ k.wfh_over_days|n }} d over</small></div><div class="l">Over the limit {{ ui.info('People with more WFH days than the limit, and how many days above it in total.') }}</div></div></div>
+        {{ ui.mini('WFH days (instances)', k.wfh_days|n, k.wfh_days, pk.wfh_days if pk else none, 'All WFH days of everyone this month.') }}
+        {{ ui.mini('People who worked from home', k.wfh_people, k.wfh_people, pk.wfh_people if pk else none, neutral=True) }}
+        {{ ui.mini('Over the limit', k.wfh_over_limit ~ (' person' if k.wfh_over_limit == 1 else ' people'), k.wfh_over_limit, pk.wfh_over_limit if pk else none, 'People with more WFH days than the limit; below, the days above it in total.', 'warn' if k.wfh_over_limit else '', under=(k.wfh_over_days|n) ~ ' days over') }}</div>
       <div class="chips mb" data-wfh-chips><button class="chip on" type="button" data-wfh="">Everyone <span class="n">{{ m.wfh_people|length }}</span></button><button class="chip" type="button" data-wfh="over">Over the limit <span class="n">{{ k.wfh_over_limit }}</span></button></div>
       <div id="wfh-all">{{ ui.toplist(m.wfh_people, 'days', key, badge='over', badge_unit=' over', empty='Nobody worked from home this month.') }}</div>
       <div id="wfh-over" hidden>{{ ui.toplist(m.wfh_people|selectattr('over')|list, 'days', key, badge='over', badge_unit=' over', empty='Nobody is over the limit.') }}</div>
@@ -125,11 +129,10 @@
 
 <section class="pane" data-pane="hours">
   <div class="minis mb">
-    <div class="mini"><div class="v">{{ k.avg_work_hours }}</div><div class="l">Avg hours per present day {{ ui.info('Average of each person’s average worked hours on days present (metrics groups only).') }}</div></div>
-    <div class="mini good"><div class="v">{{ k.excess_hours|n(0) }}</div><div class="l">Excess hours (sum) {{ ui.info('Sum of actual − required hours for everyone above their required hours.') }}</div></div>
-    <div class="mini bad"><div class="v">{{ k.shortfall_hours|n(0) }}</div><div class="l">Shortfall hours (sum) {{ ui.info('Sum of required − actual hours for everyone below their required hours (before any exemption).') }}</div></div>
-    <div class="mini"><div class="v">{{ k.extra_days|n }}</div><div class="l">Days worked on off-days / holidays {{ ui.info('Weekly offs and holidays on which someone punched or worked hours. Those hours are not counted as actual hours.') }}</div></div>
-    <div class="mini"><div class="v">{{ k.compoff_earned|n }}</div><div class="l">Comp-offs earned {{ ui.info('One comp-off for each weekly off / holiday with at least ' ~ (policy.comp_off_min_hours|n) ~ ' h worked (not on a restricted holiday).') }}</div></div>
+    {{ ui.mini('Avg hours per present day', k.avg_work_hours, k.avg_work_hours, pk.avg_work_hours if pk else none, 'Average of each person’s average worked hours on days present (metrics groups only).', good_up=True, unit=' h') }}
+    {{ ui.mini('Hours shortfall > 20 h', k.shortfall_people ~ (' person' if k.shortfall_people == 1 else ' people'), k.shortfall_people, pk.shortfall_people if pk else none, 'People whose actual hours are more than 20 h below their required hours this month (before any exemption).', 'bad' if k.shortfall_people else '', attrs='data-drill="short20" role="button" tabindex="0"') }}
+    {{ ui.mini('Excess hours > 20 h', k.excess_people ~ (' person' if k.excess_people == 1 else ' people'), k.excess_people, pk.excess_people if pk else none, 'People who worked more than 20 h above their required hours this month.', 'good' if k.excess_people else '', good_up=True, attrs='data-drill="excess20" role="button" tabindex="0"') }}
+    {{ ui.mini('Comp-offs earned', k.compoff_people ~ (' person' if k.compoff_people == 1 else ' people'), k.compoff_people, pk.compoff_people if pk else none, 'People who earned a comp-off: one for each weekly off / holiday with at least ' ~ (policy.comp_off_min_hours|n) ~ ' h worked (not on a restricted holiday). Below, the comp-off days in total.', 'bad' if k.compoff_people else '', under=(k.compoff_earned|n) ~ (' day' if k.compoff_earned == 1 else ' days'), neutral=True, attrs='data-drill="compoff" role="button" tabindex="0"') }}
   </div>
   <div class="grid g3">
     <div class="card"><div class="hd"><h2>Hours shortfall {{ ui.info('Hours below the required hours (days present × hours per day), with the leave deduction it causes.') }}</h2></div><div class="bd" style="padding-top:4px">{{ ui.toplist(m.top.shortfall, 'h', key, neg=True, empty="Nobody is short.") }}</div></div>
@@ -139,7 +142,7 @@
 </section>
 
 <section class="pane" data-pane="groups"><div class="card flush mb"><div class="hd"><h2>By group {{ ui.info('Totals of the month for each employee group (from the employee master). Hours vs required = actual hours ÷ required hours of the group. Use Filter → Group to compare a few.') }}</h2></div><div data-table-for="#grp"></div><div class="bd"><div class="tw"><table id="grp" data-table data-csv="groups-{{ key }}">
-  <thead><tr><th data-key="g" data-type="enum">Group</th><th class="num" data-key="hc" data-type="num">People</th><th class="num" data-key="pres" data-type="num">Present days</th><th class="num" data-key="pl" data-type="num">Leave</th><th class="num" data-key="co" data-type="num">Comp-off</th><th class="num" data-key="ab" data-type="num">Unapplied leave (absence)</th><th class="num" data-key="wfh" data-type="num">WFH</th><th class="num" data-key="late" data-type="num">Late days</th><th class="num" data-key="reg" data-type="num">Regularised</th><th class="num" data-key="ded" data-type="num">Deduction days</th><th class="num" data-key="hvr" data-type="num">Hours vs required</th></tr></thead><tbody>
+  <thead><tr><th data-key="g" data-type="enum">Group</th><th class="num" data-key="hc" data-type="num">People</th><th class="num" data-key="pres" data-type="num">Present days</th><th class="num" data-key="pl" data-type="num">Leave</th><th class="num" data-key="co" data-type="num">Comp-off</th><th class="num" data-key="ab" data-type="num">Unapplied leave (absent)</th><th class="num" data-key="wfh" data-type="num">WFH</th><th class="num" data-key="late" data-type="num">Late days</th><th class="num" data-key="reg" data-type="num">Regularised</th><th class="num" data-key="ded" data-type="num">Deduction days</th><th class="num" data-key="hvr" data-type="num">Hours vs required</th></tr></thead><tbody>
   {% for g in m.groups %}<tr class="click" data-grp="{{ g.group }}" title="See the people of {{ g.group }}"><td class="strong">{{ g.group }}</td><td class="num">{{ g.headcount|n }}</td><td class="num">{{ g.days_present|n }}</td><td class="num">{{ g.pl_days|n }}</td><td class="num">{{ g.cof_days|n }}</td><td class="num">{{ g.unauth_absent_days|n }}</td><td class="num">{{ g.wfh_days|n }}</td><td class="num">{{ g.late_days|n }}</td><td class="num">{{ g.regularised_days|n }}</td><td class="num {{ 'neg' if g.deduction_days }}">{{ g.deduction_days|n }}</td>
   <td class="num" data-v="{{ g.hours_vs_required_pct if g.hours_vs_required_pct is not none else '' }}">{% if g.hours_vs_required_pct is not none %}<span class="{{ 'neg' if g.hours_vs_required_pct < 100 else 'pos' }}">{{ g.hours_vs_required_pct|n(1) }}%</span>{% endif %}</td></tr>{% endfor %}
 </tbody>
@@ -155,14 +158,11 @@
       {% for e in m.people.exits %}<li>{{ ui.person(e.name, e.group, '/employees/' ~ e.emp_no) }}<span class="r muted">{{ e.dol }}</span></li>{% else %}<li class="muted">None recorded.</li>{% endfor %}
       {% for e in m.people.exit_candidates %}<li>{{ ui.person(e.name, 'in last month\'s muster, not this month\'s', '/employees/' ~ e.emp_no) }}<span class="r"><span class="badge b-warn">Possible exit</span></span></li>{% endfor %}</ul></div></div>
     <div class="card"><div class="hd"><h2>Work anniversaries {{ ui.info('Active employees who joined in this calendar month of an earlier year.') }}</h2></div><div class="bd" style="padding-top:4px"><ul class="list">
-      {% for e in m.people.anniversaries %}<li>{{ ui.icon('cake','sm') }} {{ e.name }}<span class="r">{{ e.years }} yr</span></li>{% else %}<li class="muted">None this month.</li>{% endfor %}</ul></div></div>
+      {% for e in m.people.anniversaries %}<li>{{ ui.icon('cake','sm') }} {{ e.name }}<span class="r">{{ e.years }} yr(s)</span></li>{% else %}<li class="muted">None this month.</li>{% endfor %}</ul></div></div>
     <div class="card"><div class="hd"><h2>Tenure of active employees {{ ui.info('Active employees (no date of leaving) by length of service at the end of the month; “unknown” = no date of joining. Click a bar to see who.') }}</h2><span class="sub">{{ m.people.tenure_buckets|sum(attribute='count') }} employees · click a bar</span></div><div class="bd"><div class="chartbox"><canvas id="cTenure"></canvas></div></div></div>
   </div>
 </section>
 
-{% if m.trend|length > 1 %}
-<section class="pane" data-pane="trend"><div class="card"><div class="hd"><h2>Last {{ m.trend|length }} months {{ ui.info('Monthly totals: leave deduction days, late days, WFH days and unapplied leave (absence) days. Click a month to open its overview.') }}</h2><span class="sub">click a month to open it</span></div><div class="bd"><div class="chartbox" style="height:320px"><canvas id="cTrend"></canvas></div></div></div></section>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -185,15 +185,30 @@ document.querySelectorAll('#grp tr[data-grp]').forEach((tr) => tr.addEventListen
     rows: M.person_rows.filter((r) => ((M.who[r[0]] || [])[1] || '(not set)') === g),
     cols: [{label: 'Present', dec: 1}, {label: 'Leave', dec: 1}, {label: 'Comp-off', dec: 1}, {label: 'Unapplied leave', dec: 1}, {label: 'WFH', dec: 1},
            {label: 'Late days', dec: 0}, {label: 'Regularised', dec: 0}, {label: 'Deduction', dec: 2}]}); }));
+// figures that open the people behind them
+const LISTS = {
+  joiners: ['New joinees', () => M.people.joiners.map((e) => [e.emp_no, e.doj]), {label: 'Joined', text: true}],
+  exits: ['Left employees', () => M.people.exits.map((e) => [e.emp_no, e.dol]), {label: 'Left', text: true}],
+  present_all: ['Present all days', () => M.present_all, {label: 'Days present', dec: 1}],
+  absent: ['Unapplied leave (absent)', () => M.top.absent.map((x) => [x.emp_no, x.value]), {label: 'Days', dec: 1}],
+  late_sitting: ['Late sitting > 10 days', () => M.top.late_sitting.filter((x) => x.value > 10).map((x) => [x.emp_no, x.value]), {label: 'Days', dec: 0}],
+  short20: ['Hours shortfall > 20 h', () => M.top.shortfall.filter((x) => x.value > 20).map((x) => [x.emp_no, x.value]), {label: 'Hours short', dec: 2}],
+  excess20: ['Excess hours > 20 h', () => M.top.excess_hours.filter((x) => x.value > 20).map((x) => [x.emp_no, x.value]), {label: 'Hours over', dec: 2}],
+  compoff: ['Comp-offs earned', () => M.top.compoff_earned.map((x) => [x.emp_no, x.value]), {label: 'Comp-offs', dec: 0}],
+};
+document.querySelectorAll('.mini[data-drill]').forEach((el) => { const L = LISTS[el.dataset.drill]; if (!L) return;
+  const go = () => { const rows = L[1](); for (const r of rows) if (!M.who[r[0]]) { const e = [...M.people.joiners, ...M.people.exits].find((x) => x.emp_no === r[0]); if (e) M.who[r[0]] = [e.name, e.group || '']; }
+    drill(L[0], M.period.label, rows, L[2]); };
+  el.addEventListener('click', go); el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }); });
 // WFH: everyone / over the limit
 document.querySelectorAll('[data-wfh-chips] .chip').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('[data-wfh-chips] .chip').forEach((x) => x.classList.toggle('on', x === b));
   document.getElementById('wfh-all').hidden = b.dataset.wfh === 'over'; document.getElementById('wfh-over').hidden = b.dataset.wfh !== 'over'; }));
-const SERIES = ['present', 'leave', 'absent', 'wfh'], SLABEL = {present: 'Present', leave: 'On leave', absent: 'Unapplied leave (absence)', wfh: 'Working from home'};
-HSCO.chart('cDaily',{type:'bar',dates:M.daily.map(x=>x.date),total:true,data:{labels:M.daily.map(x=>(+x.date.slice(8))+' '+x.wd[0]),datasets:[
+const SERIES = ['present', 'leave', 'absent', 'wfh'], SLABEL = {present: 'Present', leave: 'On leave', absent: 'Unapplied leave (absent)', wfh: 'Working from home'};
+HSCO.chart('cDaily',{type:'bar',dates:M.daily.map(x=>x.date),total:true,xLines:M.daily.map(x=>[String(+x.date.slice(8)), x.wd[0]]),data:{labels:M.daily.map(x=>(+x.date.slice(8))+' '+x.wd[0]),datasets:[
  {label:'Present',data:M.daily.map(x=>x.present||0),backgroundColor:C.brand,stack:'a'},
  {label:'Leave',data:M.daily.map(x=>(x.leave||0)),backgroundColor:C.ok,stack:'a'},
- {label:'Unapplied leave (absence)',data:M.daily.map(x=>(x.absent||0)),backgroundColor:C.bad,stack:'a'},
+ {label:'Unapplied leave (absent)',data:M.daily.map(x=>(x.absent||0)),backgroundColor:C.bad,stack:'a'},
  {label:'WFH',data:M.daily.map(x=>x.wfh||0),type:'line',borderColor:C.violet,backgroundColor:C.violet,pointRadius:2,tension:.3}]},
  options:{scales:{x:{stacked:true},y:{stacked:true}}},
  drill:(i, ds) => { const d = M.daily[i], s = SERIES[ds]; drill(SLABEL[s] + ' — ' + HSCO.dayLabel(d.date), 'half days count ½', (M.drill.daily[d.date] || {})[s] || [], {label: 'Days', dec: 1}); }});
@@ -204,9 +219,5 @@ HSCO.chart('cLateWd',{type:'bar',share:true,data:{labels:M.late_by_weekday.map(x
  drill:(i) => { const w = M.late_by_weekday[i].wd; drill('Late on ' + w + 's', 'days late (more than the grace period)', M.drill.late_wd[w] || [], {label: 'Days late', dec: 0}); }});
 HSCO.chart('cTenure',{type:'bar',share:true,data:{labels:M.people.tenure_buckets.map(x=>x.bucket),datasets:[{label:'Employees',data:M.people.tenure_buckets.map(x=>x.count),backgroundColor:C.brand}]},options:{indexAxis:'y',plugins:{legend:{display:false}}},
  drill:(i) => { const b = M.people.tenure_buckets[i].bucket; HSCO.drill({title: 'Tenure ' + b, sub: 'active employees', rows: M.drill.tenure[b] || [], who: M.who, href: (e) => '/employees/' + e, cols: [{label: 'Years', dec: 1, sum: false}], csv: 'tenure-' + KEY}); }});
-if(M.trend.length>1){HSCO.chart('cTrend',{type:'line',data:{labels:M.trend.map(x=>x.label),datasets:[
- {label:'Deduction days',data:M.trend.map(x=>x.deduction_days),borderColor:C.bad,backgroundColor:C.bad},{label:'Late days',data:M.trend.map(x=>x.late_days),borderColor:C.warn,backgroundColor:C.warn},
- {label:'WFH days',data:M.trend.map(x=>x.wfh_days),borderColor:C.violet,backgroundColor:C.violet},{label:'Unapplied leave (absence) days',data:M.trend.map(x=>x.absent_days),borderColor:C.brand,backgroundColor:C.brand}]},options:{elements:{line:{tension:.3}}},
- drill:(i) => { location.href = '/?period=' + M.trend[i].key; }});}
 </script>
 {% endblock %}

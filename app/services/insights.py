@@ -27,7 +27,7 @@ WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 # unapplied leave (+5) and hours (+5)
 WEIGHTS = {"absence": 30, "punctuality": 20, "utilisation": 25, "regularisation": 15, "wfh": 10}
 ABSENCE_FULL_DAYS = 10        # unplanned absence days in 12 months that give the full absence part of the score
-PART_LABELS = {"absence": "Unapplied leave (absence), 12 months", "punctuality": "Late arrivals",
+PART_LABELS = {"absence": "Unapplied leave (absent), 12 months", "punctuality": "Late arrivals",
                "utilisation": "Hours below required", "regularisation": "Regularisations", "wfh": "WFH over the limit"}
 
 
@@ -249,6 +249,7 @@ def _insights(db: Session, period: Period, with_matrix: bool = True) -> dict:
         "exits_12m": len(exits12), "joiners_12m": len(joins12),
         "avg_tenure_years": round(sum(tenures) / len(tenures), 1) if tenures else None,
         "median_in": _hm(median(ins)) if ins else "",
+        "median_in_min": round(median(ins), 1) if ins else None,
         "attention_high": sum(1 for x in rows if x["attention"] >= 50),
         "fy_label": f"FY {fy}-{str(fy + 1)[-2:]}",
     }
@@ -345,7 +346,7 @@ def matrix(res: list[MonthResult]) -> dict:
             for c in cells)})
     return {"dates": dates, "weekdays": [WD[date.fromisoformat(d).weekday()] for d in dates], "rows": out,
             "legend": [("P", "Present", "p"), ("T", "Late", "t"), ("W", "WFH", "w"), ("½", "Half leave", "h"),
-                       ("L", "Leave", "l"), ("C", "Comp-off", "c"), ("A", "Unapplied leave (absence)", "a"),
+                       ("L", "Leave", "l"), ("C", "Comp-off", "c"), ("A", "Unapplied leave (absent)", "a"),
                        ("O", "Weekly off", "o"), ("H", "Holiday", "y"), ("E", "Worked off-day", "e")]}
 
 
@@ -406,7 +407,7 @@ def insight_trend(db: Session, period: Period, hist: Optional[list] = None, pids
 
 _SC_KEYS = [("attendance_pct", "Attendance", "%", True), ("punctuality_pct", "On-time arrivals", "%", True),
             ("utilisation_pct", "Hours vs required", "%", True), ("avg_hours", "Average day (h)", "", True),
-            ("absence_pct", "Unapplied leave (absence)", "%", False), ("absence_12m_days", "Unapplied leave days (12 m)", "", False),
+            ("absence_pct", "Unapplied leave (absent)", "%", False), ("absence_12m_days", "Unapplied leave days (12 m)", "", False),
             ("wfh_pct", "WFH share of days", "%", False), ("regularisation_pct", "Regularised days", "%", False),
             ("long_days", "Long days (≥ 2 h over)", "", None), ("attention", "Attention score", "", False)]
 

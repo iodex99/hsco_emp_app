@@ -330,6 +330,21 @@
   const WDN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   H.dayLabel = (iso) => { const t = new Date(iso + "T00:00:00"); return `${WDN[t.getDay()]} ${t.getDate()} ${MON[t.getMonth()]} ${t.getFullYear()}`; };
   H.charts = {};
+  H.twoLineX = {
+    id: "twoLineX",
+    afterDraw(chart, _args, opts) {
+      const sc = chart.scales.x, lines = opts && opts.lines; if (!sc || !lines) return;
+      const ctx = chart.ctx, fam = (Chart.defaults.font && Chart.defaults.font.family) || "sans-serif";
+      ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "top";
+      sc.ticks.forEach((t, i) => {
+        const l = lines[t.value !== undefined ? t.value : i]; if (!l) return;
+        const x = sc.getPixelForTick(i), y = sc.top + 6;
+        ctx.font = `600 11px ${fam}`; ctx.fillStyle = opts.top; ctx.fillText(l[0], x, y);
+        ctx.font = `500 10px ${fam}`; ctx.fillStyle = opts.bottom; ctx.fillText(l[1], x, y + 13);
+      });
+      ctx.restore();
+    },
+  };
   // Extra options (v1.13): cfg.dates = ISO dates of the labels (tooltip title "Thu 9 Oct 2026"); cfg.total = stacked
   // tooltip footer with the total; cfg.share = single series: "n (x % of all)"; cfg.drill = (index, datasetIndex) =>
   // opens the people behind that bar / slice (pointer cursor, "Click a bar" hint is the template's job).
@@ -358,7 +373,14 @@
       if (!cb.afterFooter) cb.afterFooter = () => "Click to see who";
       el.closest(".chartbox") && el.closest(".chartbox").classList.add("clickable");
     }
-    delete cfg.dates; delete cfg.total; delete cfg.share; delete cfg.drill;
+    // two-line x labels drawn by hand: the date in red, the weekday initial in grey below (owner, v1.15)
+    if (cfg.xLines) {
+      const xs = (o.scales.x = o.scales.x || {});
+      xs.ticks = Object.assign({}, xs.ticks, { callback: () => ["", ""], autoSkip: false, maxRotation: 0 });
+      o.plugins.twoLineX = { lines: cfg.xLines, top: "#d92d20", bottom: "#98a2b3" };
+      cfg.plugins = (cfg.plugins || []).concat([H.twoLineX]);
+    }
+    delete cfg.dates; delete cfg.total; delete cfg.share; delete cfg.drill; delete cfg.xLines;
     const ch = new Chart(el, cfg); H.charts[id] = ch; return ch;
   };
 

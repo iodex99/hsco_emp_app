@@ -18,7 +18,7 @@ FLAG_LABELS = {
     "NO_ATTENDANCE": "No attendance all month",
     "SHORTFALL_DEDUCTION": "Hours shortfall → leave deduction",   # hours part only (v1.6.7)
     "SHORTFALL_EXEMPT": "Shortfall but exempt",
-    "UNAUTHORISED_ABSENCE": "Unapplied leave (absence)",
+    "UNAUTHORISED_ABSENCE": "Unapplied leave (absent)",
     "WFH_OVER_LIMIT": "WFH above monthly limit",
     "PERSISTENT_LATE": "Often more than 1 h late",
     "PERSISTENT_REGULARISATION": "Persistent regularisation",
@@ -42,6 +42,8 @@ FLAG_LABELS = {
     "COMPOFF_OVERDRAWN": "Comp-off overdrawn",
 }
 SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "info": 3}
+LATE_SITTING_PEOPLE_DAYS = 10     # Overview: people late-sitting on more than this many days (owner, v1.15)
+HOURS_PEOPLE_LIMIT = 20           # Overview: people more than this many hours short / over (owner, v1.15)
 # flags no longer raised (owner, v1.13: LOP removed; "missing punches" and "present without any punch" removed
 # everywhere) — months finalised before still carry them in their stored results: never shown or counted
 RETIRED_FLAGS = frozenset({"LOP", "MISSING_PUNCHES", "PRESENT_WITHOUT_PUNCH"})
@@ -112,14 +114,25 @@ def compute_kpis(db: Session, period: Period, policy=None, res=None, emps=None) 
         "late_sitting_days": sum(d.get("late_sitting_days", 0) for d in behaviour),
         "no_attendance": sum(1 for r in res if any(f["code"] == "NO_ATTENDANCE" for f in r.flags)),
     }
+    # v1.15 (owner): figures shown on the Overview with their comparison with last month
+    def _working(d):
+        return (d.get("total_week_days") or 0) - (d.get("holidays") or 0)
+    kpis["present_all_days"] = sum(1 for d in D if _working(d) > 0 and (d.get("days_present") or 0) >= _working(d) - 1e-9)
+    kpis["late_sitting_people"] = sum(1 for d in behaviour if (d.get("late_sitting_days") or 0) > LATE_SITTING_PEOPLE_DAYS)
+    kpis["shortfall_people"] = sum(1 for d in D if (d.get("balance_hours") or 0) < -HOURS_PEOPLE_LIMIT)
+    kpis["excess_people"] = sum(1 for d in D if (d.get("balance_hours") or 0) > HOURS_PEOPLE_LIMIT)
+    kpis["compoff_people"] = sum(1 for d in D if (d.get("compoff_earned") or 0) > 0)
     present_days = sum(d.get("days_present", 0) for d in D)
+    kpis["present_days"] = round(present_days, 1)
     kpis["attendance_rate"] = round(100 * present_days / max(1, sum(d.get("total_week_days", 0) - d.get("holidays", 0) for d in D)), 1)
     hrs = [d["avg_work_hours"] for d in behaviour if d.get("avg_work_hours")]
     kpis["avg_work_hours"] = round(sum(hrs) / len(hrs), 2) if hrs else 0
     ins = [d["avg_in_min"] for d in behaviour if d.get("avg_in_min")]
     kpis["avg_in_time"] = hm(sum(ins) / len(ins)) if ins else ""
+    kpis["avg_in_min"] = round(sum(ins) / len(ins), 1) if ins else None
     outs = [d["avg_out_min"] for d in behaviour if d.get("avg_out_min")]
     kpis["avg_out_time"] = hm(sum(outs) / len(outs)) if outs else ""
+    kpis["avg_out_min"] = round(sum(outs) / len(outs), 1) if outs else None
 
     return kpis
 
@@ -241,6 +254,9 @@ def period_metrics(db: Session, period: Period) -> dict:
         "people": {k: v for k, v in people.items() if k != "tenure_who"},
         "top": top_lists(D, policy),
         "wfh_people": wfh_people,
+        "present_all": [[d["emp_no"], d.get("days_present") or 0] for d in D
+                        if (d.get("total_week_days") or 0) - (d.get("holidays") or 0) > 0
+                        and (d.get("days_present") or 0) >= (d.get("total_week_days") or 0) - (d.get("holidays") or 0) - 1e-9],
         "trend": trend(db),
         "who": who,
         # per person, for "who is in this group" (By group rows): present, leave, comp-off, unapplied leave, WFH, late

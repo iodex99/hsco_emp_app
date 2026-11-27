@@ -244,3 +244,14 @@ separate), else the 3 months before, else the firm's — Sundays and the Saturda
 **Hours per day** = the person's **minimum-hours policy** (Rules & calendars → Minimum hours; `services/hours_policies.py`)
 → their own hours (employee page) → their category's → the firm's (`hours_per_day`, 8.5). Required hours = days present
 × that value; the shortfall, deduction and every report follow.
+
+## Locking a month (v1.15 wording; was "finalise / re-open")
+HR locks a month once the MIS is done (*Lock month* on the Overview or the payroll sheet). A locked month: no imports,
+corrections, recalculation or upload deletion; its figures never change (rule changes skip it). An admin can unlock
+it with a reason (audit-logged). Exports of a locked month say "(locked)" in the titles and "- Locked" in the file
+name; an open month's exports carry no status word (no "DRAFT"). The database still stores `DRAFT` / `FINALISED`.
+
+## Thresholds for the people counts (v1.15)
+- Late sitting: more than **10** late-sitting days in the month.
+- Hours shortfall / excess: monthly balance below **−20 h** / above **+20 h** (before any exemption).
+- Present all days: days present ≥ working days (week days − holidays), working days > 0.

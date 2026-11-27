@@ -80,6 +80,7 @@ def save(data: bytes, filename: str = "") -> str:
     d = _dir()
     for old in d.glob("logo.*"):
         old.unlink()
+    (d / RASTER_NAME).unlink(missing_ok=True)       # the PNG copy is made again from the new logo
     (d / f"logo.{kind}").write_bytes(content)
     return kind
 
@@ -89,7 +90,51 @@ def remove() -> bool:
     for old in _dir().glob("logo.*"):
         old.unlink()
         found = True
+    (_dir() / RASTER_NAME).unlink(missing_ok=True)
     return found
+
+
+# ----------------------------------------------------------------------------- PNG copy for the Excel workbooks (v1.15)
+# Excel needs a raster image; the server has no image library, so the browser draws the logo (SVG / WebP / JPEG) on
+# a canvas once and sends the PNG (base.html). A PNG logo is used as it is.
+RASTER_NAME = "raster.png"
+MAX_RASTER = 2 * 1024 * 1024
+
+
+def png_size(data: bytes) -> Optional[tuple[int, int]]:
+    """(width, height) of a PNG, or None if it is not one."""
+    if len(data) < 24 or not data.startswith(b"\x89PNG\r\n\x1a\n") or data[12:16] != b"IHDR":
+        return None
+    w, h = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    return (w, h) if 0 < w <= 8000 and 0 < h <= 8000 else None
+
+
+def save_raster(data: bytes) -> tuple[int, int]:
+    if not _path():
+        raise ValueError("no logo")
+    if len(data) > MAX_RASTER:
+        raise ValueError("too large")
+    size = png_size(data)
+    if not size:
+        raise ValueError("not a PNG image")
+    (_dir() / RASTER_NAME).write_bytes(data)
+    return size
+
+
+def png() -> Optional[tuple[bytes, int, int]]:
+    """The logo as PNG for the Excel workbooks: (bytes, width, height), or None (no logo / no PNG copy yet)."""
+    p = _path()
+    if not p:
+        return None
+    for f in ((p,) if p.suffix == ".png" else ()) + (_dir() / RASTER_NAME,):
+        try:
+            data = f.read_bytes()
+        except OSError:
+            continue
+        size = png_size(data)
+        if size:
+            return data, size[0], size[1]
+    return None
 
 
 def _path() -> Optional[Path]:
@@ -104,7 +149,8 @@ def info() -> dict:
     p = _path()
     if not p:
         return {"logo": False, "v": 0, "kind": ""}
-    return {"logo": True, "v": int(p.stat().st_mtime), "kind": p.suffix[1:]}
+    return {"logo": True, "v": int(p.stat().st_mtime), "kind": p.suffix[1:],
+            "raster": p.suffix == ".png" or (_dir() / RASTER_NAME).exists()}
 
 
 def logo() -> Optional[tuple[bytes, str]]:

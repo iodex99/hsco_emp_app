@@ -23,8 +23,8 @@
 {%- endmacro %}
 
 {% macro status_badge(p) -%}
-{% if p.status == 'FINALISED' %}<span class="badge b-ok">{{ icon('lock','sm') }} Finalised</span>
-{% else %}<span class="badge b-info"><span class="d"></span>Draft</span>{% endif %}
+{% if p.status == 'FINALISED' %}<span class="badge b-ok" title="Locked{{ (' by ' ~ p.finalised_by) if p.finalised_by }} — imports and corrections are closed">{{ icon('lock','sm') }} Locked</span>
+{% else %}<span class="badge b-info" title="Open — imports and corrections allowed; lock it once the MIS is done"><span class="d"></span>Open</span>{% endif %}
 {%- endmacro %}
 
 {# delta: positive change is good when good_up, bad otherwise #}
@@ -51,12 +51,32 @@
 <span class="info-i" tabindex="0" role="button" aria-label="About: {{ text }}" data-tip="{{ text }}">i</span>
 {%- endmacro %}
 
-{% macro kpi(label, value, ic="", tone="", href=None, foot="", sub="", tip="") -%}
+{% macro kpi(label, value, ic="", tone="", href=None, foot="", sub="", tip="", cmp="") -%}
 {% if href %}<a class="kpi {{ tone }}" href="{{ href }}">{% else %}<div class="kpi {{ tone }}">{% endif %}
   <div class="l">{% if ic %}{{ icon(ic, 'sm') }}{% endif %}{{ label }}{% if tip %}{{ info(tip) }}{% endif %}</div>
   <div class="v">{{ value }}{% if sub %} <small>{{ sub }}</small>{% endif %}</div>
   {% if foot %}<div class="f">{{ foot }}</div>{% endif %}
+  {% if cmp %}<div class="f cmp">{{ cmp }}</div>{% endif %}
 {% if href %}</a>{% else %}</div>{% endif %}
+{%- endmacro %}
+
+{# Comparison with last month (v1.15, owner: "in all the reports there should be comparison with last month"):
+   cur / prev numbers; good_up = a rise is good. Nothing when there is no earlier month. #}
+{% macro vs(cur, prev, good_up=False, unit="", neutral=False) -%}
+{%- if prev is not none and cur is not none -%}
+{%- set d = (cur - prev) -%}
+{%- if d|abs < 0.005 -%}<span class="delta flat">= same as last month</span>
+{%- else -%}{%- set up = d > 0 -%}
+<span class="delta {{ ('up' if up else 'down') ~ ('' if neutral else ('-good' if (up == good_up) else '-bad')) }}">{{ '▲' if up else '▼' }} {{ d|abs|n }}{{ unit }}</span><span class="muted">vs last month ({{ prev|n }}{{ unit }})</span>
+{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{# Small figure with its explanation and comparison. value = what is shown; cur / prev = numbers compared;
+   under = a grey line under the value (e.g. "57 days"); attrs = extra attributes (e.g. data-drill). #}
+{% macro mini(label, value, cur=none, prev=none, tip="", tone="", good_up=False, unit="", under="", attrs="", neutral=False) -%}
+<div class="mini {{ tone }}"{{ (' ' ~ attrs)|safe if attrs }}><div class="v">{{ value }}</div>{% if under %}<div class="u">{{ under }}</div>{% endif %}<div class="l">{{ label }}{% if tip %}{{ info(tip) }}{% endif %}</div>
+{%- if prev is not none and cur is not none %}<div class="f">{{ vs(cur, prev, good_up, unit, neutral) }}</div>{% endif %}</div>
 {%- endmacro %}
 
 {% macro empty(title, text="", ic="sparkles") -%}

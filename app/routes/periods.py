@@ -14,7 +14,7 @@ from app.models import (
 )
 from app.services import metrics as MX
 from app.services.audit import audit
-from app.services.compute import compute_period
+from app.services.compute import previous_period, compute_period
 from app.services import insights as INS
 from app.services.settings import get_policy
 from app.web import Ctx, admin, hr, redirect, render, viewer
@@ -44,7 +44,7 @@ def get_p(c: Ctx, key: str) -> Period:
 
 def _editable(p: Period):
     if p.status == "FINALISED":
-        raise HTTPException(409, f"{p.label} is finalised. An admin must re-open it before changes.")
+        raise HTTPException(409, f"{p.label} is locked. An admin must unlock it before changes.")
 
 
 @router.get("/periods")
@@ -70,7 +70,9 @@ def period_results(key: str, f: str = "", c: Ctx = Depends(viewer)):
         for x in MX.live_flags(r.flags):            # (retired codes of older finalised months never shown)
             flag_emps.setdefault(x["code"], []).append(r.emp_no)
     from app.services.hours_policies import all_policies
-    return render(c, "period.html", period=p, rows=rows, policy=policy, request_f=f, flag_emps=flag_emps,
+    prev = previous_period(c.db, p)
+    prev_kpis = MX.compute_kpis(c.db, prev, policy) if prev and prev.computed_at else None
+    return render(c, "period.html", period=p, rows=rows, policy=policy, request_f=f, flag_emps=flag_emps, prev_kpis=prev_kpis,
                   flag_labels=MX.FLAG_LABELS, hp_items=all_policies(c.db))
 
 
@@ -84,7 +86,7 @@ def recompute(key: str, c: Ctx = Depends(hr)):
 
 
 @router.post("/periods/{key}/finalise")
-def finalise(key: str, c: Ctx = Depends(hr)):
+def finalise(key: str, back: str = Form(""), c: Ctx = Depends(hr)):
     p = get_p(c, key)
     _editable(p)
     compute_period(c.db, p)
@@ -92,17 +94,18 @@ def finalise(key: str, c: Ctx = Depends(hr)):
     p.finalised_at = datetime.now()
     p.finalised_by = c.user.username
     audit(c.db, c.user, "period.finalise", "period", p.key, ip=c.ip)
-    return redirect(f"/periods/{key}", f"{p.label} finalised and locked for payroll.")
+    to = back if back.startswith("/") and not back.startswith(("//", "/\\")) else f"/periods/{key}"
+    return redirect(to, f"{p.label} locked — imports and corrections are closed until an admin unlocks it.")
 
 
 @router.post("/periods/{key}/reopen")
 def reopen(key: str, reason: str = Form(...), c: Ctx = Depends(admin)):
     p = get_p(c, key)
     if not reason.strip():
-        return redirect(f"/periods/{key}", "A reason is required to re-open.")
+        return redirect(f"/periods/{key}", "A reason is required to unlock the month.")
     p.status = "DRAFT"
     audit(c.db, c.user, "period.reopen", "period", p.key, {"reason": reason}, c.ip)
-    return redirect(f"/periods/{key}", f"{p.label} re-opened.")
+    return redirect(f"/periods/{key}", f"{p.label} unlocked — imports and corrections are open again.")
 
 
 @router.post("/periods/{key}/delete")
@@ -113,7 +116,7 @@ def delete_month(key: str, reason: str = Form(""), confirm: str = Form(""), c: C
     from sqlalchemy import delete as sql_delete
     p = get_p(c, key)
     if p.status == "FINALISED":
-        return redirect(f"/periods/{key}", "A finalised month can't be deleted. Re-open it first.")
+        return redirect(f"/periods/{key}", "A locked month can't be deleted. Unlock it first.")
     if not reason.strip() or confirm.strip().lower() != p.label.lower():
         return redirect(f"/periods/{key}", f"To delete, give a reason and type the month name exactly ({p.label}).")
     label = p.label
@@ -154,7 +157,8 @@ def drill(key: str, emp_no: str, c: Ctx = Depends(viewer)):
                   day_types=[WORKDAY, WEEKLY_OFF, HOLIDAY], policy=get_policy(c.db),
                   status_codes=sorted(get_policy(c.db).status_map.keys()),
                   status_meaning=get_policy(c.db).status_map,
-                  sc=INS.employee_scorecard(INS.insights(c.db, p, with_matrix=False), emp_no), retired=MX.RETIRED_FLAGS)
+                  sc=INS.employee_scorecard(INS.insights(c.db, p, with_matrix=False), emp_no), retired=MX.RETIRED_FLAGS,
+                  prev_key=f"{p.year - (p.month == 1)}-{(p.month - 2) % 12 + 1:02d}")
 
 
 @router.post("/periods/{key}/employee/{emp_no}/day-override")

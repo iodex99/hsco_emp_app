@@ -48,8 +48,8 @@ def status(db: Session, period: Period) -> dict:
          "progress": (done_reviews / len(flags)) if flags else 1},
         {"key": "correct", "title": "Corrections", "done": True, "optional": True,
          "detail": f"{n_ovr} correction{'s' if n_ovr != 1 else ''} recorded", "url": f"/periods/{period.key}"},
-        {"key": "finalise", "title": "Finalise for payroll", "done": final,
-         "detail": "Locked" if final else "Not finalised yet", "url": f"/periods/{period.key}"},
+        {"key": "finalise", "title": "Lock month", "done": final,
+         "detail": "Locked" if final else "Not locked yet — after the MIS", "url": f"/periods/{period.key}"},
         {"key": "share", "title": "Download & share", "done": final, "detail": "Excel workbook",
          "url": "/exports"},
     ]

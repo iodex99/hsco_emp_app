@@ -28,7 +28,7 @@ TYPES = [
     ("very_late", "Late > 1 h", "b-bad", "time"),      # lateness under an hour: Insights / Overview, not here
     ("early", "Early exit", "b-warn", "time"),
     ("short", "Short day", "b-warn", "time"),
-    ("absent", "Unapplied leave (absence)", "b-bad", "att"),
+    ("absent", "Unapplied leave (absent)", "b-bad", "att"),
     ("offday_work", "Worked on a day off", "b-grey", "att"),
 ]
 LABELS = {k: lbl for k, lbl, _c, _g in TYPES}

@@ -278,7 +278,7 @@ def test_finalise_locks_and_reopen(loaded):
     c = loaded
     csrf = csrf_of(c, "/periods/2026-10")
     r = c.post("/periods/2026-10/finalise", data={"csrf": csrf}, follow_redirects=True)
-    assert "finalised" in r.text.lower()
+    assert "locked" in r.text.lower() and "Unlock month" in r.text and "Lock month" not in r.text
     r = c.post("/periods/2026-10/employee/T001/month-override",
                data={"csrf": csrf, "field": "remark", "value": "x", "reason": "y"})
     assert r.status_code == 409
@@ -288,9 +288,9 @@ def test_finalise_locks_and_reopen(loaded):
     import tempfile, pathlib
     fx = write_all(pathlib.Path(tempfile.mkdtemp()))
     r = _upload(c, [fx["muster"]])
-    assert "finalised" in r.text.lower()
+    assert "is locked" in r.text.lower()
     r = c.post("/periods/2026-10/reopen", data={"csrf": csrf, "reason": "Late regularisation approved"}, follow_redirects=True)
-    assert "re-opened" in r.text
+    assert "unlocked" in r.text and "Lock month" in r.text and "by admin on" not in r.text
     assert "period.reopen" in c.get("/audit").text
 
 
@@ -1705,14 +1705,14 @@ def test_waive_hours_deduction_from_the_employee_page(loaded):
         db.scalar(select(Period).where(Period.year == 2026, Period.month == 10)).status = "FINALISED"
     r = c.post("/flags/waive-shortfall", data={"csrf": csrf, "period": "2026-10", "emp_no": "T002",
                                                "reason": "x"}, follow_redirects=True)
-    assert "finalised" in r.text
+    assert "locked" in r.text
 
 
 def test_day_drawer_explains_codes_and_warns_about_fixed_figures(loaded):
     c = loaded
     base = "/periods/2026-10/employee/T001"
     page = c.get(base).text
-    assert '<optgroup label="Leave">' in page and "— unapplied leave (absence)</option>" in page and "Loss of pay" not in page
+    assert '<optgroup label="Leave">' in page and "— unapplied leave (absent)</option>" in page and "Loss of pay" not in page
     csrf = csrf_of(c, base)
     c.post(base + "/month-override", data={"csrf": csrf, "field": "absent_days", "value": "0", "reason": "Fixed by HR"})
     r = c.post(base + "/day-override", data={"csrf": csrf, "day": "2026-10-05", "s1": "A", "s2": "A",
@@ -1920,7 +1920,7 @@ def test_delete_upload_refused_for_a_finalised_month(loaded):
         db.scalar(select(Period).where(Period.year == 2026, Period.month == 10)).status = "FINALISED"
     assert f'data-del="{bid}"' not in c.get("/imports").text
     r = c.post(f"/imports/{bid}/delete", data={"csrf": csrf_of(c, "/imports"), "reason": "x"}, follow_redirects=True)
-    assert "finalised" in r.text and _count(MusterRow) > 0
+    assert "locked" in r.text and _count(MusterRow) > 0
 
 
 def test_migration_links_older_rows_to_their_latest_upload(data_dir):
@@ -2009,7 +2009,7 @@ def test_overview_click_through_totals_info_and_pdf(loaded):
     assert m["drill"]["tenure"] and all(rows for rows in m["drill"]["tenure"].values())
     html = c.get("/?period=2026-10").text
     assert 'data-flag="UNAUTHORISED_ABSENCE"' in html and 'href="/periods/2026-10?f=fl-UNAUTHORISED_ABSENCE"' in html
-    assert "Unapplied leave (absence)" in html and "Unauthorised" not in html and "Missing punch" not in html
+    assert "Unapplied leave (absent)" in html and "Unauthorised" not in html and "Missing punch" not in html
     assert html.count('class="info-i"') >= 25 and 'data-pdf="Overview October 2026"' in html
     assert 'data-pdf-full="2026-10"' in html and 'class="pdf-menu"' in html
     assert "Attendance rate" not in html.split('class="kpis k3"')[1].split("</div>\n\n")[0]       # card removed (owner)
@@ -2037,7 +2037,7 @@ def test_excel_without_lop_missing_punches_or_categories(loaded):
     assert "Categories Compared" not in wb.sheetnames
     bs = [r for r in wb["Board Summary"].iter_rows(values_only=True)]
     assert any(r[0] == "Total" for r in bs) and not any(r[0] == "By category" for r in bs)
-    assert any(r[0] == "Unapplied leave (absence) days" for r in bs)
+    assert any(r[0] == "Unapplied leave (absent) days" for r in bs)
 
 
 def test_pages_may_be_framed_only_by_the_app_itself(loaded):
@@ -2155,7 +2155,7 @@ def test_app_is_called_attendance_mis_and_so_are_its_files(loaded):
     assert "Attendance MIS" in c.get("/login").text
     login_full(c)
     r = c.get("/exports/2026-10.xlsx")
-    assert 'filename="Attendance MIS - October 2026 - DRAFT.xlsx"' in r.headers["content-disposition"]
+    assert 'filename="Attendance MIS - October 2026.xlsx"' in r.headers["content-disposition"]       # no "Draft" (v1.15)
     wb = load_workbook(io.BytesIO(r.content))
     assert wb.properties.title == "Attendance MIS — October 2026"
     assert str(wb["Payroll Leave Sheet"]["A3"].value).startswith("Attendance MIS — leave calculation, October 2026")
@@ -2164,3 +2164,136 @@ def test_app_is_called_attendance_mis_and_so_are_its_files(loaded):
         assert f'filename="Attendance MIS - {nice} template.xlsx"' in cd
     js = c.get("/static/table.js").text + c.get("/static/pdf.js").text
     assert "`Attendance MIS - ${this.t.dataset.csv" in js and "`Attendance MIS - ${clean(P.title)" in js and "hsco-${" not in js
+
+
+# ---------------------------------------------------------------------------------------------- v1.15 (owner, 27-Nov)
+def _locked_september(change=None):
+    """A locked September made from October's results (optionally changed per person), so the pages have a last
+    month to compare with."""
+    import copy
+    from datetime import datetime
+    from app.db import session_scope
+    from app.models import MonthResult, Period
+    with session_scope() as db:
+        octo = db.scalar(select(Period).where(Period.year == 2026, Period.month == 10))
+        sep = Period(year=2026, month=9, status="FINALISED", computed_at=datetime(2026, 10, 2),
+                     finalised_at=datetime(2026, 10, 3), finalised_by="hr1")
+        db.add(sep)
+        db.flush()
+        for r in db.scalars(select(MonthResult).where(MonthResult.period_id == octo.id)).all():
+            d = copy.deepcopy(r.data)
+            if change:
+                change(d)
+            db.add(MonthResult(period_id=sep.id, emp_no=r.emp_no, name=r.name, group=r.group, location=r.location,
+                               category=r.category, deduction_days=d.get("deduction_days", 0),
+                               balance_hours=d.get("balance_hours", 0), flag_count=r.flag_count, data=d,
+                               flags=list(r.flags), days=copy.deepcopy(r.days)))
+
+
+def test_overview_glance_strip_first_with_last_month(loaded):
+    """Owner: head count, joinees, leavers, attendance, present all days and unapplied leave first, each against last
+    month; unapplied leave as people (red) with the days in grey; Trend tab and off-day / hours-sum tiles gone;
+    people counts for late sitting (> 10 days), hours shortfall / excess (> 20 h) and comp-offs."""
+    from app.db import session_scope
+    from app.models import Period
+    from app.services import metrics as MX
+    c = loaded
+
+    def worse(d):
+        d["unauth_absent_days"] = (d.get("unauth_absent_days") or 0) + 1
+    _locked_september(worse)
+    html = c.get("/?period=2026-10").text
+    glance = html.split('id="glance"')[1].split('class="card')[0]
+    for label in ("Total head count", "New joinees", "Left employees", "Total attendance", "Present all days",
+                  "Unapplied leave (absent)"):
+        assert label in glance, label
+    assert html.index('id="glance"') < html.index("Month-end checklist")                  # the strip comes first
+    assert glance.count("last month") == 6
+    for gone in ('data-tab="trend"', "Days worked on off-days", "Excess hours sum", "Shortfall hours sum",
+                 "No attendance for the month"):
+        assert gone not in html, gone
+    for label in ("Late sitting &gt; 10 days", "Hours shortfall &gt; 20 h", "Excess hours &gt; 20 h", "Comp-offs earned"):
+        assert label in html, label
+    card = html.split('class="kpis k3"')[1].split("Exceptions to review")[0]
+    assert "Unapplied leave (absent)" in card and "vs last month" in card
+    with session_scope() as db:
+        octo = db.scalar(select(Period).where(Period.year == 2026, Period.month == 10))
+        k = MX.period_metrics(db, octo)["kpis"]
+    for key in ("present_all_days", "late_sitting_people", "shortfall_people", "excess_people", "compoff_people"):
+        assert isinstance(k[key], int), key
+    # the other reports compare with last month too
+    for page in ("/periods/2026-10", "/insights?period=2026-10", "/exceptions?period=2026-10",
+                 "/periods/2026-10/employee/T001"):
+        assert "last month" in c.get(page).text, page
+    # and the Excel board summary has last month and the change; no DRAFT anywhere
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    head = next(r for r in wb["Board Summary"].iter_rows(values_only=True) if r[0] == "Metric")
+    assert head[1:4] == ("October 2026", "September 2026", "Change")
+    text = " ".join(str(v) for ws in wb.worksheets for row in ws.iter_rows(values_only=True) for v in row if v)
+    assert "DRAFT" not in text.upper() and "(absence)" not in text
+    assert all("DRAFT" not in (ws.oddFooter.left.text or "").upper() for ws in wb.worksheets)
+
+
+def test_lock_month_from_the_overview(loaded):
+    """Owner: 'Add option to lock month after MIS' — a Lock month button on the Overview; locked months say so on
+    the page, in the month picker, in the file name and the Excel titles."""
+    c = loaded
+    html = c.get("/?period=2026-10").text
+    assert "Lock month" in html and 'name="back" value="/?period=2026-10"' in html
+    r = c.post("/periods/2026-10/finalise", data={"csrf": csrf_of(c, "/?period=2026-10"), "back": "/?period=2026-10"},
+               follow_redirects=False)
+    assert r.headers["location"].startswith("/?period=2026-10")
+    html = c.get("/?period=2026-10").text
+    assert "Locked by" in html and "· locked</option>" in html and "Lock month</button>" not in html
+    r = c.get("/exports/2026-10.xlsx")
+    assert "Attendance MIS - October 2026 - Locked.xlsx" in r.headers["content-disposition"]
+    wb = load_workbook(io.BytesIO(r.content))
+    heads = " ".join(str(v) for row in wb["Payroll Leave Sheet"].iter_rows(max_row=3, values_only=True) for v in row if v)
+    assert "(locked)" in heads and "DRAFT" not in heads.upper()
+    # an outside 'back' address is ignored
+    c.post("/periods/2026-10/reopen", data={"csrf": csrf_of(c, "/periods/2026-10"), "reason": "x"})
+    r = c.post("/periods/2026-10/finalise", data={"csrf": csrf_of(c, "/periods/2026-10"), "back": "https://evil.example/"},
+               follow_redirects=False)
+    assert r.headers["location"].startswith("/periods/2026-10")
+
+
+def _png(w=4, h=2):
+    import struct
+    import zlib
+    raw = b"".join(b"\x00" + b"\xff\x00\x00" * w for _ in range(h))
+
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def test_logo_in_the_excel_workbooks(loaded):
+    """Owner: 'add HSCO logo in all reports'. An SVG logo can't go into Excel without an image library, so the browser
+    sends a PNG copy once; every workbook then carries it at the top of the sheets."""
+    import zipfile
+    c = loaded
+    c.post("/settings/branding", data={"csrf": csrf_of(c, "/settings")},
+           files={"file": ("logo.svg", TEST_LOGO, "image/svg+xml")})
+    assert "/branding/raster" in c.get("/").text                                   # the page offers to make the copy
+    tok = csrf_of(c, "/")
+    assert c.post("/branding/raster", content=b"not a png", headers={"X-CSRF-Token": tok}).status_code == 400
+    assert c.post("/branding/raster", content=_png(), headers={"X-CSRF-Token": "bad"}).status_code in (400, 403)
+    r = c.post("/branding/raster", content=_png(), headers={"X-CSRF-Token": tok, "Content-Type": "image/png"})
+    assert r.status_code == 200 and "4x2" in r.text
+    assert "/branding/raster" not in c.get("/").text                               # made once
+    for url in ("/exports/2026-10.xlsx", "/exports/2026-10/locations.xlsx"):
+        z = zipfile.ZipFile(io.BytesIO(c.get(url).content))
+        media = [n for n in z.namelist() if n.startswith("xl/media/")]
+        assert media and z.read(media[0]).startswith(b"\x89PNG"), url
+    # removing the logo drops the copy too
+    c.post("/settings/branding/delete", data={"csrf": csrf_of(c, "/settings")})
+    z = zipfile.ZipFile(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    assert not [n for n in z.namelist() if n.startswith("xl/media/")]
+
+
+def test_viewer_cannot_send_the_logo_copy(client):
+    make_user("viewer2", "viewer")
+    login_full(client, "viewer2")
+    r = client.post("/branding/raster", content=_png(), headers={"X-CSRF-Token": csrf_of(client, "/")})
+    assert r.status_code == 403

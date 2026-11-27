@@ -130,7 +130,7 @@ def _period_for(db: Session, ym: Optional[tuple], fallback: Optional[tuple]) -> 
                            "Check the dates in the file (often a wrong year) and import again.")
     p = get_period(db, ym[0], ym[1], create=True)
     if p.status == "FINALISED":
-        raise ImportError_(f"{p.label} is finalised (locked). Re-open it before importing.")
+        raise ImportError_(f"{p.label} is locked. An admin must unlock it before importing.")
     return p
 
 
@@ -426,7 +426,7 @@ def delete_import(db: Session, batch: ImportBatch, user: Optional[User], reason:
     data go. A finalised month is never touched. Returns a plain-language summary (raises ValueError if refused)."""
     period = db.get(Period, batch.period_id) if batch.period_id else None
     if period is not None and period.status != "DRAFT":
-        raise ValueError(f"{period.label} is finalised — re-open it first.")
+        raise ValueError(f"{period.label} is locked — unlock it first.")
     eff = import_effects(db, batch)
     done: list[str] = []
     model = ROW_TABLES.get(batch.kind)

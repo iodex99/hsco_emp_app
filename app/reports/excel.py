@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
+from openpyxl.drawing.image import Image
 from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -67,7 +68,7 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
     """Every punch of a month with where it was made — works before the month is calculated (no muster needed)."""
     from app.models import SwipeRow
     from app.services import locations as LOC
-    org = get_general(db)
+    org = _org(db)
     L = LOC.report(db, period)
     emps = MX.scoped_employees(db)
     names = {k: e.name for k, e in emps.items()}
@@ -120,15 +121,60 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
             for ci in cols:
                 if row[ci - 1].value:
                     row[ci - 1].number_format = "dd-mmm-yyyy hh:mm"
-    _finish(wb, f"Attendance MIS — punches & locations, {period.label}", org, "FINAL" if period.status == "FINALISED" else "DRAFT",
+    _finish(wb, f"Attendance MIS — punches & locations, {period.label}", org, _status(period),
             guide=[("Punches", NAVY, ""), ("Places", "2E7D32", ""), ("By person", "2E7D32", "")])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
 
 
+def _org(db: Session) -> dict:
+    """Organisation details for the sheet headers, with the logo as PNG under "_logo" (when there is one)."""
+    from app.services import branding
+    org = dict(get_general(db))
+    try:
+        org["_logo"] = branding.png()
+    except OSError:
+        org["_logo"] = None
+    return org
+
+
+def _status(period: Period) -> str:
+    """'Locked' for a locked month, '' otherwise (owner, v1.15: no "Draft" in the file or its sheets)."""
+    return "Locked" if period.status == "FINALISED" else ""
+
+
+class _PngImage(Image):
+    """A PNG embedded without Pillow (openpyxl needs Pillow only to read the size / convert — we know both)."""
+
+    def __init__(self, data: bytes, width: int, height: int):  # noqa: D401 — no super().__init__ (it imports PIL)
+        self.ref, self._bytes, self.width, self.height, self.format = None, data, width, height, "png"
+        self.anchor = "A1"
+
+    def _data(self):
+        return self._bytes
+
+
+def _logo(ws, org: dict, row_height: float = 46) -> bool:
+    """The firm's logo at the top left of a sheet, in place of the firm name (owner, v1.15). False if there is no PNG
+    of the logo yet (the browser makes it the first time someone opens the app — services/branding.png)."""
+    lg = org.get("_logo")
+    if not lg:
+        return False
+    data, w, h = lg
+    hh = 56                                                # pixels
+    img = _PngImage(data, max(1, round(w * hh / h)), hh)
+    img.anchor = "A1"
+    ws.add_image(img)
+    ws.row_dimensions[1].height = row_height
+    return True
+
+
 def _title(ws, org: dict, title: str, ncols: int):
-    ws["A1"] = org.get("org_name", "")
+    if _logo(ws, org):
+        ws["A1"] = None
+    else:
+        ws["A1"] = org.get("org_name", "")
     ws["A1"].font = Font(bold=True, size=14, color=NAVY)
     ws["A2"] = org.get("org_address", "")
     ws["A3"] = title
@@ -195,7 +241,7 @@ def _deduction_remark(d: dict, pol, manual=None) -> str:
 
 
 def build_workbook(db: Session, period: Period) -> bytes:
-    org = get_general(db)
+    org = _org(db)
     pol = get_policy(db)
     m = MX.period_metrics(db, period)
     res = MX.results_for(db, period)
@@ -208,7 +254,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
     # ------------------------------------------------------------------ 1. payroll leave sheet
     ws = wb.active
     ws.title = "Payroll Leave Sheet"
-    title = f"Attendance MIS — leave calculation, {period.label} ({'FINAL' if period.status == 'FINALISED' else 'DRAFT'})"
+    title = f"Attendance MIS — leave calculation, {period.label}" + (" (locked)" if _status(period) else "")
     heads = ["Employee No", "Name", "Group", "Location", "Total Week Days", "Holiday", "Days Leaves Taken",
              "Days Absent", "Days Present", "WFH", "Total Hours Present (HH:MM)", "Extra Working Days",
              "Total Days Worked", "Hours Required", "Total Hours Present (decimal)", "Off-day / holiday hours (excluded)",
@@ -288,7 +334,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
     _table(pi, 5, ["Employee No", "Name", "Group", "Category", "Location", "Hours shortfall deduction (days)",
                    "WFH over-limit deduction (days)", "Total leave deduction (days)", "Remark"], [],
            [10, 24, 9, 18, 10, 14, 14, 14, 80], org,
-           f"Payroll input — {period.label} ({'FINAL' if period.status == 'FINALISED' else 'DRAFT'}): "
+           f"Payroll input — {period.label}{' (locked)' if _status(period) else ''}: "
            f"{len(pick)} {'person' if len(pick) == 1 else 'people'} with a leave deduction")
     for k_, r in enumerate(pick, start=6):
         d, i = r.data, rowmap[r.emp_no]
@@ -324,26 +370,34 @@ def build_workbook(db: Session, period: Period) -> bytes:
     # ------------------------------------------------------------------ 2. board summary
     ws = wb.create_sheet("Board Summary")
     _title(ws, org, f"Board Summary — {period.label}", 6)
-    k = m["kpis"]
-    kp = [("Headcount (in muster)", k["headcount"]), ("New joinees", k["new_joinees"]), ("Exits", k["exits"]),
-          ("Attendance rate %", k["attendance_rate"]), ("Avg hours / present day", k["avg_work_hours"]),
-          ("Avg in-time", k["avg_in_time"]), ("Avg out-time", k["avg_out_time"]),
-          ("Employees with leave deduction", k["deduction_employees"]), ("Total deduction days", k["deduction_days"]),
-          ("Paid leave days taken", k["leave_days"]), ("Comp-off days taken", k["compoff_days"]),
-          ("Unapplied leave (absence) days", k["absent_days"]),
-          ("WFH days", k["wfh_days"]), (f"Employees over WFH limit ({pol.wfh_limit_days:g})", k["wfh_over_limit"]),
-          ("Late arrivals (days)", k["late_days"]), ("Persistently late employees", k["persistent_late"]),
-          ("Regularised days", k["regularised_days"]), ("Persistent regularisation employees", k["persistent_regularisation"]),
-          ("Off-day / holiday working days", k["extra_days"]),
-          ("Comp-offs earned (≥ 5 h)", k["compoff_earned"]), ("Excess hours (sum)", k["excess_hours"]),
-          ("Shortfall hours (sum)", k["shortfall_hours"]), ("Late-sitting days (after 21:00)", k["late_sitting_days"])]
-    _header(ws, 5, ["Metric", "Value"], [44, 14])
-    for i, (a, b) in enumerate(kp, start=6):
+    k, pk = m["kpis"], m.get("prev_kpis") or {}
+    kp = [("Total head count", "headcount"), ("New joinees", "new_joinees"), ("Left employees", "exits"),
+          ("Total attendance %", "attendance_rate"), ("Present days", "present_days"), ("People present all days", "present_all_days"),
+          ("People with unapplied leave (absent)", "absent_people"), ("Unapplied leave (absent) days", "absent_days"),
+          ("Avg hours / present day", "avg_work_hours"), ("Avg in-time", "avg_in_time"), ("Avg out-time", "avg_out_time"),
+          ("Employees with leave deduction", "deduction_employees"), ("Total deduction days", "deduction_days"),
+          ("Leave days taken", "leave_days"), ("Comp-off days taken", "compoff_days"),
+          ("WFH days", "wfh_days"), ("People who worked from home", "wfh_people"),
+          (f"Employees over WFH limit ({pol.wfh_limit_days:g})", "wfh_over_limit"),
+          ("Late arrivals (days)", "late_days"), ("Persistently late employees", "persistent_late"),
+          ("Regularised days", "regularised_days"), ("Persistent regularisation employees", "persistent_regularisation"),
+          ("People late-sitting on more than 10 days", "late_sitting_people"),
+          ("People with hours shortfall > 20 h", "shortfall_people"), ("People with excess hours > 20 h", "excess_people"),
+          ("People who earned a comp-off", "compoff_people"), ("Comp-offs earned (days)", "compoff_earned")]
+    _header(ws, 5, ["Metric", period.label, m.get("prev_label") or "Last month", "Change"], [44, 14, 14, 12])
+    for i, (a, key) in enumerate(kp, start=6):
+        cur, prv = k.get(key), pk.get(key)
         _put(ws, i, 1, a, text=True)
-        _put(ws, i, 2, b, text=True)
+        _put(ws, i, 2, cur, text=True)
+        _put(ws, i, 3, prv if pk else None, text=True)
+        if isinstance(cur, (int, float)) and isinstance(prv, (int, float)):
+            c = _put(ws, i, 4, round(cur - prv, 2))
+            c.number_format = '+0.##;-0.##;0'
+        else:
+            _put(ws, i, 4, None)
     r0 = 6 + len(kp) + 2
     ws.cell(row=r0, column=1, value="By group").font = Font(bold=True, size=12)
-    gh = ["Group", "Headcount", "Present days", "PL", "Comp-off", "Unapplied leave (absence)", "WFH", "Late days",
+    gh = ["Group", "Headcount", "Present days", "PL", "Comp-off", "Unapplied leave (absent)", "WFH", "Late days",
           "Regularised", "Deduction days", "Employees deducted", "Hours vs required %"]
     for i, h in enumerate(gh, start=1):
         c = ws.cell(row=r0 + 1, column=i, value=h)
@@ -516,17 +570,17 @@ def build_workbook(db: Session, period: Period) -> bytes:
              r["late_sitting_days"], r["wfh_days"], r["regularised_days"], r["leave_used_fy"]]
             for r in sorted(ins["rows"], key=lambda x: -x["attention"])]
     _table(ws, 6, ["Emp No", "Name", "Group", "Category", "Location", "Tenure (months)", "Attention (0-100)", "Main reasons",
-                   "Attendance %", "Unapplied leave (absence) %", "Unapplied leave days (12 m)", "Absence spells (12 m)", "On time %",
+                   "Attendance %", "Unapplied leave (absent) %", "Unapplied leave days (12 m)", "Absence spells (12 m)", "On time %",
                    "Avg first punch", "Avg day (h)", "Hours vs required %", "Balance (h)", "Long days", "Late sitting", "WFH days",
                    "Regularised", f"Leave used {ik['fy_label']}"],
            rows, [10, 24, 9, 18, 10] + [11] * 20, org, f"Employee scorecard — {period.label}")
     ws.cell(row=4, column=1, value=(
-        f"Firm: unapplied leave (absence) {ik['absenteeism_pct']}% · on time {ik['punctuality_pct']}% · hours vs required "
+        f"Firm: unapplied leave (absent) {ik['absenteeism_pct']}% · on time {ik['punctuality_pct']}% · hours vs required "
         f"{ik['utilisation_pct']}% · attrition (12 m) {ik['attrition_pct']}%. "
         "Attention = unapplied leave (12 m) 30 + punctuality 20 + hours 25 + regularisation 15 + WFH 10."))
     ws.freeze_panes = "C7"
     ws2 = wb.create_sheet("Groups Compared")
-    _table(ws2, 5, ["Group", "People", "Attendance %", "Unapplied leave (absence) %", "On time %", "Hours vs required %",
+    _table(ws2, 5, ["Group", "People", "Attendance %", "Unapplied leave (absent) %", "On time %", "Hours vs required %",
                     "Avg day (h)", "WFH share %", "Regularised %", "Unapplied leave days (12 m)", "Avg attention", "Deduction days"],
            [[g["group"], g["headcount"], g["attendance_pct"], g["absenteeism_pct"], g["punctuality_pct"],
              g["utilisation_pct"], g["avg_hours"], g["wfh_pct"], g["regularisation_pct"], g["absence_12m_days"],
@@ -613,7 +667,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
         ("WFH limit", f"{pol.wfh_limit_days:g} days per month ({pol.wfh_method.replace('_', ' ')})"),
         ("Late arrival", f"First-in more than {pol.late_grace_min} min after shift start (information only)"),
         ("Loss of pay", "LOP / LWP in greytHR counts as leave taken (Leaves, G) — there is no separate LOP (v1.13)"),
-        ("Unapplied leave (absence)", "Absent on a working day without leave applied (greytHR A) — column H"),
+        ("Unapplied leave (absent)", "Absent on a working day without leave applied (greytHR A) — column H"),
         ("Ignored groups", (", ".join(pol.ignored_groups) or "none") + " — not in any sheet"),
         ("Leave balances", "Kept in greytHR — not calculated by the app. The deduction days (column V) are what to "
                            "take from leave."),
@@ -625,11 +679,11 @@ def build_workbook(db: Session, period: Period) -> bytes:
     for i in range(6, 6 + len(notes)):
         ws.cell(row=i, column=2).alignment = Alignment(wrap_text=True, vertical="top")
 
-    status = "FINAL" if period.status == "FINALISED" else "DRAFT"
+    status = _status(period)
     kk = m.get("kpis", {})
     open_flags = sum(1 for f in m["flags"] if f["code"] in REVIEW_CODES and not rv.get((f["emp_no"], f["code"])))
     _finish(wb, f"Attendance MIS — {period.label}", org, status, contents_lines=[
-        ("Month", f"{period.label} ({status})"),
+        ("Month", period.label + (" — locked" if status else "")),
         ("Employees", len(res)),
         ("People with a leave deduction", sum(1 for r in res if (r.data or {}).get("deduction_days"))),
         ("Leave deduction (days)", round(sum((r.data or {}).get("deduction_days") or 0 for r in res), 2)),
@@ -716,17 +770,18 @@ def _finish(wb, title: str, org: dict, status: str, guide=None, contents_lines=N
     guide = guide or SHEET_GUIDE
     wb.properties.title = title
     wb.properties.creator = org.get("org_name") or "HSCO"
-    wb.properties.keywords = f"{status}; app v{__version__}"
-    footer = f"{org.get('org_short') or org.get('org_name', '')} · {title} · {status}"
+    wb.properties.keywords = "; ".join(x for x in (status, f"app v{__version__}") if x)
+    footer = " · ".join(x for x in (org.get("org_short") or org.get("org_name", ""), title, status) if x)
     for ws in wb.worksheets:
         _polish(ws, footer, a3=ws.title == "Payroll Leave Sheet")
     if contents_lines is not None:
         ws = wb.create_sheet("Contents", 0)
-        ws["A1"] = org.get("org_name", "")
+        ws["A1"] = None if _logo(ws, org) else org.get("org_name", "")
         ws["A1"].font = Font(bold=True, size=14, color=NAVY)
         ws["A2"] = title
         ws["A2"].font = Font(bold=True, size=12)
-        ws["A3"] = f"{status} · generated {datetime.now():%d-%b-%Y %H:%M} from the app's current figures · app v{__version__}"
+        ws["A3"] = " · ".join(x for x in (status, f"generated {datetime.now():%d-%b-%Y %H:%M} from the app's current figures",
+                                           f"app v{__version__}") if x)
         ws["A3"].font = Font(italic=True, color="666666")
         r = 5
         ws.cell(row=r, column=1, value="Key figures").font = Font(bold=True, size=12)

@@ -2,7 +2,7 @@
 {% import "_ui.html" as ui with context %}
 {% block title %}Insights {{ period.label }}{% endblock %}
 {% block content %}
-{% set k = I.kpis %}{% set key = period.key %}
+{% set k = I.kpis %}{% set pk = prev_kpis %}{% set key = period.key %}
 {% macro pct(v, dash=False) %}{% if v is not none %}{{ v|n(1) }}%{% elif dash %}—{% endif %}{% endmacro %}
 <div class="ph">
   <div><h1>Workforce insights</h1>
@@ -14,22 +14,30 @@
 </div>
 
 <div class="kpis k8">
-  {{ ui.kpi('Unapplied leave (absence)', pct(k.absenteeism_pct, True), 'calendar-x', 'bad' if (k.absenteeism_pct or 0) >= 5 else '', none, k.unplanned_spells ~ ' spells · absent days ÷ working days',
-       tip='Working days absent without leave applied ÷ all working days of everyone. A spell = consecutive absent working days (weekends and holidays in between don’t break it).') }}
+  {{ ui.kpi('Unapplied leave (absent)', pct(k.absenteeism_pct, True), 'calendar-x', 'bad' if (k.absenteeism_pct or 0) >= 5 else '', none, k.unplanned_spells ~ ' spells · absent days ÷ working days',
+       tip='Working days absent without leave applied ÷ all working days of everyone. A spell = consecutive absent working days (weekends and holidays in between don’t break it).',
+       cmp=ui.vs(k.absenteeism_pct, pk.absenteeism_pct if pk else none, False, ' pts', False)) }}
   {{ ui.kpi('On-time arrivals', pct(k.punctuality_pct, True), 'alarm-clock', 'warn' if (100 if k.punctuality_pct is none else k.punctuality_pct) < 70 else 'good', none, 'median first punch ' ~ (k.median_in or '—'),
-       tip='Days present with a first punch within ' ~ policy.late_grace_min ~ ' min of shift start ÷ days present with a first punch. Groups left out of metrics (' ~ policy.metrics_exclude_groups|join(', ') ~ ') are not counted.') }}
+       tip='Days present with a first punch within ' ~ policy.late_grace_min ~ ' min of shift start ÷ days present with a first punch. Groups left out of metrics (' ~ policy.metrics_exclude_groups|join(', ') ~ ') are not counted.',
+       cmp=ui.vs(k.punctuality_pct, pk.punctuality_pct if pk else none, True, ' pts', False)) }}
   {{ ui.kpi('Hours vs required', pct(k.utilisation_pct, True), 'timer', 'good' if (k.utilisation_pct or 0) >= 100 else 'warn', none, '+' ~ (k.overtime_hours|n(0)) ~ ' h over · −' ~ (k.shortfall_hours|n(0)) ~ ' h short',
-       tip='Actual hours worked ÷ required hours (days present × hours per day), everyone together. Over / short = sums of each person’s balance.') }}
+       tip='Actual hours worked ÷ required hours (days present × hours per day), everyone together. Over / short = sums of each person’s balance.',
+       cmp=ui.vs(k.utilisation_pct, pk.utilisation_pct if pk else none, True, ' pts', False)) }}
   {{ ui.kpi('Unapplied leave, 12 months', k.absence_12m_days|n ~ ' d', 'activity', '', none, k.absence_12m_people ~ ' people · absent without leave applied',
-       tip='Days of unapplied leave (absence) over the last 12 calculated months, for the people in this month.') }}
+       tip='Days of unapplied leave (absent) over the last 12 calculated months, for the people in this month.',
+       cmp=ui.vs(k.absence_12m_days, pk.absence_12m_days if pk else none, False, ' d', False)) }}
   {{ ui.kpi('Annual leave used', pct(k.leave_used_fy_pct, True), 'briefcase', '', none, k.fy_label ~ ' · leave taken ÷ entitlement',
-       tip='Leave taken this financial year (all calculated months) ÷ (' ~ (policy.annual_leave_days|n) ~ ' days × people).') }}
+       tip='Leave taken this financial year (all calculated months) ÷ (' ~ (policy.annual_leave_days|n) ~ ' days × people).',
+       cmp=ui.vs(k.leave_used_fy_pct, pk.leave_used_fy_pct if pk else none, False, ' pts', True)) }}
   {{ ui.kpi('Attrition (12 months)', pct(k.attrition_pct, True), 'user-minus', 'warn' if (k.attrition_pct or 0) >= 15 else '', none, k.exits_12m ~ ' exits · ' ~ k.joiners_12m ~ ' joiners',
-       tip='Exits (date of leaving) in the last 12 months ÷ average headcount (start and end of the 12 months).') }}
+       tip='Exits (date of leaving) in the last 12 months ÷ average headcount (start and end of the 12 months).',
+       cmp=ui.vs(k.attrition_pct, pk.attrition_pct if pk else none, False, ' pts', False)) }}
   {{ ui.kpi('Average tenure', (k.avg_tenure_years|n(1) ~ ' yrs') if k.avg_tenure_years is not none else '—', 'award', '', none, 'active employees with a joining date',
-       tip='Average years of service at month end of active employees with a date of joining.') }}
+       tip='Average years of service at month end of active employees with a date of joining.',
+       cmp=ui.vs(k.avg_tenure_years, pk.avg_tenure_years if pk else none, False, ' yrs', True)) }}
   {{ ui.kpi('Need a conversation', k.attention_high, 'message-circle-warning', 'bad' if k.attention_high else 'good', '#scorecard', 'attention score ≥ 50 of 100',
-       tip='People with an attention score of 50 or more (see the Scorecard tab).') }}
+       tip='People with an attention score of 50 or more (see the Scorecard tab).',
+       cmp=ui.vs(k.attention_high, pk.attention_high if pk else none, False, '', False)) }}
 </div>
 
 <div class="tabs" data-tabs id="ins-tabs">
@@ -93,7 +101,7 @@
 </section>
 
 <section class="pane" data-pane="heat">
-  <div class="card flush"><div class="hd"><h2>Who was where, every day {{ ui.info('One row per person, one column per day. Colours: present, late, WFH, half leave, leave, comp-off, unapplied leave (absence), weekly off, holiday, worked on an off-day. Click legend items to highlight; Total counts the highlighted days (all marked days when nothing is highlighted); the bottom row counts people per day.') }}</h2><span class="sub">click legend items to highlight</span></div>
+  <div class="card flush"><div class="hd"><h2>Who was where, every day {{ ui.info('One row per person, one column per day. Colours: present, late, WFH, half leave, leave, comp-off, unapplied leave (absent), weekly off, holiday, worked on an off-day. Click legend items to highlight; Total counts the highlighted days (all marked days when nothing is highlighted); the bottom row counts people per day.') }}</h2><span class="sub">click legend items to highlight</span></div>
   <div class="bd" style="padding-bottom:0"><div class="legend hm-legend" id="hm-legend">
     {% for code, label, cls in I.matrix.legend %}<button type="button" class="lg" data-lg="{{ cls }}" aria-pressed="false"><i class="hm-sw s-{{ cls }}"></i>{{ label }}</button>{% endfor %}
     <span class="lg-info muted hidden" id="hm-info"><button type="button" class="tt-clear" id="hm-clear">Clear highlight</button></span></div></div>
@@ -101,7 +109,7 @@
   <div class="bd"><div class="tw" style="max-height:640px"><table id="hm" class="hm compact" data-table data-csv="attendance-matrix-{{ key }}" data-default-hidden="category">
     <thead><tr><th data-key="emp" data-type="text">Employee</th><th data-key="group" data-type="enum">Group</th><th data-key="category" data-type="enum">Category</th>
       <th data-key="p" data-type="num" class="num" title="Present days (incl. late and WFH)">Pres.</th><th data-key="t" data-type="num" class="num">Late</th>
-      <th data-key="a" data-type="num" class="num" data-label="Unapplied leave" title="Unapplied leave (absence) days">Unappl.</th><th data-key="l" data-type="num" class="num">Leave</th>
+      <th data-key="a" data-type="num" class="num" data-label="Unapplied leave" title="Unapplied leave (absent) days">Unappl.</th><th data-key="l" data-type="num" class="num">Leave</th>
       <th data-key="tot" data-type="num" data-label="Total" class="num hm-tot" id="hm-tot-h" title="Days in the states highlighted in the legend (all marked days when nothing is highlighted)">Total<small id="hm-tot-sub">all days</small></th>
       {% for d in I.matrix.dates %}<th data-type="none" data-export data-label="{{ d }}" class="hm-d {{ 'we' if I.matrix.weekdays[loop.index0] in ('Sat','Sun') }}" title="{{ I.matrix.weekdays[loop.index0] }} {{ d }}">{{ d[8:]|int }}<small>{{ I.matrix.weekdays[loop.index0][0] }}</small></th>{% endfor %}
     </tr></thead><tbody>
@@ -133,11 +141,11 @@
     <div class="card"><div class="hd"><h2>Length of the working day {{ ui.info('Every day with hours worked, by its length (metrics groups only). Orange = under 7 h, violet = 10 h or more. Click a bar to see who.') }}</h2><span class="sub">{{ I.hours_hist|sum(attribute='count') }} worked days · click a bar</span></div><div class="bd"><div class="chartbox"><canvas id="cHours"></canvas></div></div></div>
   </div>
   <div class="minis">
-    <div class="mini"><div class="v">{{ k.median_in }}</div><div class="l">Median first punch {{ ui.info('Middle value of the people’s average first punch.') }}</div></div>
-    <div class="mini {{ 'warn' if (100 if k.punctuality_pct is none else k.punctuality_pct) < 70 }}"><div class="v">{{ pct(k.punctuality_pct, True) }}</div><div class="l">On time (within {{ policy.late_grace_min }} min of shift start)</div></div>
-    <div class="mini"><div class="v">{{ k.long_days }}</div><div class="l">Long days (2 h+ over required) {{ ui.info('Days with at least 2 h more than the day’s required hours.') }}</div></div>
-    <div class="mini"><div class="v">{{ k.late_sitting_days }}</div><div class="l">Late-sitting days {{ ui.info('Days with a last punch after ' ~ policy.late_sitting_after.strftime('%H:%M') ~ ' (or the next morning).') }}</div></div>
-    <div class="mini"><div class="v">{{ pct(k.regularisation_pct, True) }}</div><div class="l">Present days regularised {{ ui.info('Days with a permission request or times changed in greytHR ÷ days present.') }}</div></div>
+    {{ ui.mini('Median first punch', k.median_in, k.median_in_min, pk.median_in_min if pk else none, 'Middle value of the people’s average first punch. ▲ = later than last month.', unit=' min') }}
+    {{ ui.mini('On time (within ' ~ policy.late_grace_min ~ ' min of shift start)', pct(k.punctuality_pct, True), k.punctuality_pct, pk.punctuality_pct if pk else none, '', 'warn' if (100 if k.punctuality_pct is none else k.punctuality_pct) < 70 else '', good_up=True, unit=' pts') }}
+    {{ ui.mini('Long days (2 h+ over required)', k.long_days, k.long_days, pk.long_days if pk else none, 'Days with at least 2 h more than the day’s required hours.', neutral=True) }}
+    {{ ui.mini('Late-sitting days', k.late_sitting_days, k.late_sitting_days, pk.late_sitting_days if pk else none, 'Days with a last punch after ' ~ policy.late_sitting_after.strftime('%H:%M') ~ ' (or the next morning).', neutral=True) }}
+    {{ ui.mini('Present days regularised', pct(k.regularisation_pct, True), k.regularisation_pct, pk.regularisation_pct if pk else none, 'Days with a permission request or times changed in greytHR ÷ days present.', unit=' pts') }}
   </div>
 </section>
 
@@ -149,9 +157,9 @@
       {{ ui.toplist(I.top.absence_12m, 'days', key, empty='No unapplied leave in the last 12 months.') }}</div></div>
   </div>
   <div class="minis mt">
-    <div class="mini {{ 'bad' if (k.absenteeism_pct or 0) >= 5 }}"><div class="v">{{ pct(k.absenteeism_pct, True) }}</div><div class="l">Unapplied leave rate {{ ui.info('Unapplied leave days ÷ working days, everyone together.') }}</div></div>
-    <div class="mini"><div class="v">{{ k.unplanned_spells }}</div><div class="l">Absence spells this month</div></div>
-    <div class="mini"><div class="v">{{ pct(k.leave_used_fy_pct, True) }}</div><div class="l">Annual leave used, {{ k.fy_label }}</div></div>
+    {{ ui.mini('Unapplied leave rate', pct(k.absenteeism_pct, True), k.absenteeism_pct, pk.absenteeism_pct if pk else none, 'Unapplied leave days ÷ working days, everyone together.', 'bad' if (k.absenteeism_pct or 0) >= 5 else '', unit=' pts') }}
+    {{ ui.mini('Absence spells this month', k.unplanned_spells, k.unplanned_spells, pk.unplanned_spells if pk else none) }}
+    {{ ui.mini('Annual leave used, ' ~ k.fy_label, pct(k.leave_used_fy_pct, True), k.leave_used_fy_pct, pk.leave_used_fy_pct if pk else none, unit=' pts', neutral=True) }}
   </div>
 </section>
 

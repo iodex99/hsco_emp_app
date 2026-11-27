@@ -301,3 +301,15 @@ over own hours, rename, remove, delete, audit), `test_holiday_on_a_weekly_off_th
 browser (176 = 22 × 8 h required), Excel T = 8 / 8.5, file names checked for Excel, locations, CSV and PDF; test holidays
 on 11 / 17 / 3 Oct with greytHR H — 62 people weekly off on Sun / closed Sat and holiday on the 1st Saturday, the people
 whose 1st Saturday is off (September evidence) weekly off.
+
+## v1.15.0 — month at a glance, last-month comparisons, lock month, logo in reports
+`test_overview_glance_strip_first_with_last_month` (locked September made from October: six glance tiles first, each
+compared; removed tiles / Trend tab absent; new people counts; comparisons on payroll sheet, Insights, exceptions,
+employee page; Excel *Board Summary* last month + change; no DRAFT / "(absence)"), `test_lock_month_from_the_overview`
+(back to the Overview, "Locked by", picker "· locked", "- Locked" file name, "(locked)" titles, outside `back` ignored),
+`test_logo_in_the_excel_workbooks` (PNG copy endpoint: bad PNG 400, bad CSRF refused, made once, image in both
+workbooks, removed with the logo), `test_viewer_cannot_send_the_logo_copy`; finalise / delete-refused tests updated
+for the lock wording. Real-data copy (97 people, fake locked September): glance strip values and comparisons checked,
+present-all drill (42), shortfall > 20 h = 0 (worst −17.97 h) / excess > 20 h list, daily chart colours, Lock → Locked
+by → unlock drawer → Open, Excel (20 sheets with the logo, no DRAFT, Board Summary columns), all PDFs rendered and
+read (logo on cover and headers, comparisons, red dates, grey days); no console errors.

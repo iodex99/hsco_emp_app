@@ -86,7 +86,10 @@ def insights_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
              "people": [[x["emp_no"], x["attendance_pct"], x["punctuality_pct"], x["utilisation_pct"], x["absence_pct"]]
                         for x in data["rows"]],
              "arrival": data["arrival"]}
-    return render(c, "insights.html", period=p, I=data, chart=chart, policy=get_policy(c.db))
+    from app.services.compute import previous_period
+    prev = previous_period(c.db, p)
+    prev_kpis = INS.insights(c.db, prev)["kpis"] if prev and prev.computed_at else None      # last month (v1.15)
+    return render(c, "insights.html", period=p, I=data, chart=chart, policy=get_policy(c.db), prev_kpis=prev_kpis)
 
 
 @router.get("/locations", response_class=HTMLResponse)
@@ -98,7 +101,9 @@ def locations_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
     months = LOC.months_with_signins(c.db)
     if p is None:
         return render(c, "locations.html", R=None, months=months)
-    return render(c, "locations.html", R=LOC.report(c.db, p), months=months, period=p)
+    pm = [x for x in months if (x.year, x.month) < (p.year, p.month)]
+    prev_kpis = LOC.report(c.db, pm[0])["kpis"] if pm and (pm[0].year * 12 + pm[0].month) == (p.year * 12 + p.month - 1) else None
+    return render(c, "locations.html", R=LOC.report(c.db, p), months=months, period=p, prev_kpis=prev_kpis)
 
 
 @router.get("/api/employees")
@@ -362,7 +367,10 @@ def exceptions_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
         return render(c, "empty.html")
     if p.computed_at is None:
         return pending_month(c, p)
-    return render(c, "exceptions.html", period=p, X=month_exceptions(c.db, p))
+    from app.services.compute import previous_period
+    prev = previous_period(c.db, p)
+    prev_kpis = month_exceptions(c.db, prev)["kpis"] if prev and prev.computed_at else None      # last month (v1.15)
+    return render(c, "exceptions.html", period=p, X=month_exceptions(c.db, p), prev_kpis=prev_kpis)
 
 
 @router.post("/flags/wfh-approve")
@@ -377,7 +385,7 @@ def approve_extra_wfh(period: str = Form(...), emp_no: str = Form(...), days: st
     p = pick_period(c, period)
     back = f"/flags?period={p.key}&code=WFH_OVER_LIMIT" if p else "/flags"
     if p is None or p.status != "DRAFT":
-        return redirect(back, "This month is finalised — re-open it to change a deduction.")
+        return redirect(back, "This month is locked — unlock it to change a deduction.")
     if not reason.strip():
         return redirect(back, "Say who approved it (a reason is required for every manual change).")
     try:
@@ -426,7 +434,7 @@ def waive_shortfall(period: str = Form(...), emp_no: str = Form(...), reason: st
     if not (back.startswith("/periods/") and "//" not in back):           # (v1.12: Waive is on the employee's page)
         back = f"/periods/{p.key}/employee/{emp_no.strip().upper()}" if p else "/"
     if p is None or p.status != "DRAFT":
-        return redirect(back, "This month is finalised — re-open it to change a deduction.")
+        return redirect(back, "This month is locked — unlock it to change a deduction.")
     if not reason.strip():
         return redirect(back, "Say who waived it (a reason is required for every manual change).")
     emp_no = emp_no.strip().upper()
@@ -489,7 +497,7 @@ def recon_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
 AUDIT_CATEGORIES = {
     "login": "Sign-in & 2FA", "logout": "Sign-in & 2FA", "mfa": "Sign-in & 2FA", "password": "Sign-in & 2FA",
     "import": "Imports", "override": "Corrections", "leave": "Corrections", "employee": "Employees",
-    "period": "Months (finalise / recompute)", "flag": "Review queue", "settings": "Settings", "calendar": "Settings",
+    "period": "Months (lock / unlock / recompute)", "flag": "Review queue", "settings": "Settings", "calendar": "Settings",
     "holiday": "Settings", "geofence": "Settings", "user": "Users", "export": "Downloads", "update": "Updates",
 }
 AUDIT_PAGE = 200

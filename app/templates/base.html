@@ -50,7 +50,7 @@
       <span class="spacer"></span>
       {% if all_periods %}
       <select id="period-switch" aria-label="Month" title="Month">
-        {% for p in all_periods %}<option value="{{ p.key }}" {{ 'selected' if cur_period and p.key == cur_period.key }}>{{ p.label }}{{ ' · final' if p.status == 'FINALISED' }}</option>{% endfor %}
+        {% for p in all_periods %}<option value="{{ p.key }}" {{ 'selected' if cur_period and p.key == cur_period.key }}>{{ p.label }}{{ ' · locked' if p.status == 'FINALISED' }}</option>{% endfor %}
       </select>{% endif %}
       {% if user %}
       <div class="um">
@@ -63,7 +63,7 @@
       </div>{% endif %}
     </header>
     <main class="content">
-<div class="print-head">{{ org or '' }}{% if cur_period %} · {{ cur_period.label }} ({{ 'Final' if cur_period.status == 'FINALISED' else 'Draft' }}){% endif %} · printed {{ now().strftime('%d-%b-%Y %H:%M') }}{% if user %} by {{ user.username }}{% endif %}</div>
+<div class="print-head">{{ org or '' }}{% if cur_period %} · {{ cur_period.label }} {{ ' (locked)' if cur_period.status == 'FINALISED' }}{% endif %} · printed {{ now().strftime('%d-%b-%Y %H:%M') }}{% if user %} by {{ user.username }}{% endif %}</div>
       {% if upd and upd.available and upd.phase not in ('restarting',) %}
       <div class="upd" id="upd-banner" role="status">{{ ui.icon('sparkles') }}
         <span><b>Version {{ upd.latest.version or ('build ' ~ upd.latest.build) }} is available</b> · you have {{ upd.current.version }}{% if upd.current.build %} (build {{ upd.current.build }}){% endif %}</span>
@@ -97,9 +97,19 @@
 <script>window.HSCO_UPD = {{ upd|tojson_safe }};</script>
 {% endif %}
 <div class="toasts" id="toasts">{% if flash %}<div class="toast" role="status">{{ ui.icon('circle-check') }}<span>{{ flash }}</span><button type="button" aria-label="Dismiss" onclick="this.parentNode.remove()">{{ ui.icon('x','sm') }}</button></div>{% endif %}</div>
-<script>window.HSCO_ICONS = "/static/icons.svg?v={{ asset_v }}"; window.HSCO_ASSET_V = "{{ asset_v }}"; window.HSCO_ORG = {{ (org or "HSCO")|tojson }};</script>
+<script>window.HSCO_ICONS = "/static/icons.svg?v={{ asset_v }}"; window.HSCO_ASSET_V = "{{ asset_v }}"; window.HSCO_ORG = {{ (org or "HSCO")|tojson }}; window.HSCO_LOGO = {{ "true" if B.logo else "false" }};</script>
 <script src="/static/app.js?v={{ asset_v }}"></script>
 <script src="/static/table.js?v={{ asset_v }}"></script>
+{% if B.logo and not B.raster and can_hr %}<script>
+// a PNG copy of the logo for the Excel workbooks (made once, by the browser — the server has no image library)
+(function(){ const im = new Image(); im.onload = function(){
+  const h = 160, w0 = im.naturalWidth || 600, h0 = im.naturalHeight || 160, w = Math.max(1, Math.round(w0 * h / h0));
+  const cv = document.createElement('canvas'); cv.width = Math.min(w, 2400); cv.height = h;
+  cv.getContext('2d').drawImage(im, 0, 0, cv.width, h);
+  cv.toBlob(function(b){ if (b) fetch('/branding/raster', {method: 'POST', body: b, credentials: 'same-origin',
+    headers: {'Content-Type': 'image/png', 'X-CSRF-Token': (document.querySelector('meta[name=csrf]') || {}).content || ''}}); }, 'image/png'); };
+  im.src = '/branding/logo?v={{ B.v }}'; })();
+</script>{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

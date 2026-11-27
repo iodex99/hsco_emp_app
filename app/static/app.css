@@ -554,3 +554,13 @@ tr.tfoot-firm td{background:var(--surface-2);font-weight:600}
 .hp-list label .badge{margin-left:auto}
 .hp-members{max-height:320px;overflow:auto}
 .auth .art .auth-app{margin-top:18px;font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.8}
+/* comparison with last month (v1.15) */
+.mini .f{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;margin-top:6px;font-size:11.5px;color:var(--text-3)}
+.mini .f .delta{font-size:11px;padding:1px 6px}
+.mini .u{font-size:12.5px;color:var(--text-3);font-weight:500;margin-top:1px}
+.mini[data-drill]{cursor:pointer}.mini[data-drill]:hover{background:var(--surface-2)}
+.kpi .f.cmp{margin-top:4px}
+.delta.up,.delta.down{background:var(--surface-3);color:var(--text-2)}
+.minis.top6{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media(max-width:1200px){.minis.top6{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.kpi .v .unit{font-size:20px;font-weight:650}

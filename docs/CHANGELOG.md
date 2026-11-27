@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.15.0 — 2026-11-27 — month at a glance first, last-month comparisons everywhere, lock month, logo in reports
+Owner's list (with screenshots of the Overview).
+- **Overview — the month at a glance comes first**: Total head count, New joinees, Left employees, Total attendance
+  (% and present days), Present all days (people present on every working day; click for the list) and Unapplied leave
+  (absent) — each with **▲ / ▼ vs last month**. Leave days, comp-offs and "no attendance for the month" tiles removed;
+  the Attendance tab now starts with the daily chart.
+- **Unapplied leave (absent)** — "absence" → "absent" everywhere (pages, Excel, PDF, rules). The card shows the
+  **people in red bold** and the days in grey beside it; the comparison with last month is on the people.
+- **Comparison with last month in every report**: Overview (all tiles and cards), Insights (all 8 cards and the small
+  figures), Payroll leave sheet, Punch exceptions, Locations (when last month has data), the employee page (against the
+  person's own last month), the PDFs, and the Excel *Board Summary* (columns: this month · last month · change).
+  Nothing is shown when there is no earlier month.
+- **Punctuality**: *Late sitting > 10 days* — the number of **people** who sat late on more than 10 days (was a count
+  of days); click for who.
+- **Daily attendance chart**: dates in red, day initials in grey (also in the PDF).
+- **Hours tab**: *Days worked on off-days / holidays*, *Excess hours sum* and *Shortfall hours sum* removed; new
+  **Hours shortfall > 20 h** and **Excess hours > 20 h** (people, click for who); **Comp-offs earned** shows the people
+  in red with the comp-off days below.
+- **Trend** tab removed from the Overview (Insights keeps its own 12-month trend tab).
+- Work anniversaries: "yr" → "yr(s)".
+- **No "DRAFT"** in the Excel file name, titles, footers or sheets. A locked month says "(locked)" in the titles and
+  "- Locked" in the file name: `Attendance MIS - October 2026.xlsx` / `Attendance MIS - October 2026 - Locked.xlsx`.
+- **Lock month after the MIS**: a *Lock month* button on the Overview (and the payroll sheet); "Finalise / re-open"
+  are now **Lock / Unlock** throughout (status badge *Open* / *Locked*, month picker "· locked", checklist step
+  *Lock month*, audit log *Locked month* / *Unlocked month*). Locked: imports and corrections closed until an admin
+  unlocks (with a reason), exactly as finalising did.
+- **Firm logo in all reports**: PDF cover and every page header, and the top of every Excel sheet (payroll workbook and
+  punches & locations workbook). Excel needs a PNG: the browser of the first HR / admin who opens the app after the logo
+  is set makes a PNG copy and sends it to the server once (`branding/raster.png`); a PNG logo is used as is.
+- Fixes found while checking: the PDF logo was blocked by the page's image policy (blob URL) — now loaded from the
+  app's own address; an unlocked month no longer says "Open by …".
+
 ## 1.14.0 — 2026-11-26 — holiday on a weekly off, minimum-hours policies, renamed "Attendance MIS"
 Owner: "if in the holiday calendar, a holiday is falling on a weekly off of the firm, then … it shall be counted as a
 weekly off and not as a holiday / allow the user to set additional policies for minimum hours to be targetted to

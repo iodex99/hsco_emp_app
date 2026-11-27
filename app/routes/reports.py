@@ -24,7 +24,7 @@ PRODUCT = "Attendance MIS"      # every downloaded file starts with the product 
 
 
 def _fname(p: Period, ext: str) -> str:
-    return f"{PRODUCT} - {p.label} - {'FINAL' if p.status == 'FINALISED' else 'DRAFT'}.{ext}"
+    return f"{PRODUCT} - {p.label}{' - Locked' if p.status == 'FINALISED' else ''}.{ext}"     # no "Draft" (owner, v1.15)
 
 
 @router.get("/exports", response_class=HTMLResponse)

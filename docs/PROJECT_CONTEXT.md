@@ -106,3 +106,14 @@ A holiday falling on the firm's weekly off counts as a weekly off, not a holiday
 including exported file names. Decision (developer): for people following greytHR, "weekly off" is read from their
 own muster (same weekday that month, then the 3 months before), the firm's rule (Sundays, closed Saturdays) only when
 there is no evidence; a policy beats the person's own hours setting.
+
+## Owner requests, 27-Nov-2026 (v1.15)
+Overview: the month-at-a-glance segment first (total head count, new joinees, left employees, total attendance,
+people present all days, unapplied leave) with comparison to last month; remove leave days, comp-offs, no attendance.
+Unapplied leave: people in red bold, days in grey, "absence" → "absent", comparison on people. Comparison with last
+month in all reports. Late sitting as the number of people (> 10 days). Daily chart: dates red, day initials grey.
+Hours: remove off-day work days and excess / shortfall sums; add people with shortfall > 20 h and excess > 20 h;
+comp-offs as people in red with days below. Remove Trend. "Yr" → "Yr(s)". No "Draft" in Excel titles / sheets. Option
+to lock the month after the MIS. HSCO logo in all reports. Decisions (developer): "last month" = the calendar month
+before (nothing shown if it isn't in the app); Lock / Unlock replace Finalise / Re-open (same behaviour); Insights
+keeps its own trend tab (the request named the Overview's tabs).

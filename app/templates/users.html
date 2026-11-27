@@ -16,7 +16,7 @@
   <td class="small" data-v="{{ u.last_login.isoformat() if u.last_login else '' }}">{{ u.last_login.strftime('%d %b %Y, %H:%M') if u.last_login else '—' }}</td>
   <td><button class="btn sm sec" type="button" onclick="HSCO.openDrawer('u{{ u.id }}')">Manage</button></td></tr>
 {% endfor %}</tbody></table></div></div></div>
-<div class="card"><div class="bd small muted"><b style="color:var(--text)">Roles</b> — <b>Viewer</b>: partners and the board; can see everything, change nothing. <b>HR</b>: imports, corrections, holiday lists, finalising months. <b>Admin</b>: everything, plus calculation rules, users and re-opening finalised months.</div></div>
+<div class="card"><div class="bd small muted"><b style="color:var(--text)">Roles</b> — <b>Viewer</b>: partners and the board; can see everything, change nothing. <b>HR</b>: imports, corrections, holiday lists, locking months. <b>Admin</b>: everything, plus calculation rules, users and unlocking locked months.</div></div>
 
 <aside class="drawer" id="newuser"><div class="dh"><h2>Add user</h2><span class="spacer"></span><button class="btn ghost icon" type="button" onclick="HSCO.closeDrawer()" aria-label="Close">{{ ui.icon('x') }}</button></div>
 <form method="post" action="/users" style="display:contents">{{ ui.csrf_field() }}<div class="db">

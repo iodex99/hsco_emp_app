@@ -412,7 +412,7 @@ def _recompute_month_of(c: Ctx, d: date) -> str:
     if p is None or p.computed_at is None:
         return ""
     if p.status != "DRAFT":
-        return f" {p.label} is finalised, so its figures don't change — re-open it to apply the holiday."
+        return f" {p.label} is locked, so its figures don't change — unlock it to apply the holiday."
     c.db.commit()
     recompute_from(c.db, {p.id}, commit_each=True)
     return ""
@@ -542,6 +542,17 @@ async def upload_logo(file: UploadFile = File(...), c: Ctx = Depends(admin)):
         audit(c.db, c.user, "branding.logo", "settings", name, {"type": kind, "bytes": len(data)}, c.ip)
         return redirect("/settings#general", "Logo saved — it now appears in the app, on the sign-in page and in the browser tab.")
     return await anyio.to_thread.run_sync(run)
+
+
+@router.post("/branding/raster")
+async def logo_raster(request: Request, c: Ctx = Depends(hr)):
+    """PNG copy of the logo drawn by the browser (base.html) — the Excel workbooks embed it (v1.15)."""
+    data = await request.body()
+    try:
+        w, h = await anyio.to_thread.run_sync(branding.save_raster, data[: branding.MAX_RASTER + 1])
+    except ValueError as ex:
+        return Response(str(ex), status_code=400)
+    return Response(f"{w}x{h}", media_type="text/plain")
 
 
 @router.post("/settings/branding/delete")

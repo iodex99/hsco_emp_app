@@ -120,7 +120,7 @@ def test_offday_hours_excluded_and_compoff():
 
 
 def test_leave_absent_and_loss_of_pay_counts_as_leave():
-    """v1.13 (owner: "remove LOP completely"): LOP / LWP days are leave; A = unapplied leave (absence)."""
+    """v1.13 (owner: "remove LOP completely"): LOP / LWP days are leave; A = unapplied leave (absent)."""
     rows = month(statuses={6: "PL", 7: "A", 8: "LOP", 9: "COF", 12: "LWP"})
     r = compute_employee_month(Employee("E1", group="BSS"), 2026, 10, rows, [], POL)
     assert (r.pl_days, r.unauth_absent_days, r.cof_days) == (3, 1, 1)

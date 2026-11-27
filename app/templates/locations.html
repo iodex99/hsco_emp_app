@@ -7,7 +7,7 @@
 <div class="card"><div class="bd">{% call ui.empty('No sign-ins imported yet', 'Import greytHR\'s Employee Swipe Details (with the Latitude and Longitude columns) and every mobile sign-in appears here with a place name.', 'map-pin') %}
   {% if can_hr %}<a class="btn" href="/imports">{{ ui.icon('upload','sm') }} Import files</a>{% endif %}{% endcall %}</div></div>
 {% else %}
-{% set k = R.kpis %}{% set key = R.period.key %}
+{% set k = R.kpis %}{% set pk = prev_kpis %}{% set key = R.period.key %}
 <div class="ph">
   <div><h1>Locations</h1>
     <div class="sub">{{ R.period.label }} · where people signed in from · {{ k.mobile }} mobile sign-ins, {{ k.biometric }} office biometric punches</div></div>
@@ -22,13 +22,17 @@
 
 <div class="kpis">
   {{ ui.kpi('Mobile sign-ins', k.mobile, 'smartphone', '', none, (k.gps_pct|n(0) ~ '% with GPS · ' ~ k.places ~ ' places') if k.gps_pct is not none else 'no GPS in this export',
-       tip='Sign-ins made on the greytHR app (everything except the office biometric reader), and how many carried GPS coordinates. Places = distinct place names.') }}
+       tip='Sign-ins made on the greytHR app (everything except the office biometric reader), and how many carried GPS coordinates. Places = distinct place names.',
+       cmp=ui.vs(k.mobile, pk.mobile if pk else none, neutral=True)) }}
   {{ ui.kpi('Client visits', k.client_visits, 'briefcase', '', none, 'distinct person · day · place',
-       tip='Sign-ins tagged Client location, counted once per person, day and place.') }}
+       tip='Sign-ins tagged Client location, counted once per person, day and place.',
+       cmp=ui.vs(k.client_visits, pk.client_visits if pk else none, neutral=True)) }}
   {{ ui.kpi('Work from home', k.wfh, 'house', '', none, k.wfh_people ~ ' people',
-       tip='Sign-ins tagged Work from home (sign-ins, not WFH days — the WFH day count is on the Overview).') }}
+       tip='Sign-ins tagged Work from home (sign-ins, not WFH days — the WFH day count is on the Overview).',
+       cmp=ui.vs(k.wfh, pk.wfh if pk else none)) }}
   {{ ui.kpi("Tagged 'Office' from a phone", k.office_tagged, 'building-2', '', none, k.office_people ~ ' people · check the place against your office',
-       tip='Mobile sign-ins tagged Office instead of a biometric punch — check that the place shown really is an office.') }}
+       tip='Mobile sign-ins tagged Office instead of a biometric punch — check that the place shown really is an office.',
+       cmp=ui.vs(k.office_tagged, pk.office_tagged if pk else none)) }}
 </div>
 {% if R.shared %}<div class="alert bad">{{ ui.icon('triangle-alert') }}<span><b>{{ R.shared|length }} phone{{ 's' if R.shared|length != 1 }} used to sign in for more than one person:</b>
   {% for d, who in R.shared.items() %}{{ who|join(' & ') }}{{ '; ' if not loop.last }}{% endfor %}.</span></div>{% endif %}

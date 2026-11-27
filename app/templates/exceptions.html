@@ -2,7 +2,7 @@
 {% import "_ui.html" as ui with context %}
 {% block title %}Punch exceptions{% endblock %}
 {% block content %}
-{% set k = X.kpis %}{% set key = period.key %}
+{% set k = X.kpis %}{% set pk = prev_kpis %}{% set key = period.key %}
 <div class="ph">
   <div><h1>Punch exceptions</h1>
     <div class="sub">{{ period.label }} · incorrect punches, regularisations, work from home, late by over an hour, early exits, short days, unapplied leave — day by day</div></div>
@@ -12,11 +12,14 @@
 
 <div class="kpis">
   {{ ui.kpi('Incorrect punches', k.punch_days, 'triangle-alert', 'bad' if k.punch_days else 'good', none, k.punch_people ~ ' people · days with in/out times changed or a rejected sign-in',
-       tip='Days where greytHR’s in / out time has no matching punch (changed by hand) or a sign-in was rejected. People on automatic attendance are not checked.') }}
+       tip='Days where greytHR’s in / out time has no matching punch (changed by hand) or a sign-in was rejected. People on automatic attendance are not checked.',
+       cmp=ui.vs(k.punch_days, pk.punch_days if pk else none, False, ' days')) }}
   {{ ui.kpi('Regularisations', k.regularisations, 'pencil', 'warn' if k.regularisations else '', none, k.reg_people ~ ' people · permission requests + times changed in greytHR',
-       tip='Days with a permission (regularisation) request plus days whose in / out time was changed in greytHR.') }}
+       tip='Days with a permission (regularisation) request plus days whose in / out time was changed in greytHR.',
+       cmp=ui.vs(k.regularisations, pk.regularisations if pk else none)) }}
   {{ ui.kpi('Work from home', k.wfh, 'house', '', none, (k.wfh_over ~ ' days over the limit of ' ~ (X.wfh_limit|n) ~ ' (' ~ k.wfh_over_people ~ ' people)') ~ ((' · ' ~ k.wfh_offday ~ ' on days off, not counted') if k.wfh_offday else ''),
-       tip='WFH days counted for the limit; days after the ' ~ (X.wfh_limit|n) ~ 'th of a person are “over the limit”. WFH on weekly offs / holidays is off-day work and not counted.') }}
+       tip='WFH days counted for the limit; days after the ' ~ (X.wfh_limit|n) ~ 'th of a person are “over the limit”. WFH on weekly offs / holidays is off-day work and not counted.',
+       cmp=ui.vs(k.wfh, pk.wfh if pk else none, False, ' days')) }}
 </div>
 
 <div class="tabs" data-tabs id="ex-tabs">

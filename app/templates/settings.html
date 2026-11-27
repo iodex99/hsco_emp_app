@@ -5,7 +5,7 @@
 {% macro num(key, help="") -%}
 <div class="field"><label>{% for k, label, d in numbers if k == key %}{{ label }}{% endfor %}</label><input name="{{ key }}" value="{{ pol[key]|n }}" inputmode="decimal">{% if help %}<div class="help">{{ help }}</div>{% endif %}</div>
 {%- endmacro %}
-<div class="ph"><div><h1>Rules &amp; calendars</h1><div class="sub">How the app calculates. Changes recalculate draft months; finalised months never change.</div></div></div>
+<div class="ph"><div><h1>Rules &amp; calendars</h1><div class="sub">How the app calculates. Changes recalculate open months; locked months never change.</div></div></div>
 <div class="tabs" data-tabs id="set-tabs">
   <button class="on" data-tab="policy">{{ ui.icon('sliders-horizontal','sm') }} Calculation rules</button>
   <button data-tab="categories">{{ ui.icon('layers','sm') }} Categories</button>
@@ -29,7 +29,7 @@
     calculate them. Paid leave per year is used only for "annual leave used" in Insights.</p></div><div>
     <div class="row">{{ num('annual_leave_days') }}{{ num('fy_start_month', '4 = April') }}</div>
     <div class="row">{{ num('comp_off_min_hours', 'Hours on a weekly-off / holiday to earn one comp-off.') }}</div>
-    <p class="help" style="margin-top:0">Loss of pay (LOP / LWP in greytHR) counts as leave taken — there is no separate LOP. Absent without leave applied is shown as <b>Unapplied leave (absence)</b>.</p>
+    <p class="help" style="margin-top:0">Loss of pay (LOP / LWP in greytHR) counts as leave taken — there is no separate LOP. Absent without leave applied is shown as <b>Unapplied leave (absent)</b>.</p>
   </div></div>
   <div class="form-sec"><div><h3>Work from home</h3><p>Counted only on each person's own working days. Each WFH day above the limit is flagged and takes the set amount of leave — for everyone except the groups listed here (or a month exception).</p></div><div>
     <div class="row">{{ num('wfh_limit_days') }}{{ num('wfh_excess_deduction_days', 'e.g. 0.5 = half a day of leave for every WFH day above the limit; 0 = flag only.') }}</div>
@@ -56,7 +56,7 @@
   </div></div>
   <div class="form-sec"><div><h3>greytHR status codes</h3><p>What each code means. Unknown codes are treated as present if hours were worked.</p></div><div>
     <div class="field"><textarea name="status_map" rows="8" class="mono">{% for k, v in pol.status_map.items() %}{{ k }}={{ v }}
-{% endfor %}</textarea><div class="help">One per line: CODE=present | absent | leave | compoff | off. <b>absent</b> = unapplied leave (absence); LOP / LWP = leave.</div></div>
+{% endfor %}</textarea><div class="help">One per line: CODE=present | absent | leave | compoff | off. <b>absent</b> = unapplied leave (absent); LOP / LWP = leave.</div></div>
   </div></div>
 </fieldset></div>
 {% if can_admin %}<div class="hd sticky-save" style="border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end"><span class="small muted" style="margin-right:auto">Saving recalculates every draft month.</span><button class="btn">Save rules</button></div>{% endif %}

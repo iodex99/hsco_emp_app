@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
 {% block title %}{{ r.name }} · {{ period.label }}{% endblock %}
-{% macro status_opts() -%}{% set B = {'present':'Present','leave':'Leave','compoff':'Comp-off','absent':'Unapplied leave (absence)','off':'Off / holiday'} %}{% for b, lbl in B.items() %}<optgroup label="{{ lbl }}">{% for s in status_codes if status_meaning.get(s) == b %}<option value="{{ s }}">{{ s }} — {{ lbl|lower }}</option>{% endfor %}</optgroup>{% endfor %}{%- endmacro %}
+{% macro status_opts() -%}{% set B = {'present':'Present','leave':'Leave','compoff':'Comp-off','absent':'Unapplied leave (absent)','off':'Off / holiday'} %}{% for b, lbl in B.items() %}<optgroup label="{{ lbl }}">{% for s in status_codes if status_meaning.get(s) == b %}<option value="{{ s }}">{{ s }} — {{ lbl|lower }}</option>{% endfor %}</optgroup>{% endfor %}{%- endmacro %}
 {% block content %}
 {% set editable = can_hr and period.status != 'FINALISED' %}
 <div class="crumbs"><a href="/periods/{{ period.key }}">Payroll leave sheet</a> {{ ui.icon('chevron-right','sm') }} <span>{{ r.name }}</span></div>
@@ -17,18 +17,23 @@
   </div>
 </div>
 
+{% set ph = (history|selectattr('key', 'lt', period.key)|list)[-1:] %}{% set pv = ph[0] if ph and ph[0].key == prev_key else none %}
 <div class="kpis">
   {{ ui.kpi('Days present', d.days_present|n, 'calendar-days', '', none, 'of ' ~ ((d.total_week_days - d.holidays)|n) ~ ' working days · ' ~ (d.holidays|n) ~ ' holiday(s)',
-       tip='Week days − holidays − leave − unapplied leave (absence). Includes WFH and on-duty days.') }}
+       tip='Week days − holidays − leave − unapplied leave (absent). Includes WFH and on-duty days.',
+       cmp=ui.vs(d.days_present, pv.days_present if pv else none, True)) }}
   {{ ui.kpi('Hours vs required', ('+' if d.balance_hours > 0 else '') ~ (d.balance_hours|n(1)) ~ ' h', 'clock', 'bad' if d.balance_hours < 0 else 'good', none,
        (d.actual_hours|n(1)) ~ ' worked · ' ~ (d.required_hours|n(1)) ~ ' required · ' ~ ((d.hours_per_day or policy.hours_per_day)|n) ~ ' h/day' ~ ((' (' ~ d.hours_from ~ ')') if (d.hours_from or '').startswith('policy ') else ''),
-       tip='Actual hours (hours on weekly offs and holidays excluded) − required hours (days present × ' ~ ((d.hours_per_day or policy.hours_per_day)|n) ~ ' h).') }}
+       tip='Actual hours (hours on weekly offs and holidays excluded) − required hours (days present × ' ~ ((d.hours_per_day or policy.hours_per_day)|n) ~ ' h).',
+       cmp=ui.vs(d.balance_hours, pv.balance_hours if pv else none, True, ' h')) }}
   {{ ui.kpi('Leave deduction', (d.deduction_days|n) ~ ' d', 'calendar', 'bad' if d.deduction_days else '', none,
        d.remark if d.remark else 'no deduction',
-       tip='½ day per ' ~ (policy.shortfall_block_hours|n) ~ ' h short (rounded up; none when exempt or waived) + ' ~ (policy.wfh_excess_deduction_days|n) ~ ' day per WFH day above ' ~ (policy.wfh_limit_days|n) ~ ' not approved.') }}
+       tip='½ day per ' ~ (policy.shortfall_block_hours|n) ~ ' h short (rounded up; none when exempt or waived) + ' ~ (policy.wfh_excess_deduction_days|n) ~ ' day per WFH day above ' ~ (policy.wfh_limit_days|n) ~ ' not approved.',
+       cmp=ui.vs(d.deduction_days, pv.deduction_days if pv else none, False, ' d')) }}
   {{ ui.kpi('Leave taken', ((d.pl_days or 0) + (d.cof_days or 0))|n ~ ' d', 'briefcase', '', none,
        'leave ' ~ (d.pl_days|n) ~ ' · comp-off ' ~ (d.cof_days|n),
-       tip='Leave (PL, CL, SL … and loss of pay) and comp-off taken on working days, in half days.') }}
+       tip='Leave (PL, CL, SL … and loss of pay) and comp-off taken on working days, in half days.',
+       cmp=ui.vs((d.pl_days or 0) + (d.cof_days or 0), ((pv.pl_days or 0) + (pv.cof_days or 0)) if pv else none, neutral=True, unit=' d')) }}
 </div>
 
 <div class="tabs" data-tabs id="emp-tabs">
@@ -82,7 +87,7 @@
     <div class="card"><div class="hd"><h2>This month at a glance {{ ui.info('The month in figures: leave, unapplied leave, WFH against the limit, late arrivals, punch times, hours, regularisations, off-day work and comp-offs.') }}</h2></div><div class="bd">
       <div class="minis" style="grid-template-columns:1fr 1fr">
         <div class="mini"><div class="v">{{ d.pl_days|n }} / {{ d.cof_days|n }}</div><div class="l">Leave / comp-off</div></div>
-        <div class="mini {{ 'bad' if d.unauth_absent_days }}"><div class="v">{{ d.unauth_absent_days|n }}</div><div class="l">Unapplied leave (absence)</div></div>
+        <div class="mini {{ 'bad' if d.unauth_absent_days }}"><div class="v">{{ d.unauth_absent_days|n }}</div><div class="l">Unapplied leave (absent)</div></div>
         <div class="mini {{ 'warn' if d.wfh_days > policy.wfh_limit_days }}"><div class="v">{{ d.wfh_days|n }}</div><div class="l">WFH days (max {{ policy.wfh_limit_days|n }})</div></div>
         <div class="mini {{ 'warn' if d.very_late_days >= policy.persistent_late_days }}"><div class="v">{{ d.late_days }} / {{ d.very_late_days }}</div><div class="l">Late &gt;{{ policy.late_grace_min }}m / &gt;{{ policy.very_late_min }}m</div></div>
         <div class="mini"><div class="v">{{ d.avg_in_min|hm or '—' }}</div><div class="l">Avg in · out {{ d.avg_out_min|hm or '—' }}</div></div>
@@ -106,9 +111,9 @@
   <div class="card"><div class="hd"><h2>Attention score</h2></div><div class="bd">
     <div class="minis" style="grid-template-columns:1fr 1fr">
       <div class="mini {{ 'bad' if me.attention >= 50 else 'warn' if me.attention >= 25 }}"><div class="v">{{ me.attention }}<small class="muted"> / 100</small></div><div class="l">#{{ sc.rank }} of {{ sc.of }} this month</div></div>
-      <div class="mini {{ 'warn' if me.absence_12m_days }}"><div class="v">{{ me.absence_12m_days|n }} <small class="muted">d</small></div><div class="l">Unapplied leave (absence), last {{ me.absence_12m_months }} month{{ "s" if me.absence_12m_months != 1 }} ({{ me.absence_12m_spells }} spell{{ "s" if me.absence_12m_spells != 1 }})</div></div>
+      <div class="mini {{ 'warn' if me.absence_12m_days }}"><div class="v">{{ me.absence_12m_days|n }} <small class="muted">d</small></div><div class="l">Unapplied leave (absent), last {{ me.absence_12m_months }} month{{ "s" if me.absence_12m_months != 1 }} ({{ me.absence_12m_spells }} spell{{ "s" if me.absence_12m_spells != 1 }})</div></div>
     </div>
-    <ul class="list mt-s">{% for k, v in me.attention_parts.items() %}<li><span>{{ {'absence':'Unapplied leave (absence), 12 months','punctuality':'Late arrivals','utilisation':'Hours below required','regularisation':'Regularisations','wfh':'WFH over the limit'}.get(k, k) }}</span>
+    <ul class="list mt-s">{% for k, v in me.attention_parts.items() %}<li><span>{{ {'absence':'Unapplied leave (absent), 12 months','punctuality':'Late arrivals','utilisation':'Hours below required','regularisation':'Regularisations','wfh':'WFH over the limit'}.get(k, k) }}</span>
       <span class="r"><span class="score {{ 'bad' if v >= 10 else 'warn' if v >= 5 else 'ok' }}"><i style="width:{{ (100 * v / sc.weights[k])|round if sc.weights[k] else 0 }}%"></i><b>{{ v|n(1) }}/{{ sc.weights[k] }}</b></span></span></li>{% endfor %}</ul>
     <p class="small muted mt-s">Higher = more to talk about. <a href="/insights?period={{ period.key }}">See everyone on Insights</a>.</p>
   </div></div>
@@ -152,7 +157,7 @@
       {% if editable %}<form method="post" action="/periods/{{ period.key }}/employee/{{ r.emp_no }}/month-override/{{ o.id }}/delete" data-confirm="Remove this adjustment?">{{ ui.csrf_field() }}<button class="btn sm ghost" title="Remove">{{ ui.icon('trash-2','sm') }}</button></form>{% endif %}</li>
     {% else %}<li class="muted">No adjustments. Use this for one-off decisions — e.g. grant an exception, or set required hours.</li>{% endfor %}</ul></div></div>
 </div>
-{% if period.status == 'FINALISED' %}<div class="alert">{{ ui.icon('lock') }}<span>This month is finalised. An admin must re-open it before corrections can be made.</span></div>{% endif %}
+{% if period.status == 'FINALISED' %}<div class="alert">{{ ui.icon('lock') }}<span>This month is locked. An admin must unlock it before corrections can be made.</span></div>{% endif %}
 </section>
 
 <section class="pane" data-pane="ledger">
@@ -161,7 +166,7 @@
     <div class="bd"><table class="ledger plain"><tbody>
       <tr><td>Leave taken <span class="muted small">(incl. loss of pay)</span></td><td class="num">{{ d.pl_days|n }}</td></tr>
       <tr><td>Comp-off taken</td><td class="num">{{ d.cof_days|n }}</td></tr>
-      <tr><td>Unapplied leave (absence)</td><td class="num {{ 'neg' if d.unauth_absent_days }}">{{ d.unauth_absent_days|n }}</td></tr>
+      <tr><td>Unapplied leave (absent)</td><td class="num {{ 'neg' if d.unauth_absent_days }}">{{ d.unauth_absent_days|n }}</td></tr>
       <tr><td>Hours-shortfall deduction{% if editable and can_hr and d.shortfall_deduction_days %}
         <button class="btn sm sec" type="button" style="margin-left:8px" onclick="HSCO.openDrawer('waive');setTimeout(()=>document.getElementById('wv-reason').focus(),50)">{{ ui.icon('badge-check','sm') }} Waive</button>{% endif %}</td>
         <td class="num">{{ d.shortfall_deduction_days|n }}</td></tr>

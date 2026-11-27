@@ -366,3 +366,25 @@ content and give short columns their measured width (`doc.getTextWidth`). Menu: 
 - Name: "Attendance MIS" (base.html, auth_base.html, FastAPI title, Excel titles / properties, pdf.js); download names
   `routes/reports.PRODUCT`, table.js CSV and pdf.js file names. Installer: desktop icon `Attendance MIS.url` (old one
   removed); task names "HSCO Attendance App" / "HSCO Attendance Backup" unchanged (updates and data folder rely on them).
+
+## v1.15 — comparisons, lock wording, logo in reports
+- **Comparisons**: `_ui.html` macros `vs(cur, prev, good_up, unit, neutral)` (the "▲ n vs last month (x)" line) and
+  `mini(label, value, cur, prev, tip, tone, good_up, unit, under, attrs, neutral)`; `kpi(..., cmp=)` puts it in
+  `.f.cmp`. Routes pass the previous month's kpis (`compute.previous_period`): dashboard / period (metrics), Insights
+  (`insights()`), Punch exceptions (`month_exceptions`), Locations (`LOC.report`, only the calendar month before), employee
+  page (`history` row with `prev_key`). Excel *Board Summary*: metric · month · last month · change.
+- **New KPIs** in `metrics.compute_kpis`: `present_all_days`, `present_days`, `late_sitting_people`,
+  `shortfall_people`, `excess_people`, `compoff_people`, `avg_in_min`, `avg_out_min`; `period_metrics()["present_all"]`
+  for the drill. Thresholds `LATE_SITTING_PEOPLE_DAYS = 10`, `HOURS_PEOPLE_LIMIT = 20`.
+- **Lock**: routes unchanged (`/periods/{key}/finalise` = lock, `/reopen` = unlock); finalise takes an optional local
+  `back` URL (`/…` only — not `//` or `/\`). Status words "Open" / "Locked"; DB values `DRAFT` / `FINALISED`.
+- **Logo in Excel**: openpyxl needs Pillow to embed images, which we don't ship. `excel._PngImage` subclasses
+  `openpyxl.drawing.image.Image` and returns the PNG bytes itself (size from the IHDR, `branding.png_size`).
+  `branding.png()` → (bytes, w, h) from `logo.png`, else `raster.png`. For an SVG logo, `base.html` (HR / admin, when no
+  raster exists) draws `/branding/logo` on a canvas and POSTs the PNG to `POST /branding/raster` (CSRF header, HR role,
+  PNG signature + size checked); a new or removed logo deletes the raster. `_logo(ws, org)` anchors it at A1 (56 px).
+- **PDF**: `pdf.js loadLogo()` draws `/branding/logo` (same-origin URL — a `blob:` URL is refused by `img-src`) to a
+  PNG data URL; cover 15 mm, page header 7 mm. Boxes take `u` (grey line), `s` (grey part of a KPI value — `<small>`),
+  `f` and `c` (comparison).
+- **Daily chart axis**: `H.chart(cfg.xLines)` + the `twoLineX` plugin in `app.js` draw date (red) / weekday initial
+  (grey) under each bar; the PDF re-renders charts with `config.plugins`, so it carries over.

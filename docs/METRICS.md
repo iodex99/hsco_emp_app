@@ -5,24 +5,37 @@ Code: `app/engine/compute.py` (per employee), `app/services/metrics.py` (organis
 ## Board KPIs (dashboard tiles, Excel "Board Summary", HTML pack)
 | KPI | Definition |
 |---|---|
-| Employees in muster | employees with ≥ 1 muster day in the month |
-| New joinees / Exits | DOJ / DOL within the month (exits also suggested from the DOJ active list) |
-| Attendance rate | Σ days present ÷ Σ (week days − holidays) |
+| Total head count | employees with ≥ 1 muster day in the month (ignored groups left out) |
+| New joinees / Left employees | DOJ / DOL within the month (exits also suggested from the DOJ active list) |
+| Total attendance | Σ days present ÷ Σ (week days − holidays), with Σ days present shown below |
+| Present all days (v1.15) | people with working days > 0 and days present ≥ working days (no leave, no unapplied leave, no half day) |
 | Leave deductions | employees with shortfall deduction; total deduction days |
-| Unapplied leave (absence) | Σ `A` halves on working days, and how many people (v1.13 — formerly "unauthorised absence"; there is no LOP any more: LOP / LWP count as leave) |
+| Unapplied leave (absent) | how many people (the headline, red) and Σ `A` halves on working days (grey) (v1.13 — formerly "unauthorised absence"; v1.15 "absence" → "absent"; there is no LOP any more: LOP / LWP count as leave) |
 | Over WFH limit | employees with WFH days > limit (2); WFH counts only on the person's own working days (v1.6.4); ½ day of leave per extra day (v1.6.5). Work location tab (v1.13): WFH days (instances), people who worked from home, people over the limit and days over, and every WFH person (over-limit badge, “Over the limit” chip) |
 | Persistently late | > 60 min late on ≥ 10 days (non-partners) |
 | Persistent regularisation | ≥ 3 regularised days |
 | Avg hours / present day; avg in / out time | non-partners, present working days |
-| Off-day / holiday work days; comp-offs earned (≥ 5 h) | |
-| Excess / shortfall hours | Σ positive / negative monthly balances |
-| Late-sitting days | out after 21:00 or next day |
+| Comp-offs earned (≥ 5 h) | people who earned one (red) and the comp-off days in total (v1.15) |
+| Hours shortfall > 20 h / Excess hours > 20 h (v1.15) | people whose monthly balance is below −20 h / above +20 h (`metrics.HOURS_PEOPLE_LIMIT`) |
+| Late sitting > 10 days (v1.15) | people with more than 10 late-sitting days (out after 21:00 or next day; `metrics.LATE_SITTING_PEOPLE_DAYS`) |
+
+v1.15 removed from the Overview: leave days, comp-offs taken and "no attendance" tiles, off-day work days, excess /
+shortfall hours sums (still in Excel *Board Summary*) and the Trend tab.
+
+**Comparison with last month (v1.15, owner: "in all the reports there should be comparison with last month")**: every
+headline figure shows ▲ / ▼ and the difference against the calendar month before, with last month's value, e.g.
+"▼ 26 vs last month (34)"; "= same as last month" when equal; nothing when there is no calculated month before. Green
+= better, red = worse; neutral figures (head count, joinees, sign-ins, leave taken) in grey. Percentages compare in
+points. Unapplied leave compares the people. Pages: Overview, Insights, Payroll leave sheet, Punch exceptions,
+Locations, employee page (the person's own previous month), PDFs; Excel *Board Summary* has *last month* and *Change*
+columns (`ui.vs` / `ui.mini` in `_ui.html`).
 
 ## Charts
 Where people punched (v1.13: a ranked bar list instead of a doughnut — punches, share of all punches, people; a Total
 row) · arrival-time histogram (30-min buckets) · daily attendance mix (present / leave (incl. comp-off) / unapplied
 leave / WFH; tooltip "Thu 9 Oct 2026" with every series and the total) · late arrivals by weekday · tenure profile ·
-12-month trend once more than one month exists · per-employee history chart.
+per-employee history chart (the Overview's 12-month trend was removed in v1.15; Insights keeps its trend tab). The daily
+chart's axis shows the date in red and the day initial in grey (v1.15).
 
 **Click-through (v1.13, owner: "when clicked on these bars, shall show the data of those exact filtered out employees … across
 the app")**: every bar / segment / row of a chart or breakdown opens a panel listing exactly the people behind it with
