@@ -37,7 +37,8 @@ POLICY_NUMBERS = [
     ("persistent_late_days", "Persistent late: days per month", "10"),
     ("persistent_regularisation_days", "Persistent regularisation: days per month", "3"),
     ("min_daily_hours", "Encouraged minimum hours per day", "7"),
-    ("annual_leave_days", "Paid leave per financial year (Insights: leave used)", "15"),
+    ("late_sitting_extra_min", "Late sitting: worked more than required by (min)", "60"),
+    ("annual_leave_days", "Paid leave per financial year (Details: leave used)", "15"),
     ("fy_start_month", "Financial year start month (1-12)", "4"),
 ]
 
@@ -186,7 +187,6 @@ def _save_policy(c: Ctx, form):
     data["wfh_location_types"] = [x.lower() for x in data["wfh_location_types"]]
     data["wfh_method"] = form.get("wfh_method", "distinct_days")
     data["persistent_late_basis"] = form.get("persistent_late_basis", "very_late")
-    data["late_sitting_after"] = form.get("late_sitting_after", "21:00")
     data["default_shift_start"] = form.get("default_shift_start", "10:00")
     data["default_shift_end"] = form.get("default_shift_end", "18:30")
     # status map lines "CODE=bucket"

@@ -43,7 +43,7 @@
 {% macro pdf_menu(title, key, label) -%}
 <details class="pdf-menu"><summary class="btn sec" title="Download as PDF">{{ icon('file-down','sm') }} PDF {{ icon('chevron-down','sm') }}</summary>
 <div class="pdf-pop"><button type="button" data-pdf="{{ title }}"><b>This page</b><span>every tab, rows as filtered on screen</span></button>
-<button type="button" data-pdf-full="{{ key }}" data-label="{{ label }}"><b>Full report</b><span>every report of {{ label }} in one PDF — Overview, Insights, payroll sheet, review queue, punch exceptions, locations, reconciliation</span></button></div></details>
+<button type="button" data-pdf-full="{{ key }}" data-label="{{ label }}"><b>Full report</b><span>every report of {{ label }} in one PDF — Overview, Details, payroll sheet, review queue, punch exceptions, locations, reconciliation</span></button></div></details>
 {%- endmacro %}
 
 {# "i" button: hover / focus / tap shows how a figure is calculated or what it represents (v1.13) #}

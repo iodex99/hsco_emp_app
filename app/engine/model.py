@@ -74,7 +74,10 @@ class Policy:
     persistent_late_basis: str = "very_late"   # 'very_late' (> very_late_min) or 'late' (> grace)
     persistent_regularisation_days: int = 3
     min_daily_hours: float = 7.0
-    late_sitting_after: time = time(21, 0)
+    late_sitting_after: time = time(21, 0)     # not used since v1.16 (kept so older saved rules still read)
+    # late sitting (owner, v1.16): a present working day with more than the person's required hours per day (their
+    # minimum-hours policy / own / category / firm) plus this many minutes — not a fixed clock time
+    late_sitting_extra_min: int = 60
     metrics_exclude_groups: tuple = ("Partner",)
     # employee groups the app ignores completely (owner, v1.13: "OTHERS … they dont concern us") — no results, no
     # metrics, no lists; their rows in uploads are kept but never used. Compared case-insensitively.

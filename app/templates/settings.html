@@ -26,7 +26,7 @@
     <div class="row"><div class="field"><label>Groups ignored by the app</label><input name="ignored_groups" value="{{ pol.ignored_groups|join(', ') }}"><div class="help">Employees in these groups (e.g. OTHERS) are left out completely — not calculated, listed, counted or exported, even when an upload contains them. Upper / lower case doesn't matter.</div></div></div>
   </div></div>
   <div class="form-sec"><div><h3>Leave &amp; comp-off</h3><p>Leave balances are kept in greytHR — this app does not
-    calculate them. Paid leave per year is used only for "annual leave used" in Insights.</p></div><div>
+    calculate them. Paid leave per year is used only for "annual leave used" in Details.</p></div><div>
     <div class="row">{{ num('annual_leave_days') }}{{ num('fy_start_month', '4 = April') }}</div>
     <div class="row">{{ num('comp_off_min_hours', 'Hours on a weekly-off / holiday to earn one comp-off.') }}</div>
     <p class="help" style="margin-top:0">Loss of pay (LOP / LWP in greytHR) counts as leave taken — there is no separate LOP. Absent without leave applied is shown as <b>Unapplied leave (absent)</b>.</p>
@@ -44,7 +44,7 @@
     <div class="row">{{ num('persistent_late_days') }}
       <div class="field"><label>Persistent late counts days that are</label><select name="persistent_late_basis"><option value="very_late" {{ 'selected' if pol.persistent_late_basis=='very_late' }}>later than the very-late threshold</option><option value="late" {{ 'selected' if pol.persistent_late_basis=='late' }}>later than the grace</option></select></div>
       {{ num('persistent_regularisation_days') }}</div>
-    <div class="row">{{ num('min_daily_hours') }}<div class="field"><label>Late sitting after</label><input type="time" name="late_sitting_after" value="{{ pol.late_sitting_after }}"></div>
+    <div class="row">{{ num('min_daily_hours') }}{{ num('late_sitting_extra_min', 'A late-sitting day = worked more than the person’s required hours per day plus this.') }}
       <div class="field"><label>Groups left out of these metrics</label><input name="metrics_exclude_groups" value="{{ pol.metrics_exclude_groups|join(', ') }}"></div></div>
   </div></div>
   <div class="form-sec"><div><h3>Shifts</h3><p>Shift times are read from the greytHR shift name. Override here if one is read wrongly.</p></div><div>
@@ -111,7 +111,7 @@
 </section>
 
 <section class="pane" data-pane="hours">
-<div class="card"><div class="hd"><h2>Minimum hours policies {{ ui.info('Required hours per day = days present × the hours per day that apply to the person. Order: their minimum-hours policy → their own hours (employee page) → their category → the firm’s ' ~ (hp_firm|n) ~ ' h (Calculation rules). It changes required hours, the shortfall, the deduction, the payroll sheet and Excel, Insights and PDFs.') }}</h2>
+<div class="card"><div class="hd"><h2>Minimum hours policies {{ ui.info('Required hours per day = days present × the hours per day that apply to the person. Order: their minimum-hours policy → their own hours (employee page) → their category → the firm’s ' ~ (hp_firm|n) ~ ' h (Calculation rules). It changes required hours, the shortfall, the deduction, the payroll sheet and Excel, Details and PDFs.') }}</h2>
   <span class="sub">firm: {{ hp_firm|n }} h a day · {{ hp_items|length }} polic{{ 'y' if hp_items|length == 1 else 'ies' }} · changes recalculate draft months</span></div>
   <div class="bd">
     <p class="small" style="margin-top:0;color:var(--text-2)">Create a policy for each different day length (e.g. <b>8-hour day</b> = 8 h) and add the employees it applies to. An employee is in at most one policy — adding them to another moves them.</p>

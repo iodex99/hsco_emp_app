@@ -313,3 +313,17 @@ for the lock wording. Real-data copy (97 people, fake locked September): glance 
 present-all drill (42), shortfall > 20 h = 0 (worst −17.97 h) / excess > 20 h list, daily chart colours, Lock → Locked
 by → unlock drawer → Open, Excel (20 sheets with the logo, no DRAFT, Board Summary columns), all PDFs rendered and
 read (logo on cover and headers, comparisons, red dates, grey days); no console errors.
+
+## v1.16.0 — leavers, permissions, checklist, Overview reorganised
+`test_date_of_leaving_report_takes_only_the_employees_in_the_app` (old leavers never created, known one updated and
+marked left, shown on Overview / employee page, no absence after leaving, delete restores),
+`test_permission_report_under_permission` (detection, counted vs withdrawn / rejected, Permission heading with WFH /
+On Duty people + days, Excel *Permissions* with *Counted*, delete removes rows), `test_month_end_checklist_steps`
+(5 steps; a download elsewhere doesn't tick; confirm / download / undo; bad step 400; audit),
+`test_viewer_cannot_tick_the_checklist`, `test_late_sitting_arrivals_and_daily_bars` (late sitting = hours + 1 h on
+every day; four arrival ranges; > 1 h late by weekday; WFH bar not also in present),
+`test_insights_is_called_details_and_people_tab_headcount`; glance / click-through / e2e tests updated. Real-data
+copy: Date of Leaving (173 rows → 3 October leavers with greytHR's dates 10 / 21 / 21 Oct, the rest left out) and the
+Permission Report (shifted to October): glance 5 tiles, head count list (97), exits list with dates, checklist
+Made in greytHR → green, Excel from step 4 → green, Permission → WFH 7 people / 7 days, On Duty 7 / 12, arrival
+ranges, Permissions sheet, Details page, employee page "left 10-Oct-2026", Overview + full PDF; no console errors.

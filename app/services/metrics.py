@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import defer
 from sqlalchemy.orm import Session
 
-from app.models import Employee, ManualMisRow, MonthResult, MusterRow, Period, SummaryRow
+from app.models import Employee, ManualMisRow, MonthResult, MusterRow, Period, PermissionRow, SummaryRow
 from app.engine.compute import is_persistent_late
 from app.services.compute import previous_period
 from app.services.settings import get_policy
@@ -163,6 +163,62 @@ def _ranked(c: Counter) -> list:
     return [[k, round(v, 2)] for k, v in sorted(c.items(), key=lambda x: (-x[1], x[0]))]
 
 
+# first punch of the day (owner, v1.16): people by their usual (average) first punch, in four ranges
+ARRIVAL_RANGES = [("09:30–10:00", 570, 600), ("10:00–10:30", 600, 630), ("10:30–11:00", 630, 660),
+                  ("After 11:00", 660, 24 * 60 * 2)]
+# "Permission" (owner, v1.16): a heading with WFH and On Duty under it; punches tagged Permission are not shown
+PERMISSION_KINDS = ("WFH", "On Duty")
+PUNCH_PERMISSION = {"work from home": "WFH", "wfh": "WFH", "on-duty": "On Duty", "on duty": "On Duty"}
+
+
+def arrival_ranges(D: list[dict]) -> dict:
+    """{"rows": [{"bucket", "count"}], "who": {bucket: [[emp, "hh:mm"], …]}, "earlier": n} — each person once, by
+    their average first punch on days present."""
+    who = {lab: [] for lab, _, _ in ARRIVAL_RANGES}
+    earlier = 0
+    for d in sorted(D, key=lambda d: d.get("avg_in_min") or 0):
+        a = d.get("avg_in_min")
+        if not a:
+            continue
+        if a < ARRIVAL_RANGES[0][1]:
+            earlier += 1
+            continue
+        for lab, lo, hi in ARRIVAL_RANGES:
+            if lo <= a < hi:
+                who[lab].append([d["emp_no"], hm(a)])
+                break
+    return {"rows": [{"bucket": lab, "count": len(who[lab])} for lab, _, _ in ARRIVAL_RANGES], "who": who,
+            "earlier": earlier}
+
+
+def permission_mix(db: Session, period: Period, res, excl: set) -> dict:
+    """WFH and On Duty under "Permission": from the Permission Report when one is imported for the month (approved
+    or applied requests; withdrawn / rejected left out), else from sign-ins tagged Work from home / On-duty.
+    Each: people and days (instances)."""
+    from app.importers.parsers import PERMISSION_COUNTED
+    scope = {r.emp_no for r in res if r.group not in excl}
+    rows = list(db.scalars(select(PermissionRow).where(PermissionRow.period_id == period.id)))
+    who = {k: defaultdict(set) for k in PERMISSION_KINDS}
+    if rows:
+        source = "report"
+        for r in rows:
+            if r.ptype in who and r.emp_no in scope and (r.status or "").strip().lower() in PERMISSION_COUNTED:
+                who[r.ptype][r.emp_no].add(r.day)
+    else:
+        source = "punches"
+        for r in res:
+            if r.emp_no not in scope:
+                continue
+            for dd in r.days:
+                for sw in dd.get("swipes", []):
+                    k = PUNCH_PERMISSION.get((sw.get("loc") or "").strip().lower())
+                    if k:
+                        who[k][r.emp_no].add(dd["date"])
+    out = [{"label": k, "people": len(who[k]), "count": sum(len(v) for v in who[k].values())} for k in PERMISSION_KINDS]
+    return {"source": source if any(x["count"] for x in out) else "", "rows": out,
+            "who": {k: _ranked(Counter({e: len(v) for e, v in who[k].items()})) for k in PERMISSION_KINDS}}
+
+
 def loc_label(s: dict) -> str:
     return s.get("loc") or ("Office (biometric)" if (s.get("type") or "").lower() == "astra" else s.get("type") or "Other")
 
@@ -192,7 +248,6 @@ def period_metrics(db: Session, period: Period) -> dict:
     # charts, and who is behind every bar (drill-down, v1.13)
     loc_mix, loc_who = Counter(), defaultdict(Counter)
     late_by_wd, late_who = Counter(), defaultdict(Counter)
-    in_hist, in_who = Counter(), defaultdict(Counter)
     daily = defaultdict(lambda: Counter())
     daily_who = defaultdict(lambda: defaultdict(Counter))
     excl = set(policy.metrics_exclude_groups)
@@ -202,25 +257,23 @@ def period_metrics(db: Session, period: Period) -> dict:
         for dd in r.days:
             for s in dd.get("swipes", []):
                 lab = loc_label(s)
+                low = lab.strip().lower()
+                if low == "permission" or low in PUNCH_PERMISSION:
+                    continue                    # under "Permission" (WFH / On Duty) — v1.16
                 loc_mix[lab] += 1
                 loc_who[lab][r.emp_no] += 1
-            if dd.get("late"):
+            # late arrivals by weekday: more than 1 h late (owner, v1.16; was the 15-minute grace)
+            if dd.get("very_late") or (dd.get("late_min") or 0) > policy.very_late_min:
                 late_by_wd[dd["wd"]] += 1
                 late_who[dd["wd"]][r.emp_no] += 1
-            if dd.get("in") and dd["type"] == "WORKDAY" and dd["b1"] == "present":
-                h, mi = map(int, dd["in"].split(":"))
-                bucket = f"{h:02d}:{(mi // 30) * 30:02d}"
-                in_hist[bucket] += 1
-                in_who[bucket][r.emp_no] += 1
             dc, dw = daily[dd["date"]], daily_who[dd["date"]]
             if dd["type"] == "WORKDAY":
                 for b in (dd["b1"], dd["b2"]):
                     b = "leave" if b in ("compoff", "lop") else b      # chart series: present / leave / absent
+                    if b == "present" and dd.get("wfh"):
+                        b = "wfh"            # a bar of its own (owner, v1.16): present in office / WFH / leave / absent
                     dc[b] += 0.5
                     dw[b][r.emp_no] += 0.5
-                if dd.get("wfh"):
-                    dc["wfh"] += 1
-                    dw["wfh"][r.emp_no] += 1
                 if dd.get("late"):
                     dc["late"] += 1
 
@@ -237,6 +290,8 @@ def period_metrics(db: Session, period: Period) -> dict:
                           "approved": d.get("wfh_approved_days") or 0, "deduction": d.get("wfh_deduction_days") or 0}
                          for d in D if (d.get("wfh_days") or 0) > 0), key=lambda x: (-x["value"], x["name"]))
     loc_total = sum(loc_mix.values())
+    arrivals = arrival_ranges([d for d in D if d.get("group") not in excl])
+    perm = permission_mix(db, period, res, excl)
     return {
         "period": {"key": period.key, "label": period.label, "status": period.status},
         "kpis": kpis,
@@ -246,9 +301,13 @@ def period_metrics(db: Session, period: Period) -> dict:
         "flags": flag_rows,
         "groups": group_rows,
         "location_mix": [{"label": k, "count": v, "people": len(loc_who[k]),
-                          "pct": round(100 * v / loc_total, 1) if loc_total else 0} for k, v in loc_mix.most_common()],
+                          "pct": round(100 * v / loc_total, 1) if loc_total else 0}
+                         for k, v in sorted(loc_mix.items(), key=lambda x: (-len(loc_who[x[0]]), -x[1]))],
+        "loc_people": len({e for c in loc_who.values() for e in c}),
+        "permission_mix": {"source": perm["source"], "rows": perm["rows"]},
         "late_by_weekday": [{"wd": w, "count": late_by_wd.get(w, 0)} for w in WD_ORDER],
-        "in_time_hist": [{"bucket": k, "count": in_hist[k]} for k in sorted(in_hist)],
+        "in_time_hist": arrivals["rows"],
+        "arrivals_earlier": arrivals["earlier"],
         "daily": [{"date": k, "wd": WD_ORDER[date.fromisoformat(k).weekday()],
                    **{kk: round(vv, 1) for kk, vv in v.items()}} for k, v in sorted(daily.items())],
         "people": {k: v for k, v in people.items() if k != "tenure_who"},
@@ -268,7 +327,8 @@ def period_metrics(db: Session, period: Period) -> dict:
             "daily": {d: {b: _ranked(c) for b, c in v.items()} for d, v in daily_who.items()},
             "loc": {k: _ranked(c) for k, c in loc_who.items()},
             "late_wd": {k: _ranked(c) for k, c in late_who.items()},
-            "in_time": {k: _ranked(c) for k, c in in_who.items()},
+            "in_time": arrivals["who"],
+            "perm": perm["who"],
             "tenure": people["tenure_who"],
         },
     }

@@ -13,7 +13,7 @@
   <div class="card"><div class="hd"><h2>What's been imported</h2><span class="sub">{{ period.label }}</span></div><div class="bd" style="padding-top:6px">
     <ul class="checklist">{% for f in wf.files %}<li>{% if f.done %}<span class="ok-ic">{{ ui.icon('circle-check') }}</span>{% else %}<span class="no-ic">{{ ui.icon('circle-dot') }}</span>{% endif %}
       <span>{{ f.label }}</span><span class="spacer"></span>{% if not f.required %}<span class="muted small">optional</span>{% elif not f.done %}<span class="badge b-warn">needed</span>{% endif %}</li>{% endfor %}</ul>
-    <p class="small muted mt">Leave, hours, deductions, Insights and the downloads are worked out once the <b>Attendance Muster Report</b> for {{ period.label }} is imported — usually at month end.</p>
+    <p class="small muted mt">Leave, hours, deductions, Details and the downloads are worked out once the <b>Attendance Muster Report</b> for {{ period.label }} is imported — usually at month end.</p>
   </div></div>
   <div class="card"><div class="hd"><h2>Sign-ins so far</h2></div><div class="bd">
     {% if signins.total %}

@@ -107,6 +107,18 @@ including exported file names. Decision (developer): for people following greytH
 own muster (same weekday that month, then the 3 months before), the firm's rule (Sundays, closed Saturdays) only when
 there is no evidence; a policy beats the person's own hours setting.
 
+## Owner requests, 27-Nov-2026, second list (v1.16)
+Remove the unapplied-leave box from the top row; head count opens a list; no present days under attendance.
+Checklist: import · review exceptions · corrections (button to confirm they are made in greytHR) · download & share
+(Excel / PDF from here; only that turns it green) · lock month. Remove the exceptions card; leave deductions and
+unapplied leave cards into the Attendance tab, same style. Remove the People card; Needs attention to the bottom.
+WFH as a bar. By group last. Insights → Details; People → Headcount. First punch in four ranges (people); late by
+weekday > 1 h. Two new greytHR reports: Date of Leaving (whole list every time — use what is needed) and the
+Permission Report (WFH and On Duty under Permission; people first and bold, instances after). Late sitting = more
+than 1 h over the person's required hours. Decisions (developer): first-punch ranges count each person once by their
+average first punch; permission requests count when approved or applied (withdrawn / rejected never); the permission
+report does not change the leave calculation; "otherwise it stays green" read as "stays not green".
+
 ## Owner requests, 27-Nov-2026 (v1.15)
 Overview: the month-at-a-glance segment first (total head count, new joinees, left employees, total attendance,
 people present all days, unapplied leave) with comparison to last month; remove leave days, comp-offs, no attendance.

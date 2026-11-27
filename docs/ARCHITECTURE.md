@@ -388,3 +388,19 @@ content and give short columns their measured width (`doc.getTextWidth`). Menu: 
   `f` and `c` (comparison).
 - **Daily chart axis**: `H.chart(cfg.xLines)` + the `twoLineX` plugin in `app.js` draw date (red) / weekday initial
   (grey) under each bar; the PDF re-renders charts with `config.plugins`, so it carries over.
+
+## v1.16 — leavers, permissions, checklist
+- **Importers**: kinds `leavers` (emp_no + dol; bonus 0.75 so a joining list with a leaving column stays `doj`) and
+  `permissions` (emp_no + date + `permission_type`; bonus 1.3) in `parsers.SCHEMAS`, `parse_leavers`,
+  `parse_permissions`, `PERMISSION_COUNTED`. `imports.import_file`: leavers update known employees only (undo via the
+  batch snapshot); permissions go to table **`permissions`** (`PermissionRow`, period-scoped, `batch_id`, in
+  `ROW_TABLES` so deleting the upload removes them).
+- **`Period.checklist`** (JSON, nullable; added by `add_missing_columns`): `{"greythr": {by, at}, "download": {by, at,
+  what}}`. `POST /periods/{key}/checklist` (HR, JSON + CSRF header, `anyio.to_thread`) sets / clears a step.
+  `workflow.status` steps: import, review, correct, share, lock.
+- **Metrics**: `arrival_ranges`, `permission_mix` (report or tagged sign-ins), `location_mix` without Permission /
+  WFH / On-duty punches and with `loc_people`; late-by-weekday counts `very_late`; daily `wfh` series = present
+  halves of WFH days. Engine: late sitting from `work_min` vs `hours_per_day` + `Policy.late_sitting_extra_min`;
+  `RULES_VERSION = 14`.
+- **Excel**: sheet *Permissions* (when the month has a Permission Report).
+- **UI**: Overview restructured (glance 5 · checklist · tabs · Needs attention); `dmy` filter accepts ISO strings.

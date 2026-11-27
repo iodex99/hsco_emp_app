@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui with context %}
-{% block title %}Insights {{ period.label }}{% endblock %}
+{% block title %}Details {{ period.label }}{% endblock %}
 {% block content %}
 {% set k = I.kpis %}{% set pk = prev_kpis %}{% set key = period.key %}
 {% macro pct(v, dash=False) %}{% if v is not none %}{{ v|n(1) }}%{% elif dash %}—{% endif %}{% endmacro %}
 <div class="ph">
-  <div><h1>Workforce insights</h1>
+  <div><h1>Details</h1>
     <div class="sub">{{ period.label }} · {{ k.headcount }} employees · unapplied leave, punctuality, hours, leave used and retention — each person scored against the firm</div></div>
   <div class="actions">
     <a class="btn sec" href="/exports/{{ key }}.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Excel</a>
-    {{ ui.pdf_menu('Insights ' ~ period.label, period.key, period.label) }}
+    {{ ui.pdf_menu('Details ' ~ period.label, period.key, period.label) }}
   </div>
 </div>
 
@@ -144,7 +144,7 @@
     {{ ui.mini('Median first punch', k.median_in, k.median_in_min, pk.median_in_min if pk else none, 'Middle value of the people’s average first punch. ▲ = later than last month.', unit=' min') }}
     {{ ui.mini('On time (within ' ~ policy.late_grace_min ~ ' min of shift start)', pct(k.punctuality_pct, True), k.punctuality_pct, pk.punctuality_pct if pk else none, '', 'warn' if (100 if k.punctuality_pct is none else k.punctuality_pct) < 70 else '', good_up=True, unit=' pts') }}
     {{ ui.mini('Long days (2 h+ over required)', k.long_days, k.long_days, pk.long_days if pk else none, 'Days with at least 2 h more than the day’s required hours.', neutral=True) }}
-    {{ ui.mini('Late-sitting days', k.late_sitting_days, k.late_sitting_days, pk.late_sitting_days if pk else none, 'Days with a last punch after ' ~ policy.late_sitting_after.strftime('%H:%M') ~ ' (or the next morning).', neutral=True) }}
+    {{ ui.mini('Late-sitting days', k.late_sitting_days, k.late_sitting_days, pk.late_sitting_days if pk else none, 'Days worked more than the person’s required hours per day plus ' ~ ((policy.late_sitting_extra_min / 60)|n) ~ ' h.', neutral=True) }}
     {{ ui.mini('Present days regularised', pct(k.regularisation_pct, True), k.regularisation_pct, pk.regularisation_pct if pk else none, 'Days with a permission request or times changed in greytHR ÷ days present.', unit=' pts') }}
   </div>
 </section>

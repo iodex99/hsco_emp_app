@@ -7,7 +7,7 @@
 <div class="crumbs"><a href="/periods/{{ period.key }}">Payroll leave sheet</a> {{ ui.icon('chevron-right','sm') }} <span>{{ r.name }}</span></div>
 <div class="ph" style="margin-top:4px">
   <div class="person" style="gap:14px"><span class="av" style="width:48px;height:48px;font-size:16px;background:var(--brand-50);color:var(--brand-700)">{{ ui.initials(r.name) }}</span>
-    <div><h1>{{ r.name }}</h1><div class="sub">{{ r.emp_no }} · {{ r.group or 'Group not set' }}{% if r.category %} · <span title="Employee category (holiday list &amp; working pattern)">{{ r.category }}{% if d.additional_category %} + {{ d.additional_category }}{% endif %}</span>{% endif %} · {{ r.location }}{% if emp and emp.doj %} · joined {{ emp.doj|dmy }}{% endif %}{% if d.exempt %} · <span class="badge b-grey" title="No hours-shortfall deduction. WFH over the limit is still deducted unless the group is in 'Groups not deducted for WFH'.">Exempt from hours deduction</span>{% endif %}</div></div></div>
+    <div><h1>{{ r.name }}</h1><div class="sub">{{ r.emp_no }} · {{ r.group or 'Group not set' }}{% if r.category %} · <span title="Employee category (holiday list &amp; working pattern)">{{ r.category }}{% if d.additional_category %} + {{ d.additional_category }}{% endif %}</span>{% endif %} · {{ r.location }}{% if emp and emp.doj %} · joined {{ emp.doj|dmy }}{% endif %}{% if emp and emp.dol %} · <span class="badge b-warn" title="Date of leaving">left {{ emp.dol|dmy }}</span>{% endif %}{% if d.exempt %} · <span class="badge b-grey" title="No hours-shortfall deduction. WFH over the limit is still deducted unless the group is in 'Groups not deducted for WFH'.">Exempt from hours deduction</span>{% endif %}</div></div></div>
   <div class="actions">
     <a class="btn ghost icon {{ 'disabled' if not prev_emp }}" {% if prev_emp %}href="/periods/{{ period.key }}/employee/{{ prev_emp }}"{% endif %} title="Previous employee (←)" id="prev-emp">{{ ui.icon('chevron-left') }}</a>
     <a class="btn ghost icon" {% if next_emp %}href="/periods/{{ period.key }}/employee/{{ next_emp }}"{% endif %} title="Next employee (→)" id="next-emp">{{ ui.icon('chevron-right') }}</a>
@@ -115,7 +115,7 @@
     </div>
     <ul class="list mt-s">{% for k, v in me.attention_parts.items() %}<li><span>{{ {'absence':'Unapplied leave (absent), 12 months','punctuality':'Late arrivals','utilisation':'Hours below required','regularisation':'Regularisations','wfh':'WFH over the limit'}.get(k, k) }}</span>
       <span class="r"><span class="score {{ 'bad' if v >= 10 else 'warn' if v >= 5 else 'ok' }}"><i style="width:{{ (100 * v / sc.weights[k])|round if sc.weights[k] else 0 }}%"></i><b>{{ v|n(1) }}/{{ sc.weights[k] }}</b></span></span></li>{% endfor %}</ul>
-    <p class="small muted mt-s">Higher = more to talk about. <a href="/insights?period={{ period.key }}">See everyone on Insights</a>.</p>
+    <p class="small muted mt-s">Higher = more to talk about. <a href="/insights?period={{ period.key }}">See everyone on Details</a>.</p>
   </div></div>
 </div>
 </section>

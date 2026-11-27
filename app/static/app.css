@@ -562,5 +562,20 @@ tr.tfoot-firm td{background:var(--surface-2);font-weight:600}
 .kpi .f.cmp{margin-top:4px}
 .delta.up,.delta.down{background:var(--surface-3);color:var(--text-2)}
 .minis.top6{grid-template-columns:repeat(6,minmax(0,1fr))}
+.minis.top5{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:1200px){.minis.top5{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:640px){.minis.top5,.minis.top6{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpis.k2{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* month-end checklist (v1.16): steps with their own actions */
+.step a.t{display:block;color:inherit}
+.step a.t:hover{color:var(--brand)}
+.step .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-right:8px}
+.step .acts form{margin:0}
+/* where people punched (v1.16): Permission heading with WFH / On Duty under it */
+.shares li{grid-template-columns:150px minmax(60px,1fr) 190px}   /* same columns on every row: the bars line up */
+.shares li.head{cursor:default;padding-top:14px;border-bottom:0}
+.shares li.head .sl{font-weight:600;color:var(--text)}
+.shares li.child .sl{padding-left:16px}
+.shares .sv b{font-weight:700}
 @media(max-width:1200px){.minis.top6{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .kpi .v .unit{font-size:20px;font-weight:650}

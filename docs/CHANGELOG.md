@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.16.0 — 2026-11-27 — Date of Leaving and Permission reports, new checklist, Overview reorganised
+Owner's list (with screenshots of the Overview).
+- **Two more greytHR reports** (recognised automatically on Import files):
+  - **Date of Leaving** — the whole list since the start comes every time; only the employees the app knows are
+    used (their date of leaving is recorded / corrected, they are marked left), the rest (people who left before the
+    app) are left out and counted in the import note. Days after the leaving date no longer count as attendance or
+    unapplied leave. Leaving dates are shown on the Overview (Left employees list, Headcount tab), the employee page and
+    Employees. Deleting the upload puts the earlier dates back.
+  - **Permission Report** — WFH, On Duty and Regularization requests by day with their workflow status. Approved and
+    applied requests count; withdrawn and rejected do not. New Excel sheet *Permissions* (every request, *Counted*).
+- **Overview, top row**: Unapplied leave box removed (it is a card in the Attendance tab); **Total head count** opens
+  the list of everyone; *Total attendance* no longer shows the present days.
+- **Month-end checklist**: 1 Import · 2 Review exceptions · 3 Corrections — a **Made in greytHR** button confirms
+  the corrections are made in greytHR (green; *Undo*) · 4 Download & share — **Excel** and **PDF** buttons; only a
+  download from here turns the step green · 5 Lock month. Each confirmation is audit-logged.
+- **Cards**: *Exceptions to review* removed; *Leave deductions* and *Unapplied leave (absent)* moved into the
+  Attendance tab; unapplied leave now in the same style as leave deductions ("8 people · 53 days").
+- People card next to Needs attention removed; **Needs attention** moved to the bottom of the page. Tabs: Attendance ·
+  Punctuality · Work location · Hours · **Headcount** (was People) · **By group** (moved last).
+- **Daily attendance**: WFH is a bar (stacked with present, leave and unapplied leave), no line.
+- **First punch of the day**: four ranges — 09:30–10:00, 10:00–10:30, 10:30–11:00, after 11:00 — counting **people**
+  by their usual (average) first punch; click for who. **Late arrivals by weekday**: more than 1 h late (was 15 min).
+- **Where people punched**: people first (bold), then punches and share; *Permission* is a heading without numbers,
+  with **WFH** and **On Duty** under it (people, days) — from the Permission Report when imported, else from sign-ins
+  tagged Work from home / On-duty. Sign-ins tagged "Permission" are no longer a row of their own.
+- **Late sitting** = a present working day with more than the person's required hours per day (their minimum-hours
+  policy / own / category / firm) **+ 1 h** — not a clock time (setting: *Late sitting: worked more than required by
+  (min)*, default 60). Calculation rules version 14: open months recalculate once after the update.
+- **"Insights" renamed "Details"** (menu, page, PDF, full report).
+- Full-report PDF: a report page slow to come up (busy server) is tried again (up to 3 times) instead of being left
+  out of the report silently.
+
 ## 1.15.0 — 2026-11-27 — month at a glance first, last-month comparisons everywhere, lock month, logo in reports
 Owner's list (with screenshots of the Overview).
 - **Overview — the month at a glance comes first**: Total head count, New joinees, Left employees, Total attendance

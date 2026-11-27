@@ -73,7 +73,17 @@ def _readable(v) -> str:
 templates.env.filters["plural"] = _plural
 templates.env.filters["readable"] = _readable
 templates.env.filters["tojson_safe"] = _tojson_safe
-templates.env.filters["dmy"] = lambda d: d.strftime("%d-%b-%Y") if isinstance(d, (date, datetime)) else (d or "")
+def _dmy(d):
+    """dd-Mon-yyyy for a date, a datetime or an ISO date string (people lists carry ISO strings)."""
+    if isinstance(d, str) and len(d) >= 10 and d[4] == "-" and d[7] == "-":
+        try:
+            d = date.fromisoformat(d[:10])
+        except ValueError:
+            return d
+    return d.strftime("%d-%b-%Y") if isinstance(d, (date, datetime)) else (d or "")
+
+
+templates.env.filters["dmy"] = _dmy
 templates.env.globals["now"] = datetime.now
 
 

@@ -7,7 +7,7 @@ Code: `app/engine/compute.py` (per employee), `app/services/metrics.py` (organis
 |---|---|
 | Total head count | employees with ≥ 1 muster day in the month (ignored groups left out) |
 | New joinees / Left employees | DOJ / DOL within the month (exits also suggested from the DOJ active list) |
-| Total attendance | Σ days present ÷ Σ (week days − holidays), with Σ days present shown below |
+| Total attendance | Σ days present ÷ Σ (week days − holidays) (v1.16: the present-days line removed) |
 | Present all days (v1.15) | people with working days > 0 and days present ≥ working days (no leave, no unapplied leave, no half day) |
 | Leave deductions | employees with shortfall deduction; total deduction days |
 | Unapplied leave (absent) | how many people (the headline, red) and Σ `A` halves on working days (grey) (v1.13 — formerly "unauthorised absence"; v1.15 "absence" → "absent"; there is no LOP any more: LOP / LWP count as leave) |
@@ -17,7 +17,7 @@ Code: `app/engine/compute.py` (per employee), `app/services/metrics.py` (organis
 | Avg hours / present day; avg in / out time | non-partners, present working days |
 | Comp-offs earned (≥ 5 h) | people who earned one (red) and the comp-off days in total (v1.15) |
 | Hours shortfall > 20 h / Excess hours > 20 h (v1.15) | people whose monthly balance is below −20 h / above +20 h (`metrics.HOURS_PEOPLE_LIMIT`) |
-| Late sitting > 10 days (v1.15) | people with more than 10 late-sitting days (out after 21:00 or next day; `metrics.LATE_SITTING_PEOPLE_DAYS`) |
+| Late sitting > 10 days (v1.15) | people with more than 10 late-sitting days (`metrics.LATE_SITTING_PEOPLE_DAYS`). v1.16: a late-sitting day = a present working day with worked minutes > required hours per day × 60 + `late_sitting_extra_min` (60) — the person's own required hours (policy / own / category / firm), not a clock time |
 
 v1.15 removed from the Overview: leave days, comp-offs taken and "no attendance" tiles, off-day work days, excess /
 shortfall hours sums (still in Excel *Board Summary*) and the Trend tab.
@@ -177,3 +177,16 @@ as filtered on screen) or *Full report* (cover + contents, then Overview, Insigh
 Punch exceptions, Locations, Reconciliation). Charts are drawn again at print size; ranked lists print everyone on them
 with their total; short columns are sized to their content; screen-only hints are left out. The Overview's top row has
 three cards (Leave deductions, Unapplied leave, Exceptions to review) — the attendance rate is under the Attendance tab.
+
+## Overview changes (v1.16)
+- **Glance strip** (5): head count (click → everyone with days present), new joinees, left employees (date of leaving),
+  total attendance, present all days — each vs last month. Unapplied leave is a card in the Attendance tab.
+- **First punch of the day**: people (each once) by their average first punch on days present: 09:30–10:00,
+  10:00–10:30, 10:30–11:00, after 11:00 (`metrics.ARRIVAL_RANGES`); people before 09:30 are counted in the "i" note.
+- **Late arrivals by weekday**: days with a first punch more than `very_late_min` (60) after shift start.
+- **Daily attendance**: four stacked bars — present (not WFH), WFH, leave (incl. comp-off), unapplied leave; a WFH
+  day's halves count as WFH, not present, so the bar adds up to the people with a working day.
+- **Where people punched**: per place, people (distinct) then punches and share of punches; bar = people ÷ head
+  count. Under **Permission** (a heading): WFH and On Duty — people and days (distinct person-days) from the
+  Permission Report (status approved / applied / pending; withdrawn / rejected excluded), or, without a report, from
+  sign-ins tagged Work from home / On-duty. Sign-ins tagged Permission are left out.

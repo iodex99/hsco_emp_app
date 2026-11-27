@@ -1,7 +1,7 @@
 // HSCO → PDF (v1.13.1). Built in the browser from the app's own pages — headings, KPI cards, charts, ranked lists
 // and tables (as real text tables, colours kept) — so nothing leaves the server.
 //   HSCO.pdf(title)            this page: every tab, rows as filtered on screen
-//   HSCO.pdfFull(periodKey)    the full report: cover + contents, then Overview, Insights, Payroll leave sheet,
+//   HSCO.pdfFull(periodKey)    the full report: cover + contents, then Overview, Details, Payroll leave sheet,
 //                              Review queue, Punch exceptions, Locations and Reconciliation (each page loaded in a
 //                              hidden frame and laid out completely)
 // Charts are drawn again off-screen at print size with animation off (never half-drawn, never blank); ranked lists
@@ -293,13 +293,14 @@
     }
     function shares(ol) {
       const rows = [...ol.querySelectorAll("li")].filter(shown).map((li) => {
-        const tot = li.classList.contains("tot"), sw = li.querySelector(".sl i"), col = sw && rgb(cs(sw).backgroundColor);
-        return [{ content: "", styles: col ? { fillColor: col } : {} }, { content: txt(li.querySelector(".sl")), styles: tot ? { fontStyle: "bold" } : {} },
+        const tot = li.classList.contains("tot") || li.classList.contains("head"), sw = li.querySelector(".sl i"), col = sw && rgb(cs(sw).backgroundColor);
+        const lab = (li.classList.contains("child") ? "    " : "") + txt(li.querySelector(".sl"));      // WFH / On Duty under Permission
+        return [{ content: "", styles: col ? { fillColor: col } : {} }, { content: lab, styles: tot ? { fontStyle: "bold" } : {} },
                 { content: txt(li.querySelector(".sv b")), styles: { halign: "right", fontStyle: "bold" } },
                 { content: txt(li.querySelector(".sv small")), styles: { halign: "right", textColor: GREY } }];
       });
       P.need(12 + rows.length * 5);
-      doc.autoTable({ head: [["", "Where", { content: "Punches", styles: { halign: "right" } }, { content: "Share · people", styles: { halign: "right" } }]],
+      doc.autoTable({ head: [["", "Where", { content: "People", styles: { halign: "right" } }, { content: "Punches / days · share", styles: { halign: "right" } }]],
         body: rows, startY: P.y, margin: { left: M, right: M + CW / 3, top: TOP, bottom: BOTTOM }, theme: "plain",
         headStyles: { textColor: GREY, fontStyle: "bold", fontSize: 7.5 }, columnStyles: { 0: { cellWidth: 3 } },
         styles: { fontSize: 8.3, cellPadding: 1.2, lineColor: LINE, lineWidth: { top: 0, right: 0, bottom: 0.12, left: 0 } } });
@@ -498,7 +499,7 @@
   };
 
   // the full report: every report page of the month, each loaded in a hidden frame
-  H.REPORT_PAGES = [["/", "Overview"], ["/insights", "Insights"], ["/periods/{k}", "Payroll leave sheet"], ["/flags", "Review queue"],
+  H.REPORT_PAGES = [["/", "Overview"], ["/insights", "Details"], ["/periods/{k}", "Payroll leave sheet"], ["/flags", "Review queue"],
                     ["/exceptions", "Punch exceptions"], ["/locations", "Locations"], ["/reconciliation", "Reconciliation"]];
   async function framePage(url) {
     const f = document.createElement("iframe");
@@ -507,7 +508,7 @@
     const loaded = new Promise((ok, bad) => { f.onload = ok; setTimeout(() => bad(new Error("timed out loading " + url)), 60000); });
     f.src = url;
     document.body.appendChild(f);
-    await loaded;
+    try { await loaded; } catch (e) { f.remove(); throw e; }
     for (let i = 0; i < 100 && !(f.contentWindow.HSCO && f.contentWindow.document.readyState === "complete"); i++) await sleep(100);
     await sleep(250);
     return f;
@@ -521,9 +522,14 @@
       for (const [path, name] of H.REPORT_PAGES) {
         const url = path.includes("{k}") ? path.replace("{k}", key) : `${path}?period=${encodeURIComponent(key)}`;
         if (c) c.querySelector("small").textContent = " — " + name;
-        let f;
-        try { f = await framePage(url); } catch (e) { console.error(e); continue; }
-        const root = f.contentDocument && f.contentDocument.querySelector("main.content");
+        // a page that is slow to come up (busy server) is tried again rather than left out of the report
+        let f = null, root = null;
+        for (let attempt = 0; attempt < 3 && !(root && root.querySelector(".ph h1")); attempt++) {
+          if (f) { f.remove(); f = null; await sleep(500); }
+          try { f = await framePage(url); } catch (e) { console.warn(e); continue; }
+          root = f.contentDocument && f.contentDocument.querySelector("main.content");
+        }
+        if (!f) continue;
         if (root && root.querySelector(".ph h1")) {
           P.page();
           await render(P, f.contentWindow, root, { chapter: name });

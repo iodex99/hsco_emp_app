@@ -299,7 +299,11 @@ F = {
     "remark": (["remark", "remarks", "comment", "comments", "note", "notes"], "text"),
     # punch-log extras (greytHR "Employee Swipe Details" with mobile sign-ins)
     "reason": (["permission reason", "reason", "regularisation reason", "regularization reason", "request reason"], "text"),
-    "approval": (["status", "approval status", "swipe status", "request status", "approval"], "text"),
+    "approval": (["status", "approval status", "swipe status", "request status", "approval", "workflow status"], "text"),
+    # greytHR "Permission Report" (v1.16)
+    "permission_type": (["permission type", "request type", "permission category", "type of permission"], "text"),
+    "perm_from": (["applied from time", "from time", "permission from"], "text"),
+    "perm_to": (["applied to time", "to time", "permission to"], "text"),
     "device": (["mobile device name", "device model", "phone model", "handset", "mobile model"], "text"),
     "device_id": (["mobile device id", "device id", "device identifier", "imei", "device serial", "device uuid"], "text"),
     "signed_by": (["signed in / out by", "signed in out by", "signed by", "marked by", "entered by", "punched by"], "text"),
@@ -318,6 +322,11 @@ SCHEMAS = {
                    ["name", "location", "holiday", "leave", "absent", "days_present_mis", "wfh", "total_hours",
                     "extra_days", "adjusted_hours", "holiday_hours", "actual_hours", "balance_hours", "remark"], 1.5),
     "doj": (["emp_no", "doj"], ["name", "dol", "department", "designation", "location"], 0.8),
+    # greytHR "Date Of Leaving" (v1.16): every leaver since the start — only the employees the app knows are used.
+    # Lower bonus than "doj" so a joining list that also has a leaving-date column stays a joining list.
+    "leavers": (["emp_no", "dol"], ["name"], 0.75),
+    # greytHR "Permission Report" (v1.16): WFH / On Duty / Regularization requests by day
+    "permissions": (["emp_no", "date", "permission_type"], ["name", "perm_from", "perm_to", "reason", "approval"], 1.3),
     "employee_master": (["emp_no", ("group", "weekly_off", "hours_per_day", "exempt")],
                         ["name", "location", "weekly_off", "working_saturdays", "hours_per_day", "exempt", "exempt_reason",
                          "doj", "dol", "email", "department", "designation", "group",
@@ -335,6 +344,8 @@ KIND_LABELS = {
     "swipes": "Employee Swipe Details (punch log)",
     "summary": "Attendance Summary Report",
     "doj": "Date of Joining Report (joining dates)",
+    "leavers": "Date of Leaving report (leaving dates)",
+    "permissions": "Permission Report (WFH / On Duty requests)",
     "mis_manual": "Manual MIS working (for reconciliation / employee master)",
     "holidays": "Holiday list",
     "employee_category": "Employee category report",
@@ -344,7 +355,9 @@ FIELD_LABELS = {k: v[0][0].title() for k, v in F.items()}
 FIELD_LABELS.update({"emp_no": "Employee number", "s1": "Status — first half", "s2": "Status — second half",
                      "status": "Status (whole day)", "timestamp": "Punch date & time", "time": "Punch time (if date is separate)",
                      "in_time": "In time", "out_time": "Out time", "hours": "Hours worked", "coords": "Coordinates (lat, long)",
-                     "doj": "Date of joining", "dol": "Date of leaving", "holiday_name": "Holiday name"})
+                     "doj": "Date of joining", "dol": "Date of leaving", "holiday_name": "Holiday name",
+                     "permission_type": "Permission type", "perm_from": "From time", "perm_to": "To time",
+                     "approval": "Status"})
 MIN_CONFIDENCE = 0.72
 
 
@@ -877,6 +890,51 @@ def parse_doj(rows, ds) -> list[dict]:
     return out
 
 
+def parse_leavers(rows, ds) -> list[dict]:
+    """Date Of Leaving report: [{emp_no, name, dol}] (rows without a readable date are skipped)."""
+    out = []
+    for r in _data_rows(rows, ds):
+        e = _row_emp(r, ds)
+        if not e or e.lower().startswith("total"):
+            continue
+        d = parse_date(_g(r, ds, "dol"))
+        if d:
+            out.append({"emp_no": e, "name": str(_g(r, ds, "name") or "").strip(), "dol": d})
+    return out
+
+
+PERMISSION_TYPES = {"wfh": "WFH", "work from home": "WFH", "on duty": "On Duty", "onduty": "On Duty",
+                    "on-duty": "On Duty", "od": "On Duty", "regularization": "Regularization",
+                    "regularisation": "Regularization"}
+# requests that count (owner, v1.16): approved, and applied (not yet acted on); withdrawn / rejected never count
+PERMISSION_COUNTED = ("approved", "applied", "pending", "")
+
+
+def permission_type(v) -> str:
+    t = " ".join(str(v or "").split()).strip()
+    return PERMISSION_TYPES.get(t.lower(), t)
+
+
+def parse_permissions(rows, ds) -> list[dict]:
+    """Permission Report: [{emp_no, name, day, ptype, from_time, to_time, reason, status}]."""
+    out = []
+    for r in _data_rows(rows, ds):
+        e = _row_emp(r, ds)
+        if not e or e.lower().startswith("total"):
+            continue
+        d = parse_date(_g(r, ds, "date"))
+        if not d:
+            continue
+
+        def txt(f, n=256):
+            v = _g(r, ds, f) if f in ds.map else None
+            return "" if v is None else " ".join(str(v).split())[:n]
+        out.append({"emp_no": e, "name": txt("name", 128), "day": d, "ptype": permission_type(_g(r, ds, "permission_type")),
+                    "from_time": txt("perm_from", 8), "to_time": txt("perm_to", 8), "reason": txt("reason"),
+                    "status": txt("approval", 32)})
+    return out
+
+
 def parse_mis_manual(rows, ds) -> list[dict]:
     """Manual MIS 'Reference' sheet → master fields + the manual figures (for reconciliation)."""
     fm = {"name": "name", "group": "group", "location": "location", "total_week_days": "week_days",
@@ -945,6 +1003,7 @@ def parse_holidays(rows, ds) -> list[dict]:
 
 
 PARSERS = {"muster": parse_muster, "swipes": parse_swipes, "summary": parse_summary, "doj": parse_doj,
+           "leavers": parse_leavers, "permissions": parse_permissions,
            "mis_manual": parse_mis_manual, "employee_master": parse_employee_master,
            "holidays": parse_holidays}
 

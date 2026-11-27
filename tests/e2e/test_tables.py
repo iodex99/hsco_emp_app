@@ -417,13 +417,13 @@ def test_full_report_pdf_has_every_report_with_contents(page):
     page; charts drawn completely; ranked lists print everyone; no screen-only hints."""
     pg = page
     pg.goto(pg.base + "/?period=2026-10")
-    assert pg.locator(".kpis.k3 > .kpi").count() == 3 and "Attendance rate" not in pg.inner_text(".kpis")
+    assert pg.locator(".kpis.k2 > .kpi").count() == 2 and "Attendance rate" not in pg.inner_text(".kpis")
     with pg.expect_download(timeout=120000) as dl:
         pg.click(".pdf-menu summary")
         pg.click("[data-pdf-full]")
     assert dl.value.suggested_filename.startswith("Attendance MIS - Full report October 2026")
     pages, text = _pdf(dl.value.path())
-    names = ["Overview", "Insights", "Payroll leave sheet", "Review queue", "Punch exceptions", "Locations", "Reconciliation"]
+    names = ["Overview", "Details", "Payroll leave sheet", "Review queue", "Punch exceptions", "Locations", "Reconciliation"]
     assert "Contents" in text and all(n in text for n in names)
     assert pages >= len(names) + 1 and f"Page 2 of {pages}" in text
     for h in ("Daily attendance", "Employee scorecard", "Who was where, every day", "Groups compared", "By group",

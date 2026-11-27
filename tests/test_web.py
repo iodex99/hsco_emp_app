@@ -2012,7 +2012,7 @@ def test_overview_click_through_totals_info_and_pdf(loaded):
     assert "Unapplied leave (absent)" in html and "Unauthorised" not in html and "Missing punch" not in html
     assert html.count('class="info-i"') >= 25 and 'data-pdf="Overview October 2026"' in html
     assert 'data-pdf-full="2026-10"' in html and 'class="pdf-menu"' in html
-    assert "Attendance rate" not in html.split('class="kpis k3"')[1].split("</div>\n\n")[0]       # card removed (owner)
+    assert "Attendance rate" not in html.split('class="kpis k2')[1].split("</div>\n\n")[0]       # card removed (owner)
     assert 'class="tl-grp"' in html and "data-tl-sum" in html and 'id="loc-shares"' in html and 'id="wfh-over"' in html
     assert "By category" not in html and ">By group" in html
     sheet = c.get("/periods/2026-10?f=fl-UNAUTHORISED_ABSENCE").text
@@ -2020,7 +2020,7 @@ def test_overview_click_through_totals_info_and_pdf(loaded):
     assert 'data-chip="absent"' in sheet and 'data-pdf="Payroll leave sheet October 2026"' in sheet
     ins = c.get("/insights?period=2026-10").text
     assert 'id="arrive-heat"' in ins and "Whole firm" in ins and "data-tl-sum" in ins and 'id="gc"' in ins
-    assert 'data-pdf="Insights October 2026"' in ins and 'class="info-i"' in ins and "Loss of pay" not in ins
+    assert 'data-pdf="Details October 2026"' in ins and 'class="info-i"' in ins and "Loss of pay" not in ins
     for p in ("/static/vendor/jspdf.umd.min.js", "/static/vendor/jspdf.plugin.autotable.min.js", "/static/pdf.js"):
         r = c.get(p)
         assert r.status_code == 200 and len(r.content) > 1000, p
@@ -2204,18 +2204,21 @@ def test_overview_glance_strip_first_with_last_month(loaded):
     _locked_september(worse)
     html = c.get("/?period=2026-10").text
     glance = html.split('id="glance"')[1].split('class="card')[0]
-    for label in ("Total head count", "New joinees", "Left employees", "Total attendance", "Present all days",
-                  "Unapplied leave (absent)"):
+    for label in ("Total head count", "New joinees", "Left employees", "Total attendance", "Present all days"):
         assert label in glance, label
+    # v1.16 (owner): the unapplied-leave box left the strip; head count opens everyone; no "present days" line
+    assert "Unapplied leave" not in glance and "present days" not in glance and 'data-drill="headcount"' in glance
     assert html.index('id="glance"') < html.index("Month-end checklist")                  # the strip comes first
-    assert glance.count("last month") == 6
+    assert glance.count("last month") == 5
     for gone in ('data-tab="trend"', "Days worked on off-days", "Excess hours sum", "Shortfall hours sum",
                  "No attendance for the month"):
         assert gone not in html, gone
     for label in ("Late sitting &gt; 10 days", "Hours shortfall &gt; 20 h", "Excess hours &gt; 20 h", "Comp-offs earned"):
         assert label in html, label
-    card = html.split('class="kpis k3"')[1].split("Exceptions to review")[0]
-    assert "Unapplied leave (absent)" in card and "vs last month" in card
+    # the two cards moved into the Attendance tab; "Exceptions to review" card gone
+    card = html.split('class="kpis k2')[1].split('<div class="grid')[0]
+    assert "Unapplied leave (absent)" in card and "Leave deductions" in card and "vs last month" in card
+    assert "Exceptions to review" not in html and html.index('data-pane="att"') < html.index('class="kpis k2')
     with session_scope() as db:
         octo = db.scalar(select(Period).where(Period.year == 2026, Period.month == 10))
         k = MX.period_metrics(db, octo)["kpis"]
@@ -2297,3 +2300,153 @@ def test_viewer_cannot_send_the_logo_copy(client):
     login_full(client, "viewer2")
     r = client.post("/branding/raster", content=_png(), headers={"X-CSRF-Token": csrf_of(client, "/")})
     assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------------------------- v1.16 (owner, 27-Nov)
+def _greythr_report(title, header, rows, total):
+    """A greytHR-style report: a title row, the header, the rows, a blank row and 'Total number of records'."""
+    return _xlsx([[title], header, *rows, [None], [f"Total number of records : {total}"]])
+
+
+def test_date_of_leaving_report_takes_only_the_employees_in_the_app(loaded):
+    """Owner: 'date of leaving (this sheet is full data from 2021) and everytime the system will receive this whole
+    sheet only so the system takes only what is necessary and leaves the rest'."""
+    from datetime import date
+    from app.db import session_scope
+    from app.models import Employee
+    c = loaded
+    rep = _greythr_report("Date Of Leaving", ["Employee Number", "Employee Name", "Leaving Date"],
+                          [["13", "Old Leaver", "12 JUL 2017"], ["T005", "Esha Patel", "21 OCT 2026"],
+                           ["58", "Another Old One", "31 MAR 2021"]], 3)
+    r = _post_files(c, [("DateofLeaving.xlsx", rep)])
+    assert "Date of Leaving report" in r.text and "1 leaving date of employees in the app" in r.text
+    assert "2 older leavers not in the app" in r.text
+    with session_scope() as db:
+        assert db.get(Employee, "T005").dol == date(2026, 10, 21) and not db.get(Employee, "T005").is_active
+        assert db.get(Employee, "13") is None and db.get(Employee, "58") is None          # never created
+    html = c.get("/?period=2026-10").text
+    assert "Left 21-Oct-2026" in html                                                  # Headcount tab
+    assert "left 21-Oct-2026" in c.get("/periods/2026-10/employee/T005").text           # employee page
+    # absence after the leaving date no longer counts (the muster runs to the month end)
+    assert all(d["date"] <= "2026-10-21" or d["b1"] != "absent" for d in _result_days("T005"))
+    # deleting the upload puts the earlier value back
+    b = _batch("leavers")
+    c.post(f"/imports/{b}/delete", data={"csrf": csrf_of(c, "/imports"), "reason": "test"})
+    with session_scope() as db:
+        assert db.get(Employee, "T005").dol is None
+
+
+def test_permission_report_under_permission(loaded):
+    """Owner: 'permissionsheet, basically wfh and on duty will come under permission … permission … will stay as a
+    heading but wont have numbers, there will be sub category under it which is wfh and on duty … the headcount
+    numbers come first and in bold and the instances come later'."""
+    import zipfile
+    from app.db import session_scope
+    from app.models import PermissionRow
+    c = loaded
+    hdr = ["Employee Name", "Employee Number", "Attendance Date", "Permission Type", "Applied From Time",
+           "Applied To Time", "Reason", "Workflow Status"]
+    rows = [["Asha Rao", "T001", "05 OCT 2026", "WFH", "10:00", "18:30", "fever", "Approved"],
+            ["Asha Rao", "T001", "06 OCT 2026", "WFH", "10:00", "18:30", "", "Applied"],
+            ["Bilal Khan", "T002", "07 OCT 2026", "WFH", "10:00", "18:30", "", "Withdraw"],
+            ["Bilal Khan", "T002", "08 OCT 2026", "On Duty", "11:00", "19:00", "client", "Approved"],
+            ["Bilal Khan", "T002", "08 OCT 2026", "On Duty", "11:00", "07:00", "client", "Withdraw"],
+            ["Dev Mehta", "T004", "09 OCT 2026", "WFH", "09:00", "18:00", "trial", "Rejected"],
+            ["Esha Patel", "T005", "12 OCT 2026", "Regularization", "09:00", "18:00", "app down", "Approved"]]
+    r = _post_files(c, [("Permissionreport.xlsx", _greythr_report("Permission Report", hdr, rows, len(rows)))])
+    assert "Permission Report" in r.text and "Counted (approved or applied): 1 On Duty, 1 Regularization, 2 WFH" in r.text
+    assert "3 withdrawn / rejected not counted" in r.text
+    with session_scope() as db:
+        assert len(list(db.scalars(select(PermissionRow)))) == 7
+    html = c.get("/?period=2026-10").text
+    loc = html.split('id="loc-shares"')[1].split("</ul>")[0]
+    assert 'class="head"' in loc and ">Permission<" in loc and "from the Permission Report" in loc
+    assert 'data-loc="Permission"' not in loc                                   # a heading, no numbers of its own
+    wfh = loc.split('data-perm="WFH"')[1].split("</li>")[0]
+    od = loc.split('data-perm="On Duty"')[1].split("</li>")[0]
+    assert "<b>1 person</b><small>2 days</small>" in wfh and "<b>1 person</b><small>1 day</small>" in od
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    ps = [r for r in wb["Permissions"].iter_rows(min_row=6, values_only=True) if r[1]]
+    assert len(ps) == 7 and sum(1 for r in ps if r[9] == "Yes") == 4
+    # deleting the upload removes its requests
+    b = _batch("permissions")
+    c.post(f"/imports/{b}/delete", data={"csrf": csrf_of(c, "/imports"), "reason": "test"})
+    with session_scope() as db:
+        assert not list(db.scalars(select(PermissionRow)))
+    assert "Permissions" not in load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content)).sheetnames
+
+
+def test_month_end_checklist_steps(loaded):
+    """Owner: 1 import, 2 review exceptions, 3 corrections (a button to confirm they are made in greytHR turns it
+    green), 4 download & share (only a download from here turns it green), 5 lock month."""
+    from app.db import session_scope
+    from app.models import Period
+    from app.services import workflow as WF
+    c = loaded
+
+    def steps():
+        with session_scope() as db:
+            p = db.scalar(select(Period).where(Period.year == 2026, Period.month == 10))
+            return {s["key"]: s for s in WF.status(db, p)["steps"]}
+    assert [*steps()] == ["import", "review", "correct", "share", "lock"]
+    assert not steps()["correct"]["done"] and not steps()["share"]["done"]
+    html = c.get("/?period=2026-10").text
+    assert 'data-cl="done"' in html and 'data-cl-dl="excel"' in html and 'data-cl-dl="pdf"' in html
+    c.get("/exports/2026-10.xlsx")                                 # downloaded elsewhere: the step stays open
+    assert not steps()["share"]["done"]
+    tok = {"X-CSRF-Token": csrf_of(c, "/")}
+    r = c.post("/periods/2026-10/checklist", json={"step": "greythr", "action": "done"}, headers=tok)
+    assert r.status_code == 200 and steps()["correct"]["done"] and "made in greytHR" in steps()["correct"]["detail"]
+    r = c.post("/periods/2026-10/checklist", json={"step": "download", "action": "done", "what": "excel"}, headers=tok)
+    assert r.status_code == 200 and steps()["share"]["done"]
+    assert c.post("/periods/2026-10/checklist", json={"step": "nope"}, headers=tok).status_code == 400
+    c.post("/periods/2026-10/checklist", json={"step": "greythr", "action": "undo"}, headers=tok)
+    assert not steps()["correct"]["done"]
+    assert "period.checklist" in c.get("/audit").text
+
+
+def test_viewer_cannot_tick_the_checklist(client):
+    make_user("viewer3", "viewer")
+    login_full(client, "viewer3")
+    r = client.post("/periods/2026-10/checklist", json={"step": "greythr"}, headers={"X-CSRF-Token": csrf_of(client, "/")})
+    assert r.status_code == 403
+
+
+def test_late_sitting_arrivals_and_daily_bars(loaded):
+    """Owner: late sitting = worked more than 1 h over the person's required hours per day (not a clock time);
+    first punch in four ranges (people); late arrivals by weekday > 1 h; WFH a bar of its own."""
+    from app.db import session_scope
+    from app.models import MonthResult, Period
+    from app.services import metrics as MX
+    with session_scope() as db:
+        p = db.scalar(select(Period).where(Period.year == 2026, Period.month == 10))
+        m = MX.period_metrics(db, p)
+        res = list(db.scalars(select(MonthResult).where(MonthResult.period_id == p.id)))
+        for r in res:
+            hpd = r.data["hours_per_day"]
+            for d in r.days:
+                worked = d["type"] == "WORKDAY" and "present" in (d["b1"], d["b2"])
+                over = worked and d["work_min"] > hpd * 60 + 60
+                if r.group not in ("Partner",):
+                    assert d["late_sit"] == over, (r.emp_no, d["date"])
+    assert [x["bucket"] for x in m["in_time_hist"]] == ["09:30–10:00", "10:00–10:30", "10:30–11:00", "After 11:00"]
+    assert sum(x["count"] for x in m["in_time_hist"]) + m["arrivals_earlier"] <= m["kpis"]["headcount"]
+    very_late = sum(1 for r in res if r.group != "Partner" for d in r.days if d.get("very_late"))
+    assert sum(x["count"] for x in m["late_by_weekday"]) == very_late
+    # a WFH day is in the WFH bar, not also in Present
+    wfh_days = [d for d, v in m["drill"]["daily"].items() if any(e == "T004" for e, _v in v.get("wfh", []))]
+    assert wfh_days and all(not any(e == "T004" for e, _v in m["drill"]["daily"][d].get("present", [])) for d in wfh_days)
+    page = loaded.get("/?period=2026-10").text
+    assert "{label:'WFH',data:M.daily.map(x=>x.wfh||0),backgroundColor:C.violet,stack:'a'}" in page
+    assert "type:'line'" not in page.split("HSCO.chart('cDaily'")[1].split("HSCO.chart('cIn'")[0]
+    assert "more than 1 h late" in page
+
+
+def test_insights_is_called_details_and_people_tab_headcount(loaded):
+    html = loaded.get("/?period=2026-10").text
+    assert "Details</a>" in html and "Insights</a>" not in html
+    assert 'data-tab="people">Headcount' in html and html.index('data-tab="people"') < html.index('data-tab="groups"')
+    assert html.index('data-pane="groups"') < html.index('id="attention"')            # needs attention last
+    page = loaded.get("/insights?period=2026-10").text
+    assert "<h1>Details</h1>" in page and 'data-pdf="Details October 2026"' in page
+    assert '["/insights", "Details"]' in loaded.get("/static/pdf.js").text

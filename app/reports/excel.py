@@ -13,7 +13,7 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Employee, MonthOverrideRow, Period
+from app.models import Employee, MonthOverrideRow, Period, PermissionRow
 from app.services import metrics as MX
 from app.services.settings import get_general, get_policy
 
@@ -528,6 +528,21 @@ def build_workbook(db: Session, period: Period) -> bytes:
                    "Auto attendance", "Total swipes"], rows, [10, 24, 9, 18, 12, 12, 10, 10],
            org, f"Regularisation — {period.label}")
 
+    # greytHR Permission Report (v1.16): every request of the month; approved and applied ones count
+    from app.importers.parsers import PERMISSION_COUNTED
+    names = {r.emp_no: (r.name, r.group) for r in res}
+    perms = [p for p in db.scalars(select(PermissionRow).where(PermissionRow.period_id == period.id)
+                                   .order_by(PermissionRow.day, PermissionRow.emp_no)) if p.emp_no in names]
+    if perms:
+        ws = wb.create_sheet("Permissions")
+        _table(ws, 5, ["Date", "Employee No", "Name", "Group", "Permission", "From", "To", "Reason", "Status", "Counted"],
+               [[p.day, p.emp_no, names[p.emp_no][0], names[p.emp_no][1], p.ptype, p.from_time, p.to_time, p.reason,
+                 p.status, "Yes" if (p.status or "").strip().lower() in PERMISSION_COUNTED else ""] for p in perms],
+               [12, 10, 24, 9, 14, 8, 8, 36, 11, 9], org, f"Permissions — {period.label}")
+        for row in ws.iter_rows(min_row=6, max_col=1):
+            if row[0].value:
+                row[0].number_format = "dd-mmm-yyyy"
+
     # punch exceptions, day by day (same list as the Punch exceptions page)
     from app.services.exceptions import month_exceptions
     X = month_exceptions(db, period)
@@ -711,6 +726,7 @@ SHEET_GUIDE = [
     ("Punch Exceptions", "C77700", "Day by day: incorrect punches, regularisations, WFH, late, early, short, unapplied leave."),
     ("Exceptions by Employee", "C77700", "The same exceptions counted per person."),
     ("Regularisation & Punches", "C77700", "Regularised days and permission swipes per person."),
+    ("Permissions", "C77700", "The Permission Report: every WFH / On Duty / Regularization request with its status (approved and applied count)."),
     ("Late & Punctuality", "C77700", "Late arrivals, early exits, short days, late sitting (information only)."),
     ("WFH & Locations", "C77700", "WFH days (limit), client / on-duty days, biometric vs mobile punches."),
     ("Board Summary", "2E7D32", "Firm-level figures for partners, and by group."),

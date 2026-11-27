@@ -262,6 +262,17 @@ Click **PDF ▾** (next to Excel) on the Overview, Insights, Payroll leave sheet
 - The app is now called **Attendance MIS**; downloaded files start with "Attendance MIS - …", and the desktop icon is
   "Attendance MIS" after the next re-install (the old icon still works until then).
 
+## v1.16 — leaving dates, permissions, checklist
+- **Import files** now also takes the greytHR **Date of Leaving** report (upload the whole list each time — only the
+  people in the app are used) and the **Permission Report** (WFH / On Duty / Regularization requests).
+- **Month-end checklist** on the Overview: after the corrections are made in greytHR click **Made in greytHR** (step 3
+  turns green; *Undo* if clicked by mistake). Download the **Excel** or **PDF** from step 4 to turn it green
+  (downloads from elsewhere still work but don't tick the step). Then **Lock month**.
+- Click **Total head count** for everyone in the month. Leave deductions and unapplied leave are in the Attendance
+  tab; *Needs attention* is at the bottom.
+- **Work location**: Permission → WFH and On Duty (people, days) from the Permission Report.
+- **Insights** is now called **Details**; the People tab is now **Headcount**.
+
 ## v1.15 — the month at a glance, last month, lock month
 - The **Overview** starts with the month at a glance: head count, new joinees, left employees, total attendance,
   people present all days and unapplied leave (absent). Click *Present all days* or *Unapplied leave* to see who.

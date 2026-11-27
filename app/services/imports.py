@@ -6,6 +6,7 @@ import json
 import re
 import secrets
 import time as _time
+from collections import Counter
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -17,8 +18,8 @@ from app.importers import parsers as P
 from app.importers.readers import read_workbook
 from app.config import get_config
 from app.models import (
-    Category, Employee, Holiday, HolidayCalendar, ImportBatch, ManualMisRow, MonthResult, MusterRow, Period, Setting,
-    SummaryRow,
+    Category, Employee, Holiday, HolidayCalendar, ImportBatch, ManualMisRow, MonthResult, MusterRow, Period,
+    PermissionRow, Setting, SummaryRow,
     SwipeRow, User,
 )
 from app.services.audit import audit
@@ -202,6 +203,7 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
         db.flush()
         bid = batch.id
         before = _snapshot(emp_cache)
+        notes: list = []
         if kind == "muster":
             recs, warnings = P.parse_muster(rows, ds)
             period = _period_for(db, _month_of(ds, rows, [r.day for r in recs], warnings), period_hint)
@@ -267,6 +269,49 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
                 warnings.append(f"{len(missing)} employee(s) not in this active-employee list (possible exits): "
                                 f"{', '.join(sorted(missing)[:15])}. Set their Date of Leaving in Employees.")
             touched.update(p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT")))
+        elif kind == "leavers":
+            # greytHR "Date Of Leaving" (v1.16, owner): the whole list since the start comes every time — only the
+            # employees the app knows are used; the rest (people who left before the app) are left alone
+            recs = P.parse_leavers(rows, ds)
+            changed = same = 0
+            ignored = []
+            for r in recs:
+                e = emp_cache.get(r["emp_no"])
+                if e is None:
+                    ignored.append(r["emp_no"])
+                    continue
+                if e.dol != r["dol"]:
+                    e.dol = r["dol"]
+                    changed += 1
+                else:
+                    same += 1
+                if e.is_active and r["dol"] <= date.today():
+                    e.is_active = False
+                n += 1
+            notes.append(f"{n} leaving date{'s' if n != 1 else ''} of employees in the app "
+                         f"({changed} new or changed, {same} already recorded).")
+            if ignored:
+                notes.append(f"{len(ignored)} older leaver{'s' if len(ignored) != 1 else ''} not in the app — not needed, "
+                             "left out.")
+            touched.update(p.id for p in db.scalars(select(Period).where(Period.status == "DRAFT")))
+        elif kind == "permissions":
+            # greytHR "Permission Report" (v1.16): WFH / On Duty (shown under Permission on the Overview) and
+            # Regularization requests, day by day, with their workflow status
+            recs = P.parse_permissions(rows, ds)
+            period = _period_for(db, _month_of(ds, rows, [r["day"] for r in recs], warnings, use_title=False),
+                                 period_hint)
+            keep = [r for r in recs if (r["day"].year, r["day"].month) == (period.year, period.month)]
+            _clear(db, PermissionRow, period, {r["emp_no"] for r in keep}, "permission requests", warnings)
+            if keep:
+                db.execute(insert(PermissionRow), [
+                    {"period_id": period.id, "emp_no": r["emp_no"], "day": r["day"], "ptype": r["ptype"],
+                     "from_time": r["from_time"], "to_time": r["to_time"], "reason": r["reason"],
+                     "status": r["status"], "batch_id": bid} for r in keep])
+            n = len(keep)
+            off = sum(1 for r in keep if r["status"].lower() not in P.PERMISSION_COUNTED)
+            by = Counter(r["ptype"] for r in keep if r["status"].lower() in P.PERMISSION_COUNTED)
+            notes.append("Counted (approved or applied): " + (", ".join(f"{v} {k}" for k, v in sorted(by.items())) or "none")
+                         + (f"; {off} withdrawn / rejected not counted." if off else "."))
         elif kind == "mis_manual":
             recs = P.parse_mis_manual(rows, ds)
             period = _period_for(db, P.detect_period(ds, rows), period_hint)
@@ -353,7 +398,8 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
         audit(db, user, "import", kind, period.key if period else "", {"file": filename, "sheet": ds.sheet, "rows": n}, ip)
         results.append({"kind": kind, "label": P.KIND_LABELS[kind], "sheet": ds.sheet, "rows": n,
                         "period": period.label if period else "", "warnings": warnings[:20],
-                        "mapping": ds.describe(), "source": ds.source, "confidence": ds.confidence})
+                        "mapping": ds.describe(), "source": ds.source, "confidence": ds.confidence,
+                        **({"notes": notes} if notes else {})})
     if hol_plan:
         lines = _apply_holiday_lists(db, hol_plan, emp_cache)
         if hol_sheets:
@@ -370,8 +416,10 @@ def import_file(db: Session, data: bytes, filename: str, user: Optional[User], p
 # ----------------------------------------------------------------------------- deleting an upload (v1.11)
 EMP_FIELDS = ("name", "group", "category", "additional_category", "location", "department", "designation", "email",
               "doj", "dol", "weekly_off", "working_saturdays", "hours_per_day", "exempt", "exempt_reason", "is_active")
-ROW_TABLES = {"muster": MusterRow, "swipes": SwipeRow, "summary": SummaryRow, "mis_manual": ManualMisRow}
-WHAT = {"muster": "attendance days", "swipes": "punches", "summary": "summary rows", "mis_manual": "manual MIS rows"}
+ROW_TABLES = {"muster": MusterRow, "swipes": SwipeRow, "summary": SummaryRow, "mis_manual": ManualMisRow,
+              "permissions": PermissionRow}
+WHAT = {"muster": "attendance days", "swipes": "punches", "summary": "summary rows", "mis_manual": "manual MIS rows",
+        "permissions": "permission requests"}
 
 
 def _jsonable(v):

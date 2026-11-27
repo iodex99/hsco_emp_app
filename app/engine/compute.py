@@ -130,7 +130,7 @@ def _mins(t: Optional[datetime]) -> Optional[int]:
 # 11 = v1.12.0: greytHR status RH = an earned (restricted) holiday: no absence, no comp-off for work that day.
 # 10 = v1.9.0: holidays only by category (no per-employee calendar, no location / group / person targeting); leave
 #      balances are not calculated (no ledger, salary deduction or payroll LOP).
-RULES_VERSION = 13
+RULES_VERSION = 14
 
 
 def office_closed_saturday(d: date, policy: Policy) -> bool:
@@ -504,8 +504,9 @@ def _behaviour(res: EmployeeMonth, emp: Employee, policy: Policy, enabled: bool,
                 dd.is_early_exit = True
             if dd.work_min < policy.min_daily_hours * 60:
                 dd.is_short_day = True
-        if out_t and (out_t.date() > dd.day or out_t.time() > policy.late_sitting_after):
-            dd.is_late_sitting = True
+        if (dd.day_type == WORKDAY and (dd.b1 == B_PRESENT or dd.b2 == B_PRESENT)
+                and dd.work_min > res.hours_per_day * 60 + policy.late_sitting_extra_min):
+            dd.is_late_sitting = True            # v1.16: worked > required hours per day + 1 h (owner)
         if dd.day_type == WORKDAY and (dd.b1 == B_PRESENT or dd.b2 == B_PRESENT):
             if in_t:
                 in_mins.append(_mins(in_t))
@@ -567,7 +568,8 @@ def _flags(res: EmployeeMonth, emp: Employee, policy: Policy, flags: list) -> No
     if res.mobile_office_swipes:
         add("MOBILE_AT_OFFICE", SEV_INFO, f"{res.mobile_office_swipes} mobile sign-ins tagged 'Office' (biometric bypass?)")
     if res.late_sitting_days >= 5:
-        add("LATE_SITTING", SEV_INFO, f"Worked past {policy.late_sitting_after:%H:%M} on {res.late_sitting_days} days")
+        add("LATE_SITTING", SEV_INFO, f"Worked more than {res.hours_per_day:g} h + {policy.late_sitting_extra_min / 60:g} h "
+            f"on {res.late_sitting_days} days")
     if res.sandwich_count >= 2:
         add("SANDWICH_PATTERN", SEV_INFO, f"{res.sandwich_count} leave/absence days adjacent to weekends/holidays")
     if res.auto_attendance:

@@ -252,6 +252,25 @@ it with a reason (audit-logged). Exports of a locked month say "(locked)" in the
 name; an open month's exports carry no status word (no "DRAFT"). The database still stores `DRAFT` / `FINALISED`.
 
 ## Thresholds for the people counts (v1.15)
-- Late sitting: more than **10** late-sitting days in the month.
+- Late sitting: more than **10** late-sitting days in the month. A late-sitting day (v1.16, owner) = a present working
+  day with more than the person's required hours per day + **1 h** (`late_sitting_extra_min`, default 60) — the
+  required hours come from their minimum-hours policy, own setting, category or the firm (8.5 h). Rules version 14.
 - Hours shortfall / excess: monthly balance below **−20 h** / above **+20 h** (before any exemption).
 - Present all days: days present ≥ working days (week days − holidays), working days > 0.
+
+## Date of leaving (v1.16)
+The greytHR *Date Of Leaving* report is the whole list since the start. Only employees already in the app are used:
+their date of leaving is set (or corrected) and they are marked left when the date has passed; everyone else is left
+out (counted in the import note, never created). The calculation stops at the leaving date (days after it are not
+working days for the person), so absence after leaving is not unapplied leave.
+
+## Permission Report (v1.16)
+Rows: employee, date, type (WFH / On Duty / Regularization), from / to time, reason, workflow status. Counted:
+Approved, Applied (pending); not counted: Withdraw, Rejected. Used for the Overview's Permission → WFH / On Duty and
+the Excel *Permissions* sheet; it does not change the leave calculation (WFH days for the limit still come from the
+muster and sign-ins).
+
+## Month-end checklist (v1.16)
+1 Import (muster + swipes) · 2 Review exceptions (all reviewed) · 3 Corrections — done when HR confirms they are made
+in greytHR · 4 Download & share — done when the Excel or PDF is downloaded from the checklist itself (downloads
+elsewhere don't count) · 5 Lock month. Stored on the month (`Period.checklist`), audit-logged (`period.checklist`).

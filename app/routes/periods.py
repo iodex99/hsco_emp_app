@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, Form, HTTPException
+import anyio
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
@@ -83,6 +85,31 @@ def recompute(key: str, c: Ctx = Depends(hr)):
     s = compute_period(c.db, p)
     audit(c.db, c.user, "period.recompute", "period", p.key, s, c.ip)
     return redirect(f"/periods/{key}", f"Recomputed {s['employees']} employees.")
+
+
+@router.post("/periods/{key}/checklist")
+async def checklist(key: str, request: Request, c: Ctx = Depends(hr)):
+    """Month-end checklist steps HR marks (v1.16, owner): step=greythr (corrections made in greytHR — confirm / undo)
+    or step=download (the Excel / PDF downloaded from the checklist itself). JSON in, JSON out; audit-logged."""
+    data = await request.json()
+    return await anyio.to_thread.run_sync(_checklist, key, data, c)
+
+
+def _checklist(key: str, data: dict, c: Ctx):
+    p = get_p(c, key)
+    step, action = str(data.get("step", "")), str(data.get("action", "done"))
+    if step not in ("greythr", "download") or action not in ("done", "undo"):
+        return JSONResponse({"error": "Unknown checklist step"}, status_code=400)
+    cl = dict(p.checklist or {})
+    if action == "undo":
+        cl.pop(step, None)
+    else:
+        what = str(data.get("what", ""))[:10] if step == "download" else ""
+        cl[step] = {"by": c.user.username, "at": datetime.now().isoformat(timespec="minutes"), **({"what": what} if what else {})}
+    p.checklist = cl                         # a new dict, so the JSON column is saved
+    audit(c.db, c.user, "period.checklist", "period", p.key, {"step": step, "action": action,
+                                                              **({"what": cl[step].get("what")} if step in cl and step == "download" else {})}, c.ip)
+    return {"ok": True, "checklist": cl}
 
 
 @router.post("/periods/{key}/finalise")

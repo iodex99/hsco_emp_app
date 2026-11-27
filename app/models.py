@@ -187,6 +187,8 @@ class Period(Base):
     finalised_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finalised_by: Mapped[str] = mapped_column(String(64), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
+    # month-end checklist (v1.16): {"greythr": {"by", "at"}, "download": {"by", "at", "what"}} — steps HR confirms
+    checklist: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     @property
     def label(self) -> str:
@@ -250,6 +252,23 @@ class SwipeRow(Base):
     device: Mapped[str] = mapped_column(String(128), default="")     # phone model
     device_id: Mapped[str] = mapped_column(String(128), default="")  # phone identifier
     batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)   # the upload it came from (v1.11)
+
+
+class PermissionRow(Base):
+    """greytHR "Permission Report" (v1.16): one request — WFH, On Duty or Regularization — for a day, with its
+    workflow status (Approved / Applied / Withdraw / Rejected)."""
+    __tablename__ = "permissions"
+    __table_args__ = (Index("ix_perm_period_emp", "period_id", "emp_no"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period_id: Mapped[int] = mapped_column(ForeignKey("periods.id", ondelete="CASCADE"))
+    emp_no: Mapped[str] = mapped_column(String(32))
+    day: Mapped[date] = mapped_column(Date)
+    ptype: Mapped[str] = mapped_column(String(32), default="")        # WFH / On Duty / Regularization
+    from_time: Mapped[str] = mapped_column(String(8), default="")
+    to_time: Mapped[str] = mapped_column(String(8), default="")
+    reason: Mapped[str] = mapped_column(String(256), default="")
+    status: Mapped[str] = mapped_column(String(32), default="")
+    batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SummaryRow(Base):
