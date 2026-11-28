@@ -24,7 +24,7 @@ FLAG_LABELS = {
     "PERSISTENT_REGULARISATION": "Persistent regularisation",
     "MOBILE_AT_OFFICE": "Mobile sign-in tagged 'Office'",
     "OFF_SITE_OFFICE": "Tagged 'Office' but not at an office",
-    "SHARED_DEVICE": "Phone used to sign in for several people",
+    "SHARED_DEVICE": "Phone used to sign in for several headcount",
     "LATE_SITTING": "Frequent late sitting",
     "SANDWICH_PATTERN": "Leave adjacent to weekends/holidays",
     "AUTO_ATTENDANCE": "Auto attendance (no punches)",
@@ -194,7 +194,7 @@ def arrival_ranges(D: list[dict]) -> dict:
 def permission_mix(db: Session, period: Period, res, excl: set) -> dict:
     """WFH and On Duty under "Permission": from the Permission Report when one is imported for the month (approved
     or applied requests; withdrawn / rejected left out), else from sign-ins tagged Work from home / On-duty.
-    Each: people and days (instances)."""
+    Each: headcount and days (instances)."""
     from app.importers.parsers import PERMISSION_COUNTED
     scope = {r.emp_no for r in res if r.group not in excl}
     rows = list(db.scalars(select(PermissionRow).where(PermissionRow.period_id == period.id)))

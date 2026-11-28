@@ -137,7 +137,7 @@ def default_calendar_id(db: Session) -> Optional[int]:
 
 
 def overview(db: Session) -> list[dict]:
-    """Categories with their people and settings, for Settings → Categories (and gaps worth fixing)."""
+    """Categories with their headcount and settings, for Settings → Categories (and gaps worth fixing)."""
     everyone = list(db.scalars(select(Employee)))
     emps = [e for e in everyone if not e.dol]
     cats = list(db.scalars(select(Category).order_by(Category.name)))
@@ -171,8 +171,8 @@ def uncategorised(db: Session) -> list[Employee]:
 
 
 def calendar_conflicts(db: Session, results) -> list[dict]:
-    """Days where a holiday list and greytHR disagree for most of the people using that list in a calculated month
-    (e.g. the list has no holiday on a day greytHR marks H) — worth checking before payroll. People are counted under
+    """Days where a holiday list and greytHR disagree for most of the headcount using that list in a calculated month
+    (e.g. the list has no holiday on a day greytHR marks H) — worth checking before payroll. Headcount are counted under
     the list they actually used (an article on the HSCO (Mum) list counts there)."""
     per = defaultdict(lambda: {"people": set(), "list_says": "", "name": ""})
     size = Counter()

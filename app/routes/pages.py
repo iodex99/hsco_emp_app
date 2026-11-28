@@ -94,7 +94,7 @@ def insights_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
 
 @router.get("/locations", response_class=HTMLResponse)
 def locations_page(period: Optional[str] = None, c: Ctx = Depends(viewer)):
-    """Where people signed in from (mobile sign-ins with place names) — available as soon as a swipe export with
+    """Where headcount signed in from (mobile sign-ins with place names) — available as soon as a swipe export with
     coordinates is imported, even before the month's muster."""
     from app.services import locations as LOC
     p = LOC.pick(c.db, period)

@@ -105,10 +105,10 @@ def build_locations_workbook(db: Session, period: Period) -> bytes:
                                     f"{k['biometric']} office biometric · {k['client_visits']} client visits · "
                                     f"{k['wfh']} WFH sign-ins"))
     ws2 = wb.create_sheet("Places")
-    _table(ws2, 5, ["Place", "Mostly tagged", "Tags", "Sign-ins", "People", "Who", "Remarks", "First", "Last"],
+    _table(ws2, 5, ["Place", "Mostly tagged", "Tags", "Sign-ins", "Headcount", "Who", "Remarks", "First", "Last"],
            [[b["place"], b["main_type"], b["types"], b["count"], b["people"], ", ".join(b["people_names"]), b["notes"],
              b["first"], b["last"]] for b in L["places"]],
-           [46, 14, 30, 9, 8, 44, 36, 16, 16], org, f"Places people signed in from — {period.label}")
+           [46, 14, 30, 9, 8, 44, 36, 16, 16], org, f"Places headcount signed in from — {period.label}")
     ws3 = wb.create_sheet("By person")
     _table(ws3, 5, ["Employee No", "Name", "Group", "Category", "Location", "Mobile sign-ins", "With GPS", "Places",
                     "Client", "WFH", "On duty", "Tagged Office", "Permission requests"],
@@ -207,7 +207,7 @@ def _table(ws, title_row: int, headers: list, rows: list[list], widths=None, org
 
 def _wfh_term(d: dict, i: int, pol) -> str:
     """Excel term for the WFH-over-limit deduction of one payroll row, matching what the app charged that month:
-    none for results calculated before the rule (v1.6.5), for people not deducted for WFH, or when the month's
+    none for results calculated before the rule (v1.6.5), for headcount not deducted for WFH, or when the month's
     stored figures show no WFH deduction despite days over the limit (e.g. exempt under v1.6.5 rules); otherwise the
     rate actually charged (stored deduction ÷ extra days), falling back to the current setting."""
     if "wfh_deduction_days" not in d or d.get("wfh_deduction_exempt"):
@@ -335,7 +335,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
                    "WFH over-limit deduction (days)", "Total leave deduction (days)", "Remark"], [],
            [10, 24, 9, 18, 10, 14, 14, 14, 80], org,
            f"Payroll input — {period.label}{' (locked)' if _status(period) else ''}: "
-           f"{len(pick)} {'person' if len(pick) == 1 else 'people'} with a leave deduction")
+           f"{len(pick)} headcount with a leave deduction")
     for k_, r in enumerate(pick, start=6):
         d, i = r.data, rowmap[r.emp_no]
         manual = (r.emp_no, "deduction_days") in ovr
@@ -372,18 +372,18 @@ def build_workbook(db: Session, period: Period) -> bytes:
     _title(ws, org, f"Board Summary — {period.label}", 6)
     k, pk = m["kpis"], m.get("prev_kpis") or {}
     kp = [("Total head count", "headcount"), ("New joinees", "new_joinees"), ("Left employees", "exits"),
-          ("Total attendance %", "attendance_rate"), ("Present days", "present_days"), ("People present all days", "present_all_days"),
-          ("People with unapplied leave (absent)", "absent_people"), ("Unapplied leave (absent) days", "absent_days"),
+          ("Total attendance %", "attendance_rate"), ("Present days", "present_days"), ("Headcount present all days", "present_all_days"),
+          ("Headcount with unapplied leave (absent)", "absent_people"), ("Unapplied leave (absent) days", "absent_days"),
           ("Avg hours / present day", "avg_work_hours"), ("Avg in-time", "avg_in_time"), ("Avg out-time", "avg_out_time"),
           ("Employees with leave deduction", "deduction_employees"), ("Total deduction days", "deduction_days"),
           ("Leave days taken", "leave_days"), ("Comp-off days taken", "compoff_days"),
-          ("WFH days", "wfh_days"), ("People who worked from home", "wfh_people"),
+          ("WFH days", "wfh_days"), ("Headcount who worked from home", "wfh_people"),
           (f"Employees over WFH limit ({pol.wfh_limit_days:g})", "wfh_over_limit"),
           ("Late arrivals (days)", "late_days"), ("Persistently late employees", "persistent_late"),
           ("Regularised days", "regularised_days"), ("Persistent regularisation employees", "persistent_regularisation"),
-          ("People late-sitting on more than 10 days", "late_sitting_people"),
-          ("People with hours shortfall > 20 h", "shortfall_people"), ("People with excess hours > 20 h", "excess_people"),
-          ("People who earned a comp-off", "compoff_people"), ("Comp-offs earned (days)", "compoff_earned")]
+          ("Headcount late-sitting on more than 10 days", "late_sitting_people"),
+          ("Headcount with hours shortfall > 20 h", "shortfall_people"), ("Headcount with excess hours > 20 h", "excess_people"),
+          ("Headcount who earned a comp-off", "compoff_people"), ("Comp-offs earned (days)", "compoff_earned")]
     _header(ws, 5, ["Metric", period.label, m.get("prev_label") or "Last month", "Change"], [44, 14, 14, 12])
     for i, (a, key) in enumerate(kp, start=6):
         cur, prv = k.get(key), pk.get(key)
@@ -508,10 +508,10 @@ def build_workbook(db: Session, period: Period) -> bytes:
         for i in range(6, 6 + len(L["rows"])):
             ws.cell(row=i, column=1).number_format = "dd-mmm-yyyy hh:mm"
         ws = wb.create_sheet("Places")
-        _table(ws, 5, ["Place", "Mostly tagged", "Tags", "Sign-ins", "People", "Who", "Remarks", "First", "Last"],
+        _table(ws, 5, ["Place", "Mostly tagged", "Tags", "Sign-ins", "Headcount", "Who", "Remarks", "First", "Last"],
                [[b["place"], b["main_type"], b["types"], b["count"], b["people"], ", ".join(b["people_names"]),
                  b["notes"], b["first"], b["last"]] for b in L["places"]],
-               [44, 14, 30, 9, 8, 40, 36, 16, 16], org, f"Places people signed in from — {period.label}")
+               [44, 14, 30, 9, 8, 40, 36, 16, 16], org, f"Places headcount signed in from — {period.label}")
         for row in ws.iter_rows(min_row=6):
             for ci in (8, 9):
                 if row[ci - 1].value:
@@ -595,15 +595,15 @@ def build_workbook(db: Session, period: Period) -> bytes:
         "Attention = unapplied leave (12 m) 30 + punctuality 20 + hours 25 + regularisation 15 + WFH 10."))
     ws.freeze_panes = "C7"
     ws2 = wb.create_sheet("Groups Compared")
-    _table(ws2, 5, ["Group", "People", "Attendance %", "Unapplied leave (absent) %", "On time %", "Hours vs required %",
+    _table(ws2, 5, ["Group", "Headcount", "Attendance %", "Unapplied leave (absent) %", "On time %", "Hours vs required %",
                     "Avg day (h)", "WFH share %", "Regularised %", "Unapplied leave days (12 m)", "Avg attention", "Deduction days"],
            [[g["group"], g["headcount"], g["attendance_pct"], g["absenteeism_pct"], g["punctuality_pct"],
              g["utilisation_pct"], g["avg_hours"], g["wfh_pct"], g["regularisation_pct"], g["absence_12m_days"],
              g["attention_avg"], g["deduction_days"]] for g in ins["groups"]], [12] + [13] * 11, org,
            f"Groups compared — {period.label}")
 
-    ws = wb.create_sheet("People Movement")
-    _title(ws, org, f"People movement — {period.label}", 6)
+    ws = wb.create_sheet("Headcount Movement")
+    _title(ws, org, f"Headcount movement — {period.label}", 6)
     row = 5
     for label, key in (("New joinees", "joiners"), ("Exits", "exits"),
                        ("Possible exits (in last month's muster, not this month's)", "exit_candidates"),
@@ -700,7 +700,7 @@ def build_workbook(db: Session, period: Period) -> bytes:
     _finish(wb, f"Attendance MIS — {period.label}", org, status, contents_lines=[
         ("Month", period.label + (" — locked" if status else "")),
         ("Employees", len(res)),
-        ("People with a leave deduction", sum(1 for r in res if (r.data or {}).get("deduction_days"))),
+        ("Headcount with a leave deduction", sum(1 for r in res if (r.data or {}).get("deduction_days"))),
         ("Leave deduction (days)", round(sum((r.data or {}).get("deduction_days") or 0 for r in res), 2)),
         ("of which hours shortfall (days)", round(sum((r.data or {}).get("shortfall_deduction_days") or 0 for r in res
                                                       if (r.data or {}).get("deduction_days")), 2)),
@@ -719,7 +719,7 @@ SHEET_GUIDE = [
     # (sheet, tab colour, one line on what it is for) — also the order of the workbook
     ("Contents", NAVY, "This page: key figures and every sheet."),
     ("Payroll Leave Sheet", NAVY, "The month for payroll in the MIS layout — live formulas; edit E–H, J, O, P or T and the deduction recalculates."),
-    ("Payroll Input", NAVY, "Only what payroll needs: people with a leave deduction, split into hours shortfall and WFH over the limit, with the reason (linked to the payroll sheet)."),
+    ("Payroll Input", NAVY, "Only what payroll needs: headcount with a leave deduction, split into hours shortfall and WFH over the limit, with the reason (linked to the payroll sheet)."),
     ("Comp-off Ledger", NAVY, "Comp-off earned and taken per person this month."),
     ("Corrections", NAVY, "Every manual correction included in these figures, with the reason, who and when."),
     ("Flags", NAVY, "Exceptions found by the app: WFH above the limit and Group not set need a review (open first); the rest are reviewed automatically."),
@@ -732,14 +732,14 @@ SHEET_GUIDE = [
     ("Board Summary", "2E7D32", "Firm-level figures for partners, and by group."),
     ("Scorecard", "2E7D32", "Per person: attention score and its reasons, attendance, punctuality, hours, leave used."),
     ("Groups Compared", "2E7D32", "Groups side by side."),
-    ("People Movement", "2E7D32", "Joiners, exits, possible exits, anniversaries."),
+    ("Headcount Movement", "2E7D32", "Joiners, exits, possible exits, anniversaries."),
     ("Reconciliation", "2E7D32", "App vs the manual MIS sheet, employee by employee."),
     ("Daily Detail", "7A869A", "Every person, every day: status, in / out, hours, places, tags, notes."),
     ("Sign-ins & Places", "7A869A", "Every mobile sign-in with its place name."),
-    ("Places", "7A869A", "Places people signed in from."),
+    ("Places", "7A869A", "Places headcount signed in from."),
     ("Rules Applied", "7A869A", "The rules and settings behind these figures."),
 ]
-NO_HIDE = {"Contents", "Payroll Leave Sheet", "Payroll Input", "Comp-off Ledger", "Board Summary", "People Movement",
+NO_HIDE = {"Contents", "Payroll Leave Sheet", "Payroll Input", "Comp-off Ledger", "Board Summary", "Headcount Movement",
            "Rules Applied"}
 
 

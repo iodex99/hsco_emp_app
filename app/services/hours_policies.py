@@ -1,5 +1,5 @@
 """Minimum-hours policies (owner, v1.14): named "hours per day" values targeted at specific employees — e.g. an 8-hour
-day for some people while the firm's is 8.5 h.
+day for some headcount while the firm's is 8.5 h.
 
 Stored as one setting ("hours_policies": {"next": n, "items": [{"id", "name", "hours", "emp_nos": [...]}]}). An
 employee is in at most one policy. What applies to a person (services/categories.effective): their policy → their own

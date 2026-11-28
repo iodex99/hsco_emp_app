@@ -282,7 +282,7 @@
     }
     const footText = (box) => { if (!box || !box.querySelector(".tl-foot")) return "";
       const n = listItems(box.querySelector("ul.list")).length, sum = box.querySelector(".tl-foot [data-tl-sum]");
-      return `${n} ${n === 1 ? "person" : "people"}` + (sum ? ` · total ${txt(sum.parentElement)}` : ""); };
+      return `${n} headcount` + (sum ? ` · total ${txt(sum.parentElement)}` : ""); };
     function list(ul) {
       const items = listItems(ul);
       if (!items.length) return;
@@ -300,7 +300,7 @@
                 { content: txt(li.querySelector(".sv small")), styles: { halign: "right", textColor: GREY } }];
       });
       P.need(12 + rows.length * 5);
-      doc.autoTable({ head: [["", "Where", { content: "People", styles: { halign: "right" } }, { content: "Punches / days · share", styles: { halign: "right" } }]],
+      doc.autoTable({ head: [["", "Where", { content: "Headcount", styles: { halign: "right" } }, { content: "Punches / days · share", styles: { halign: "right" } }]],
         body: rows, startY: P.y, margin: { left: M, right: M + CW / 3, top: TOP, bottom: BOTTOM }, theme: "plain",
         headStyles: { textColor: GREY, fontStyle: "bold", fontSize: 7.5 }, columnStyles: { 0: { cellWidth: 3 } },
         styles: { fontSize: 8.3, cellPadding: 1.2, lineColor: LINE, lineWidth: { top: 0, right: 0, bottom: 0.12, left: 0 } } });

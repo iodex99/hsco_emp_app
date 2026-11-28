@@ -153,10 +153,10 @@ const items=()=>picked().map(x=>({emp_no:x.closest('tr').dataset.emp,code:x.clos
 const bc=$('#bulk-clear'); if(bc) bc.onclick=()=>{sels().forEach(x=>x.checked=false);updBulk();};
 const br=$('#bulk-review'); if(br) br.onclick=()=>{
   const it=items().filter((_,i)=>!picked()[i].closest('tr').dataset.reviewed);
-  const people=new Set(it.map(x=>x.emp_no)).size;
+  const headcount=new Set(it.map(x=>x.emp_no)).size;
   target={bulk:it};
   $('#rv-title').textContent=`Mark ${it.length} item${it.length>1?'s':''} reviewed`;
-  $('#rv-sub').textContent=`${people} employee${people>1?'s':''}`;
+  $('#rv-sub').textContent=`${headcount} employee${headcount>1?'s':''}`;
   $('#rv-msg').textContent='The same note is saved on each item.';
   $('#rv-note').value=''; HSCO.openDrawer('rev');};
 const bo=$('#bulk-reopen'); if(bo) bo.onclick=async()=>{

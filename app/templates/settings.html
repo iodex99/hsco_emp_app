@@ -73,17 +73,17 @@
   (they follow the default calendar and greytHR's weekly offs): {% for e in uncategorised[:12] %}<a href="/employees/{{ e.emp_no }}">{{ e.name }}</a>{{ ', ' if not loop.last }}{% endfor %}{{ ' …' if uncategorised|length > 12 }}</span></div>{% endif %}
 {% set gaps = cat_rows|selectattr('uncovered')|list %}
 {% if gaps %}<div class="alert">{{ ui.icon('calendar') }}<span><b>No holiday list yet:</b> {% for r in gaps %}{{ r.c.name }} ({{ r.uncovered }}){{ ', ' if not loop.last }}{% endfor %} —
-  {{ 'these people use' if gaps|length > 1 or gaps[0].uncovered > 1 else 'this person uses' }} the default calendar, else greytHR's holiday marks. Upload or paste the category's list (Holiday calendars tab) and pick it here.</span></div>{% endif %}
-{% if conflicts %}<div class="card mb"><div class="hd"><h2>Check these dates</h2><span class="sub">{{ conflict_period.label }} · a holiday list and greytHR disagree for most of the people using it</span></div>
-  <div class="bd"><div class="tw"><table class="compact" id="cat-conf"><thead><tr><th>Date</th><th>Holiday list of</th><th>Holiday list says</th><th>greytHR says</th><th class="num">People</th></tr></thead><tbody>
+  {{ 'these headcount use' if gaps|length > 1 or gaps[0].uncovered > 1 else 'this person uses' }} the default calendar, else greytHR's holiday marks. Upload or paste the category's list (Holiday calendars tab) and pick it here.</span></div>{% endif %}
+{% if conflicts %}<div class="card mb"><div class="hd"><h2>Check these dates</h2><span class="sub">{{ conflict_period.label }} · a holiday list and greytHR disagree for most of the headcount using it</span></div>
+  <div class="bd"><div class="tw"><table class="compact" id="cat-conf"><thead><tr><th>Date</th><th>Holiday list of</th><th>Holiday list says</th><th>greytHR says</th><th class="num">Headcount</th></tr></thead><tbody>
   {% for x in conflicts %}<tr><td style="white-space:nowrap">{{ x.date }}</td><td class="strong">{{ x.category }}</td>
     <td>{{ ('Holiday — ' ~ x.name) if x.list_says == 'holiday' else 'Working day' }}</td><td>{{ 'Working day' if x.list_says == 'holiday' else 'Holiday (H)' }}</td>
     <td class="num">{{ x.people }} of {{ x.of }}</td></tr>{% endfor %}</tbody></table></div>
-  <p class="small muted" style="margin:8px 0 0">The holiday list wins: on a "working day" here, people who didn't work are absent. If the list is missing a holiday, add it (Holiday calendars tab); if greytHR is wrong, nothing to do.</p></div></div>{% endif %}
+  <p class="small muted" style="margin:8px 0 0">The holiday list wins: on a "working day" here, headcount who didn't work are absent. If the list is missing a holiday, add it (Holiday calendars tab); if greytHR is wrong, nothing to do.</p></div></div>{% endif %}
 
 <div class="card flush"><div class="hd"><h2>Categories</h2><span class="sub">{{ cat_rows|length }} · changes recalculate draft months</span></div>
 <div class="bd"><div class="tw"><table class="compact" id="cats">
-<thead><tr><th>Category</th><th class="num">People</th><th>Holiday list</th><th>Weekly offs</th><th class="num">Hours / day</th><th></th></tr></thead><tbody>
+<thead><tr><th>Category</th><th class="num">Headcount</th><th>Holiday list</th><th>Weekly offs</th><th class="num">Hours / day</th><th></th></tr></thead><tbody>
 {% for r in cat_rows %}{% set c = r.c %}<tr>
   <td><input name="name" form="cf-{{ c.id }}" value="{{ c.name }}" maxlength="64" style="min-width:190px" aria-label="Category name"></td>
   <td class="num"><a href="/employees?t_emps=%7B%22q%22%3A%22{{ c.name|urlencode }}%22%7D">{{ r.people }}</a>{% if r.extra_people %}<div class="small muted">+{{ r.extra_people }} as additional</div>{% endif %}</td>

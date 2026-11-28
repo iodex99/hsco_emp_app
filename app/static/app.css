@@ -572,7 +572,7 @@ tr.tfoot-firm td{background:var(--surface-2);font-weight:600}
 .step .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-right:8px}
 .step .acts form{margin:0}
 /* where people punched (v1.16): Permission heading with WFH / On Duty under it */
-.shares li{grid-template-columns:150px minmax(60px,1fr) 190px}   /* same columns on every row: the bars line up */
+.shares li{grid-template-columns:140px minmax(60px,1fr) 250px}   /* same columns on every row: the bars line up */
 .shares li.head{cursor:default;padding-top:14px;border-bottom:0}
 .shares li.head .sl{font-weight:600;color:var(--text)}
 .shares li.child .sl{padding-left:16px}

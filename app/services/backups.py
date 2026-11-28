@@ -2,7 +2,7 @@
 
 * Daily automatic backup made by the app itself (maintenance thread) — no scheduled task needed — plus "Back up now"
   in Settings and `python -m app.cli backup`. A backup is an online, consistent SQLite snapshot (backup API, safe while
-  people work), checked with PRAGMA integrity_check before it is kept.
+  headcount work), checked with PRAGMA integrity_check before it is kept.
 * secret.key is copied next to the backups once (it protected two-step-verification secrets until v1.10; nothing
   depends on it now).
 * Retention: every backup of the last 14 days, then one per month for 24 months; pre-update backups: the last 10.

@@ -273,6 +273,8 @@ Click **PDF ▾** (next to Excel) on the Overview, Insights, Payroll leave sheet
   tab; *Needs attention* is at the bottom.
 - **Work location**: Permission → WFH and On Duty (people, days) from the Permission Report.
 - **Insights** is now called **Details**; the People tab is now **Headcount**.
+- v1.16.2: counts of employees say **headcount** everywhere ("42 headcount"), in the app, the PDFs and
+  the Excel (sheet *Headcount Movement*).
 
 ## v1.15 — the month at a glance, last month, lock month
 - The **Overview** starts with the month at a glance: head count, new joinees, left employees, total attendance,

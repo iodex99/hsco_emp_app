@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.16.2 — 2026-11-28 — "people" → "headcount" everywhere
+Owner: "the word "people" changes to "headcount" everywhere" / "in the downloaded excel as well".
+- Every count of employees reads **headcount**, singular or plural: "42 headcount", "1 headcount", "Total · 97
+  headcount" (pages, tiles, cards, lists, click-through panels, tooltips, PDFs).
+- Column headers *People* → **Headcount** (By group, Groups compared, places, holiday-list and category tables).
+- Excel: sheet *People Movement* → **Headcount Movement**; Board Summary rows ("Headcount present all days",
+  "Headcount with unapplied leave (absent)", …), column headers, sheet guide and titles; the punches & locations
+  workbook's place tables.
+- Exception wording (e.g. "Phone used to sign in for several headcount") and import notes follow.
+- "Person" meaning one individual ("each person's required hours", "By person") is unchanged.
+- *Where people punched* → **Where headcount punched**: the figures column widened so "93 headcount · 3848 punches ·
+  100%" fits.
+
 ## 1.16.1 — 2026-11-27 — Import files lists all six greytHR reports
 Owner: "here there should be 6 reports now right?" — *Every month, export these from greytHR* now lists Attendance
 Muster Report and Employee Swipe Details (required), Date Of Joining Report, Date Of Leaving, Permission Report and

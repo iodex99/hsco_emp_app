@@ -404,3 +404,7 @@ content and give short columns their measured width (`doc.getTextWidth`). Menu: 
   `RULES_VERSION = 14`.
 - **Excel**: sheet *Permissions* (when the month has a Permission Report).
 - **UI**: Overview restructured (glance 5 · checklist · tabs · Needs attention); `dmy` filter accepts ISO strings.
+
+## Wording rule (v1.16.2)
+User-visible counts of employees use "headcount" (no singular / plural switch). Code names and data keys keep
+`people` (`m.people`, `wfh_people`, `"people"` JSON keys, `data-tab="people"`) — only text changed.

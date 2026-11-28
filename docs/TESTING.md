@@ -331,3 +331,9 @@ ranges, Permissions sheet, Details page, employee page "left 10-Oct-2026", Overv
 ## v1.16.1 — six reports on Import files
 `test_import_page_lists_the_six_greythr_reports` (names, order, two required, every kind has a schema). Checked in
 the browser at 1440 and 1100 px wide.
+
+## v1.16.2 — "headcount" wording
+`test_headcount_wording_everywhere`: no visible "people" on the Overview, Details, payroll sheet, Punch exceptions,
+Locations, Review queue, employee page, Settings and Import files (text outside code); no "people" in any cell or
+sheet name of the payroll and the punches & locations workbooks; *Headcount Movement* sheet; Board Summary
+"Headcount …" rows. Earlier tests updated for the new words.

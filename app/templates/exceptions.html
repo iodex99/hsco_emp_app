@@ -11,13 +11,13 @@
 </div>
 
 <div class="kpis">
-  {{ ui.kpi('Incorrect punches', k.punch_days, 'triangle-alert', 'bad' if k.punch_days else 'good', none, k.punch_people ~ ' people · days with in/out times changed or a rejected sign-in',
-       tip='Days where greytHR’s in / out time has no matching punch (changed by hand) or a sign-in was rejected. People on automatic attendance are not checked.',
+  {{ ui.kpi('Incorrect punches', k.punch_days, 'triangle-alert', 'bad' if k.punch_days else 'good', none, k.punch_people ~ ' headcount · days with in/out times changed or a rejected sign-in',
+       tip='Days where greytHR’s in / out time has no matching punch (changed by hand) or a sign-in was rejected. Headcount on automatic attendance are not checked.',
        cmp=ui.vs(k.punch_days, pk.punch_days if pk else none, False, ' days')) }}
-  {{ ui.kpi('Regularisations', k.regularisations, 'pencil', 'warn' if k.regularisations else '', none, k.reg_people ~ ' people · permission requests + times changed in greytHR',
+  {{ ui.kpi('Regularisations', k.regularisations, 'pencil', 'warn' if k.regularisations else '', none, k.reg_people ~ ' headcount · permission requests + times changed in greytHR',
        tip='Days with a permission (regularisation) request plus days whose in / out time was changed in greytHR.',
        cmp=ui.vs(k.regularisations, pk.regularisations if pk else none)) }}
-  {{ ui.kpi('Work from home', k.wfh, 'house', '', none, (k.wfh_over ~ ' days over the limit of ' ~ (X.wfh_limit|n) ~ ' (' ~ k.wfh_over_people ~ ' people)') ~ ((' · ' ~ k.wfh_offday ~ ' on days off, not counted') if k.wfh_offday else ''),
+  {{ ui.kpi('Work from home', k.wfh, 'house', '', none, (k.wfh_over ~ ' days over the limit of ' ~ (X.wfh_limit|n) ~ ' (' ~ k.wfh_over_people ~ ' headcount)') ~ ((' · ' ~ k.wfh_offday ~ ' on days off, not counted') if k.wfh_offday else ''),
        tip='WFH days counted for the limit; days after the ' ~ (X.wfh_limit|n) ~ 'th of a person are “over the limit”. WFH on weekly offs / holidays is off-day work and not counted.',
        cmp=ui.vs(k.wfh, pk.wfh if pk else none, False, ' days')) }}
 </div>
@@ -50,7 +50,7 @@
     <td class="small">{{ r.status }}</td><td class="small muted">{{ r.notes }}</td></tr>
   {% else %}<tr><td colspan="13">{% call ui.empty('No exceptions this month', 'Nothing unusual on any day.', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
   </tbody>{% if X.rows %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#ex">{{ X.rows|length }}</span> days</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="num" data-sum data-dec="0" data-unit=" h"></td><td></td><td></td><td></td><td></td></tr></tfoot>{% endif %}</table></div></div></div>
-  <p class="small muted mt-s">{{ ui.icon('info','sm') }} One row per employee and day with all its issues. Click a row to open that day (punches, places, and the correction form). People on automatic attendance are not checked for punches.</p>
+  <p class="small muted mt-s">{{ ui.icon('info','sm') }} One row per employee and day with all its issues. Click a row to open that day (punches, places, and the correction form). Headcount on automatic attendance are not checked for punches.</p>
 </section>
 
 <section class="pane" data-pane="people"><div class="card flush">
@@ -75,7 +75,7 @@
     {% for f in ('wfh_closed', 'wfh_offday', 'wfh_leave', 'very_late', 'early', 'short', 'absent', 'offday_work') %}<td class="num" data-v="{{ p[f] }}">{{ p[f] or '' }}</td>{% endfor %}</tr>
   {% else %}<tr><td colspan="17">{% call ui.empty('Nothing to show', '', 'circle-check') %}{% endcall %}</td></tr>{% endfor %}
   </tbody>
-  {% if X.people %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#exp">{{ X.people|length }}</span> people</td><td></td><td></td>
+  {% if X.people %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#exp">{{ X.people|length }}</span> headcount</td><td></td><td></td>
     {% for i in range(14) %}<td class="num" data-sum{% if i == 5 %} data-unit=" d"{% endif %}></td>{% endfor %}</tr></tfoot>{% endif %}
   </table></div></div></div>
 </section>

@@ -100,6 +100,6 @@
 <ul class="list">{% for r in rows %}<li data-q="{{ (r.name ~ ' ' ~ r.emp_no)|lower }}" data-g="{{ r.group or '' }}" data-v="{{ r.value }}"{{ ' hidden' if loop.index > n }}><span class="rank">{{ loop.index }}</span>{{ person(r.name, r.sub or r.group, '/periods/' ~ pkey ~ '/employee/' ~ r.emp_no) }}<span class="r">{% if badge and r[badge] %}<span class="badge b-bad" title="over the limit">+{{ r[badge]|n }}{{ badge_unit }}</span> {% endif %}{% if neg %}<span class="neg">−{{ r.value|n }} {{ unit }}</span>{% if r.deduction %} <span class="badge b-bad">{{ r.deduction|n }} d</span>{% endif %}{% else %}{{ r.value|n }} {{ unit[:-1] if unit.endswith('s') and r.value|float <= 1 else unit }}{% endif %}</span></li>
 {% else %}<li class="muted">{{ icon('circle-check','sm') }} {{ empty }}</li>{% endfor %}
 {% if rows %}<li class="muted tl-none" hidden>No one by that name or group on this list.</li>{% endif %}</ul>
-{% if rows %}<div class="tl-foot"><span data-tl-count>{{ [n, rows|length]|min }}</span> of <span data-tl-of>{{ rows|length }}</span> {{ 'person' if rows|length == 1 else 'people' }}{% if total %} · total <b><span data-tl-sum>{{ rows|sum(attribute='value')|n }}</span> {{ unit or '' }}</b>{% endif %}</div>{% endif %}
+{% if rows %}<div class="tl-foot"><span data-tl-count>{{ [n, rows|length]|min }}</span> of <span data-tl-of>{{ rows|length }}</span> {{ 'headcount' }}{% if total %} · total <b><span data-tl-sum>{{ rows|sum(attribute='value')|n }}</span> {{ unit or '' }}</b>{% endif %}</div>{% endif %}
 </div>
 {%- endmacro %}

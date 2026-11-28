@@ -60,7 +60,7 @@ def periods_index(c: Ctx = Depends(viewer)):
 @router.get("/periods/{key}", response_class=HTMLResponse)
 def period_results(key: str, f: str = "", c: Ctx = Depends(viewer)):
     """?f=<chip> pre-selects a quick filter; f=fl-<FLAG CODE> (from the Overview's "Needs attention") shows only the
-    people with that exception (v1.13)."""
+    headcount with that exception (v1.13)."""
     p = get_p(c, key)
     if p.computed_at is None:
         from app.routes.pages import pending_month

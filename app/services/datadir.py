@@ -5,7 +5,7 @@ Where the data lives: HSCO_DATA_DIR (set by the installer) or <app>/data — the
 uses "dir" while the base is still the one it was moved from (so a test or a fresh install never follows an old
 pointer). The supervisor (run_server.py) reads the same file at every (re)start; updates never replace it.
 
-A move copies everything (the database through SQLite's backup API — consistent while people work — and checked),
+A move copies everything (the database through SQLite's backup API — consistent while headcount work — and checked),
 writes the pointer, leaves the old folder untouched with a note, and restarts the app on the new folder.
 """
 from __future__ import annotations

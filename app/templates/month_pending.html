@@ -21,8 +21,8 @@
       <div class="mini"><div class="v">{{ signins.mobile }}</div><div class="l">Mobile sign-ins ({{ signins.gps }} with GPS)</div></div>
       <div class="mini"><div class="v">{{ signins.biometric }}</div><div class="l">Office biometric punches</div></div>
     </div>
-    <p class="small muted">From {{ signins.first.strftime('%d %b') }} to {{ signins.last.strftime('%d %b') }} · {{ signins.people }} people.</p>
-    <a class="btn sec" href="/locations?period={{ period.key }}">{{ ui.icon('map-pin','sm') }} See where people signed in</a>
+    <p class="small muted">From {{ signins.first.strftime('%d %b') }} to {{ signins.last.strftime('%d %b') }} · {{ signins.people }} headcount.</p>
+    <a class="btn sec" href="/locations?period={{ period.key }}">{{ ui.icon('map-pin','sm') }} See where headcount signed in</a>
     <a class="btn sec" href="/exports/{{ period.key }}/locations.xlsx">{{ ui.icon('file-spreadsheet','sm') }} Download Excel</a>
     {% else %}<p class="muted">No punches imported for {{ period.label }} yet.</p>{% endif %}
   </div></div>

@@ -107,6 +107,10 @@ including exported file names. Decision (developer): for people following greytH
 own muster (same weekday that month, then the 3 months before), the firm's rule (Sundays, closed Saturdays) only when
 there is no evidence; a policy beats the person's own hours setting.
 
+## Owner request, 28-Nov-2026 (v1.16.2)
+"The word "people" changes to "headcount" everywhere", "in the downloaded excel as well". Decision (developer):
+counts and labels of employees say headcount (also for one: "1 headcount"); "person" meaning an individual stays.
+
 ## Owner requests, 27-Nov-2026, second list (v1.16)
 Remove the unapplied-leave box from the top row; head count opens a list; no present days under attendance.
 Checklist: import · review exceptions · corrections (button to confirm they are made in greytHR) · download & share

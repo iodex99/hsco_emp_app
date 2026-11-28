@@ -631,7 +631,7 @@ def _apply_holiday_lists(db: Session, plan: list, emp_cache: dict) -> list[str]:
                 db.add(cal)
                 db.flush()
                 cal_by_name[cal.name.lower()] = cal
-                lines.append(f"Rows without a category went to the default list “{cal.name}” (for people whose "
+                lines.append(f"Rows without a category went to the default list “{cal.name}” (for headcount whose "
                              "category has no list of its own).")
         cal_objs[cal.id] = cal
         wanted[cal.id].setdefault(r["date"], r)
@@ -693,15 +693,15 @@ FULL_FILE_SHARE = 0.8
 
 
 def _clear(db: Session, model, period: Period, emps: set, what: str, warnings: list) -> None:
-    """Make room for a file's rows. A file covering most of the month's people (≥ 80 %) is a full export and replaces
-    the month; a smaller file (e.g. a correction for one person) replaces only the people it contains."""
+    """Make room for a file's rows. A file covering most of the month's headcount (≥ 80 %) is a full export and replaces
+    the month; a smaller file (e.g. a correction for one person) replaces only the headcount it contains."""
     existing = set(db.scalars(select(model.emp_no).where(model.period_id == period.id).distinct()))
     if not existing or len(emps) >= FULL_FILE_SHARE * len(existing):
         db.execute(delete(model).where(model.period_id == period.id))
         return
     db.execute(delete(model).where(model.period_id == period.id, model.emp_no.in_(emps)))
     kept = len(existing - emps)
-    warnings.append(f"This file has {what} for {len(emps)} of the {len(existing)} people already in {period.label}: "
+    warnings.append(f"This file has {what} for {len(emps)} of the {len(existing)} headcount already in {period.label}: "
                     f"only their {what} were replaced; the other {kept} were kept. To replace the whole month, "
                     "upload the full export.")
 

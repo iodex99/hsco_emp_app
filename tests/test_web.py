@@ -320,7 +320,7 @@ def test_exports(loaded):
     assert set(pin_rows) == {e for e in ("T001", "T002", "T003", "T004", "T005", "T006") if _result(e)[0]["deduction_days"]}
     assert "T003" not in pin_rows                           # partner: no deduction → not listed
     for s in ("Late & Punctuality", "WFH & Locations", "Regularisation & Punches", "Comp-off Ledger",
-              "People Movement", "Daily Detail", "Rules Applied", "Scorecard", "Groups Compared"):
+              "Headcount Movement", "Daily Detail", "Rules Applied", "Scorecard", "Groups Compared"):
         assert s in wb.sheetnames
     ws = wb["Payroll Leave Sheet"]
     hdr = [c_.value for c_ in ws[5]]
@@ -2364,7 +2364,7 @@ def test_permission_report_under_permission(loaded):
     assert 'data-loc="Permission"' not in loc                                   # a heading, no numbers of its own
     wfh = loc.split('data-perm="WFH"')[1].split("</li>")[0]
     od = loc.split('data-perm="On Duty"')[1].split("</li>")[0]
-    assert "<b>1 person</b><small>2 days</small>" in wfh and "<b>1 person</b><small>1 day</small>" in od
+    assert "<b>1 headcount</b><small>2 days</small>" in wfh and "<b>1 headcount</b><small>1 day</small>" in od
     wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
     ps = [r for r in wb["Permissions"].iter_rows(min_row=6, values_only=True) if r[1]]
     assert len(ps) == 7 and sum(1 for r in ps if r[9] == "Yes") == 4
@@ -2460,3 +2460,30 @@ def test_import_page_lists_the_six_greythr_reports(loaded):
              "Permission Report", "Attendance Summary Report"]
     assert all(f"{i}. {n}" in card for i, n in enumerate(names, 1)) and card.count(">required<") == 2
     assert {"muster", "swipes", "doj", "leavers", "permissions", "summary"} <= set(P.SCHEMAS)
+
+def test_headcount_wording_everywhere(loaded):
+    """Owner (v1.16.2): 'the word "people" changes to "headcount" everywhere' / 'in the downloaded excel as well'."""
+    c = loaded
+    code_names = ('data-tab="people"', 'data-pane="people"', 'data-key="people"', 'id="people"', '"#people"',
+                  'data-table-for="#people"', 'data-count="#people"')
+    for page in ("/?period=2026-10", "/insights?period=2026-10", "/periods/2026-10", "/exceptions?period=2026-10",
+                 "/locations?period=2026-10", "/flags?period=2026-10", "/periods/2026-10/employee/T001", "/settings",
+                 "/imports", "/exports", "/employees", "/reconciliation?period=2026-10"):
+        html = re.sub(r"<script.*?</script>", "", c.get(page).text, flags=re.S)
+        for n in code_names:
+            html = html.replace(n, "")
+        m = re.search(r".{0,60}\bpeople\b.{0,30}", html, re.I)
+        assert m is None, (page, m.group(0))
+    js = c.get("/static/app.js").text + c.get("/static/pdf.js").text
+    assert '" people"' not in js and "</span> people<" not in js and "headcount" in js
+    html = c.get("/?period=2026-10").text
+    assert re.search(r"\d+ headcount", html)
+    for url in ("/exports/2026-10.xlsx", "/exports/2026-10/locations.xlsx"):
+        wb = load_workbook(io.BytesIO(c.get(url).content))
+        assert not [n for n in wb.sheetnames if "people" in n.lower()], url
+        bad = [v for ws in wb.worksheets for row in ws.iter_rows(values_only=True) for v in row
+               if isinstance(v, str) and re.search(r"\bpeople\b", v, re.I)]
+        assert not bad, (url, bad[:5])
+    wb = load_workbook(io.BytesIO(c.get("/exports/2026-10.xlsx").content))
+    assert "Headcount Movement" in wb.sheetnames
+    assert any(r[0] == "Headcount present all days" for r in wb["Board Summary"].iter_rows(values_only=True))

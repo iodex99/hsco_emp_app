@@ -1,6 +1,6 @@
 """Checks on mobile sign-ins (docs/BUSINESS_RULES.md §9a).
 
-* One phone, several people: the same device id was used to sign in for two or more employees in the month
+* One phone, several headcount: the same device id was used to sign in for two or more employees in the month
   (buddy-punching risk) → SHARED_DEVICE (high).
 Rejected sign-ins are ignored. Pure functions over engine Swipe objects (no DB access).
 """
@@ -21,7 +21,7 @@ def is_office_tagged(s) -> bool:
 
 
 def shared_devices(swipes: Iterable) -> dict[str, set]:
-    """device_id → employees who signed in with it (only devices used by 2+ people)."""
+    """device_id → employees who signed in with it (only devices used by 2+ headcount)."""
     users: dict = defaultdict(set)
     for s in swipes:
         if getattr(s, "device_id", "") and not _rejected(s):

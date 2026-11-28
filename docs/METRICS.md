@@ -190,3 +190,8 @@ three cards (Leave deductions, Unapplied leave, Exceptions to review) — the at
   count. Under **Permission** (a heading): WFH and On Duty — people and days (distinct person-days) from the
   Permission Report (status approved / applied / pending; withdrawn / rejected excluded), or, without a report, from
   sign-ins tagged Work from home / On-duty. Sign-ins tagged Permission are left out.
+
+## Wording (v1.16.2, owner)
+A number of employees is always written **headcount** ("8 headcount · 53 days", "1 headcount"), in the app, PDFs and
+Excel. Column headers that counted employees are *Headcount*; the Excel sheet of joiners / exits is *Headcount
+Movement*. "Person" is kept where it means one individual (per-person sheets, "each person's required hours").

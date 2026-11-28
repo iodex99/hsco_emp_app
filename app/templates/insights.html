@@ -23,11 +23,11 @@
   {{ ui.kpi('Hours vs required', pct(k.utilisation_pct, True), 'timer', 'good' if (k.utilisation_pct or 0) >= 100 else 'warn', none, '+' ~ (k.overtime_hours|n(0)) ~ ' h over · −' ~ (k.shortfall_hours|n(0)) ~ ' h short',
        tip='Actual hours worked ÷ required hours (days present × hours per day), everyone together. Over / short = sums of each person’s balance.',
        cmp=ui.vs(k.utilisation_pct, pk.utilisation_pct if pk else none, True, ' pts', False)) }}
-  {{ ui.kpi('Unapplied leave, 12 months', k.absence_12m_days|n ~ ' d', 'activity', '', none, k.absence_12m_people ~ ' people · absent without leave applied',
-       tip='Days of unapplied leave (absent) over the last 12 calculated months, for the people in this month.',
+  {{ ui.kpi('Unapplied leave, 12 months', k.absence_12m_days|n ~ ' d', 'activity', '', none, k.absence_12m_people ~ ' headcount · absent without leave applied',
+       tip='Days of unapplied leave (absent) over the last 12 calculated months, for the headcount in this month.',
        cmp=ui.vs(k.absence_12m_days, pk.absence_12m_days if pk else none, False, ' d', False)) }}
   {{ ui.kpi('Annual leave used', pct(k.leave_used_fy_pct, True), 'briefcase', '', none, k.fy_label ~ ' · leave taken ÷ entitlement',
-       tip='Leave taken this financial year (all calculated months) ÷ (' ~ (policy.annual_leave_days|n) ~ ' days × people).',
+       tip='Leave taken this financial year (all calculated months) ÷ (' ~ (policy.annual_leave_days|n) ~ ' days × headcount).',
        cmp=ui.vs(k.leave_used_fy_pct, pk.leave_used_fy_pct if pk else none, False, ' pts', True)) }}
   {{ ui.kpi('Attrition (12 months)', pct(k.attrition_pct, True), 'user-minus', 'warn' if (k.attrition_pct or 0) >= 15 else '', none, k.exits_12m ~ ' exits · ' ~ k.joiners_12m ~ ' joiners',
        tip='Exits (date of leaving) in the last 12 months ÷ average headcount (start and end of the 12 months).',
@@ -36,13 +36,13 @@
        tip='Average years of service at month end of active employees with a date of joining.',
        cmp=ui.vs(k.avg_tenure_years, pk.avg_tenure_years if pk else none, False, ' yrs', True)) }}
   {{ ui.kpi('Need a conversation', k.attention_high, 'message-circle-warning', 'bad' if k.attention_high else 'good', '#scorecard', 'attention score ≥ 50 of 100',
-       tip='People with an attention score of 50 or more (see the Scorecard tab).',
+       tip='Headcount with an attention score of 50 or more (see the Scorecard tab).',
        cmp=ui.vs(k.attention_high, pk.attention_high if pk else none, False, '', False)) }}
 </div>
 
 <div class="tabs" data-tabs id="ins-tabs">
   <button class="on" data-tab="score">Scorecard {{ ui.info('One row per person with the attention score and the measures behind it.') }}</button><button data-tab="heat">Attendance heatmap {{ ui.info('Every person, every day of the month, coloured by what the day was.') }}</button>
-  <button data-tab="arrive">Arrivals &amp; hours {{ ui.info('When people arrive and how long their working days are.') }}</button><button data-tab="absence">Unapplied leave {{ ui.info('Who had unapplied leave (absent without leave applied) this month and over 12 months.') }}</button>
+  <button data-tab="arrive">Arrivals &amp; hours {{ ui.info('When headcount arrive and how long their working days are.') }}</button><button data-tab="absence">Unapplied leave {{ ui.info('Who had unapplied leave (absent without leave applied) this month and over 12 months.') }}</button>
   <button data-tab="groups">Groups {{ ui.info('The employee groups compared with each other and with the firm.') }}</button>{% if I.trend|length > 1 %}<button data-tab="trend">Trend {{ ui.info('The firm’s percentages over the last months. Click a month to open it.') }}</button>{% endif %}
 </div>
 
@@ -92,16 +92,16 @@
     <td class="num" data-v="{{ r.flags }}">{{ r.flags or '' }}</td>
   </tr>{% endfor %}
   </tbody>
-  <tfoot><tr class="tfoot"><td>Total · <span data-count="#sc">{{ I.rows|length }}</span> people</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+  <tfoot><tr class="tfoot"><td>Total · <span data-count="#sc">{{ I.rows|length }}</span> headcount</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
     <td class="num" data-sum data-dec="1"></td><td></td><td></td><td></td><td class="num" data-sum></td><td></td><td></td>
     <td class="num" data-sum data-dec="1"></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td>
     <td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td></tr></tfoot>
   </table></div></div></div>
-  <p class="small muted mt-s">{{ ui.icon('info','sm') }} Left out of punctuality and regularisation scoring: {{ policy.metrics_exclude_groups|join(', ') or 'nobody' }}. Totals add up the people shown (after filters).</p>
+  <p class="small muted mt-s">{{ ui.icon('info','sm') }} Left out of punctuality and regularisation scoring: {{ policy.metrics_exclude_groups|join(', ') or 'nobody' }}. Totals add up the headcount shown (after filters).</p>
 </section>
 
 <section class="pane" data-pane="heat">
-  <div class="card flush"><div class="hd"><h2>Who was where, every day {{ ui.info('One row per person, one column per day. Colours: present, late, WFH, half leave, leave, comp-off, unapplied leave (absent), weekly off, holiday, worked on an off-day. Click legend items to highlight; Total counts the highlighted days (all marked days when nothing is highlighted); the bottom row counts people per day.') }}</h2><span class="sub">click legend items to highlight</span></div>
+  <div class="card flush"><div class="hd"><h2>Who was where, every day {{ ui.info('One row per person, one column per day. Colours: present, late, WFH, half leave, leave, comp-off, unapplied leave (absent), weekly off, holiday, worked on an off-day. Click legend items to highlight; Total counts the highlighted days (all marked days when nothing is highlighted); the bottom row counts headcount per day.') }}</h2><span class="sub">click legend items to highlight</span></div>
   <div class="bd" style="padding-bottom:0"><div class="legend hm-legend" id="hm-legend">
     {% for code, label, cls in I.matrix.legend %}<button type="button" class="lg" data-lg="{{ cls }}" aria-pressed="false"><i class="hm-sw s-{{ cls }}"></i>{{ label }}</button>{% endfor %}
     <span class="lg-info muted hidden" id="hm-info"><button type="button" class="tt-clear" id="hm-clear">Clear highlight</button></span></div></div>
@@ -125,7 +125,7 @@
       {% for ch in r.s %}<td class="hm-c s-{{ cmap.get(ch, 'n') }}" data-csv="{{ codes.get(ch, ch) }}"></td>{% endfor %}
     </tr>{% endfor %}
   </tbody>
-  <tfoot><tr class="tfoot"><td>Total · <span data-count="#hm">{{ I.matrix.rows|length }}</span> people</td><td></td><td></td>
+  <tfoot><tr class="tfoot"><td>Total · <span data-count="#hm">{{ I.matrix.rows|length }}</span> headcount</td><td></td><td></td>
     <td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num hm-tot" data-sum></td>
     {% for d in I.matrix.dates %}<td class="hm-fd"></td>{% endfor %}</tr></tfoot></table></div></div></div>
 </section>
@@ -133,7 +133,7 @@
 <section class="pane" data-pane="arrive">
   <div class="grid g2 mb">
     {% set A = I.arrival %}
-    <div class="card"><div class="hd"><h2>When people arrive {{ ui.info('Days present by weekday and the half hour of the first punch (metrics groups only). Darker = more. Click a number to see who; totals per weekday on the right and per half hour at the bottom.') }}</h2><span class="sub">first punches by weekday and half hour · click a number</span></div><div class="bd">
+    <div class="card"><div class="hd"><h2>When headcount arrive {{ ui.info('Days present by weekday and the half hour of the first punch (metrics groups only). Darker = more. Click a number to see who; totals per weekday on the right and per half hour at the bottom.') }}</h2><span class="sub">first punches by weekday and half hour · click a number</span></div><div class="bd">
       {% if A.rows %}<div class="tw"><table class="heat" id="arrive-heat"><thead><tr><th></th>{% for b in A.buckets %}<th>{{ b }}</th>{% endfor %}<th>Total</th></tr></thead><tbody>
       {% for r in A.rows %}<tr><th>{{ r.wd }}</th>{% for c in r.counts %}<td style="--a:{{ (c / A.max)|round(2) if A.max else 0 }}{{ ';cursor:pointer' if c }}" title="{{ r.wd }} {{ A.buckets[loop.index0] }}: {{ c }}{{ ' — click to see who' if c }}"{% if c %} data-arr="{{ r.wd }}|{{ A.buckets[loop.index0] }}" tabindex="0" role="button"{% endif %}>{{ c or '' }}</td>{% endfor %}<td class="strong">{{ r.counts|sum }}</td></tr>{% endfor %}
       </tbody><tfoot><tr><th>Total</th>{% for b in A.buckets %}{% set i = loop.index0 %}<td class="strong">{{ A.rows|map(attribute='counts')|map(attribute=i)|sum }}</td>{% endfor %}<td class="strong">{{ A.rows|map(attribute='counts')|map('sum')|sum }}</td></tr></tfoot></table></div>{% else %}<p class="muted">No first-punch times this month.</p>{% endif %}
@@ -141,7 +141,7 @@
     <div class="card"><div class="hd"><h2>Length of the working day {{ ui.info('Every day with hours worked, by its length (metrics groups only). Orange = under 7 h, violet = 10 h or more. Click a bar to see who.') }}</h2><span class="sub">{{ I.hours_hist|sum(attribute='count') }} worked days · click a bar</span></div><div class="bd"><div class="chartbox"><canvas id="cHours"></canvas></div></div></div>
   </div>
   <div class="minis">
-    {{ ui.mini('Median first punch', k.median_in, k.median_in_min, pk.median_in_min if pk else none, 'Middle value of the people’s average first punch. ▲ = later than last month.', unit=' min') }}
+    {{ ui.mini('Median first punch', k.median_in, k.median_in_min, pk.median_in_min if pk else none, 'Middle value of the headcount’s average first punch. ▲ = later than last month.', unit=' min') }}
     {{ ui.mini('On time (within ' ~ policy.late_grace_min ~ ' min of shift start)', pct(k.punctuality_pct, True), k.punctuality_pct, pk.punctuality_pct if pk else none, '', 'warn' if (100 if k.punctuality_pct is none else k.punctuality_pct) < 70 else '', good_up=True, unit=' pts') }}
     {{ ui.mini('Long days (2 h+ over required)', k.long_days, k.long_days, pk.long_days if pk else none, 'Days with at least 2 h more than the day’s required hours.', neutral=True) }}
     {{ ui.mini('Late-sitting days', k.late_sitting_days, k.late_sitting_days, pk.late_sitting_days if pk else none, 'Days worked more than the person’s required hours per day plus ' ~ ((policy.late_sitting_extra_min / 60)|n) ~ ' h.', neutral=True) }}
@@ -164,13 +164,13 @@
 </section>
 
 <section class="pane" data-pane="groups">
-  <div class="card flush mb"><div class="hd"><h2>Groups compared {{ ui.info('Each employee group: attendance = days present ÷ working days; unapplied leave = absent days ÷ working days; on time and regularised count metrics groups only; WFH share = WFH days ÷ days present; avg attention = average score of its people. The last row is the whole firm.') }}</h2></div>
+  <div class="card flush mb"><div class="hd"><h2>Groups compared {{ ui.info('Each employee group: attendance = days present ÷ working days; unapplied leave = absent days ÷ working days; on time and regularised count metrics groups only; WFH share = WFH days ÷ days present; avg attention = average score of its headcount. The last row is the whole firm.') }}</h2></div>
   <div data-table-for="#gc"></div><div class="bd"><div class="tw"><table id="gc" data-table data-csv="groups-compared-{{ key }}" class="compact">
-  <thead><tr><th data-key="g" data-type="enum">Group</th><th data-key="hc" data-type="num" class="num">People</th><th data-key="att" data-type="num" class="num">Attendance</th>
+  <thead><tr><th data-key="g" data-type="enum">Group</th><th data-key="hc" data-type="num" class="num">Headcount</th><th data-key="att" data-type="num" class="num">Attendance</th>
     <th data-key="abs" data-type="num" class="num">Unapplied leave</th><th data-key="pun" data-type="num" class="num">On time</th><th data-key="util" data-type="num" class="num">Hours vs req.</th>
     <th data-key="avgh" data-type="num" class="num">Avg day (h)</th><th data-key="wfh" data-type="num" class="num">WFH share</th><th data-key="reg" data-type="num" class="num">Regularised</th>
     <th data-key="abs12" data-type="num" class="num">Unapplied leave days (12 m)</th><th data-key="attn" data-type="num" class="num">Avg attention</th><th data-key="ded" data-type="num" class="num">Deduction days</th></tr></thead><tbody>
-  {% for g in I.groups %}<tr class="click" data-grp="{{ g.group }}" title="See the people of {{ g.group }}"><td class="strong">{{ g.group }}</td><td class="num" data-v="{{ g.headcount }}">{{ g.headcount }}</td>
+  {% for g in I.groups %}<tr class="click" data-grp="{{ g.group }}" title="See the headcount of {{ g.group }}"><td class="strong">{{ g.group }}</td><td class="num" data-v="{{ g.headcount }}">{{ g.headcount }}</td>
     <td class="num" data-v="{{ g.attendance_pct }}">{{ pct(g.attendance_pct) }}</td><td class="num" data-v="{{ g.absenteeism_pct }}">{{ pct(g.absenteeism_pct) }}</td>
     <td class="num" data-v="{{ g.punctuality_pct }}">{{ pct(g.punctuality_pct) }}</td><td class="num" data-v="{{ g.utilisation_pct }}"><span class="{{ 'neg' if (100 if g.utilisation_pct is none else g.utilisation_pct) < 100 else 'pos' }}">{{ pct(g.utilisation_pct) }}</span></td>
     <td class="num" data-v="{{ g.avg_hours }}">{{ g.avg_hours|n(2) }}</td><td class="num" data-v="{{ g.wfh_pct }}">{{ pct(g.wfh_pct) }}</td><td class="num" data-v="{{ g.regularisation_pct }}">{{ pct(g.regularisation_pct) }}</td>
@@ -181,7 +181,7 @@
     <td class="num">{{ pct(F.punctuality_pct) }}</td><td class="num">{{ pct(F.utilisation_pct) }}</td><td class="num">{{ F.avg_hours|n(2) }}</td><td class="num">{{ pct(F.wfh_pct) }}</td>
     <td class="num">{{ pct(F.regularisation_pct) }}</td><td class="num">{{ F.absence_12m_days|n }}</td><td class="num">{{ F.attention_avg|n(1) }}</td><td class="num">{{ F.deduction_days|n }}</td></tr></tfoot>{% endif %}
   </table></div></div></div>
-  <div class="card"><div class="hd"><h2>Groups side by side {{ ui.info('Attendance, on time, hours vs required and unapplied leave for each group. Click a bar to see the people of that group.') }}</h2><span class="sub">click a bar to see the people</span></div><div class="bd"><div class="chartbox" style="height:320px"><canvas id="cGroups"></canvas></div></div></div>
+  <div class="card"><div class="hd"><h2>Groups side by side {{ ui.info('Attendance, on time, hours vs required and unapplied leave for each group. Click a bar to see the headcount of that group.') }}</h2><span class="sub">click a bar to see the headcount</span></div><div class="bd"><div class="chartbox" style="height:320px"><canvas id="cGroups"></canvas></div></div></div>
 </section>
 
 {% if I.trend|length > 1 %}
@@ -221,7 +221,7 @@ document.querySelectorAll('#arrive-heat [data-arr]').forEach((td) => { const go 
   const st=td=>([...td.classList].find(c=>c.startsWith('s-'))||'s-n').slice(2);
   const labels=Object.fromEntries([...lg.querySelectorAll('button.lg')].map(b=>[b.dataset.lg,b.textContent.trim()]));
   const fds=[...t.querySelectorAll('tfoot td.hm-fd')];
-  // per-day footer: how many of the people shown are in the counted states that day
+  // per-day footer: how many of the headcount shown are in the counted states that day
   function days(){
     const n=new Array(fds.length).fill(0);
     t.querySelectorAll('tbody tr').forEach(tr=>{ if(tr.style.display==='none'||!tr.dataset.href) return;

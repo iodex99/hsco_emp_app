@@ -3,14 +3,14 @@
 {% block title %}Locations{% endblock %}
 {% block content %}
 {% if not R %}
-<div class="ph"><div><h1>Locations</h1><div class="sub">Where people signed in from</div></div></div>
+<div class="ph"><div><h1>Locations</h1><div class="sub">Where headcount signed in from</div></div></div>
 <div class="card"><div class="bd">{% call ui.empty('No sign-ins imported yet', 'Import greytHR\'s Employee Swipe Details (with the Latitude and Longitude columns) and every mobile sign-in appears here with a place name.', 'map-pin') %}
   {% if can_hr %}<a class="btn" href="/imports">{{ ui.icon('upload','sm') }} Import files</a>{% endif %}{% endcall %}</div></div>
 {% else %}
 {% set k = R.kpis %}{% set pk = prev_kpis %}{% set key = R.period.key %}
 <div class="ph">
   <div><h1>Locations</h1>
-    <div class="sub">{{ R.period.label }} · where people signed in from · {{ k.mobile }} mobile sign-ins, {{ k.biometric }} office biometric punches</div></div>
+    <div class="sub">{{ R.period.label }} · where headcount signed in from · {{ k.mobile }} mobile sign-ins, {{ k.biometric }} office biometric punches</div></div>
   <div class="actions">
     {% if months|length > 1 %}<form method="get" action="/locations" class="inline"><select name="period" onchange="this.form.submit()" aria-label="Month">
       {% for p in months %}<option value="{{ p.key }}" {{ 'selected' if p.key == key }}>{{ p.label }}</option>{% endfor %}</select></form>{% endif %}
@@ -27,10 +27,10 @@
   {{ ui.kpi('Client visits', k.client_visits, 'briefcase', '', none, 'distinct person · day · place',
        tip='Sign-ins tagged Client location, counted once per person, day and place.',
        cmp=ui.vs(k.client_visits, pk.client_visits if pk else none, neutral=True)) }}
-  {{ ui.kpi('Work from home', k.wfh, 'house', '', none, k.wfh_people ~ ' people',
+  {{ ui.kpi('Work from home', k.wfh, 'house', '', none, k.wfh_people ~ ' headcount',
        tip='Sign-ins tagged Work from home (sign-ins, not WFH days — the WFH day count is on the Overview).',
        cmp=ui.vs(k.wfh, pk.wfh if pk else none)) }}
-  {{ ui.kpi("Tagged 'Office' from a phone", k.office_tagged, 'building-2', '', none, k.office_people ~ ' people · check the place against your office',
+  {{ ui.kpi("Tagged 'Office' from a phone", k.office_tagged, 'building-2', '', none, k.office_people ~ ' headcount · check the place against your office',
        tip='Mobile sign-ins tagged Office instead of a biometric punch — check that the place shown really is an office.',
        cmp=ui.vs(k.office_tagged, pk.office_tagged if pk else none)) }}
 </div>
@@ -71,7 +71,7 @@
 <section class="pane" data-pane="places"><div class="card flush"><div data-table-for="#places"></div>
   <div class="bd"><div class="tw" style="max-height:70vh"><table id="places" class="compact" data-table data-csv="places-{{ key }}">
   <thead><tr><th data-key="place" data-type="text">Place</th><th data-key="main" data-type="enum">Mostly tagged</th><th data-key="types" data-type="text">Tags</th>
-    <th data-key="n" data-type="num" class="num" data-sum>Sign-ins</th><th data-key="people" data-type="num" class="num">People</th><th data-key="who" data-type="text">Who</th>
+    <th data-key="n" data-type="num" class="num" data-sum>Sign-ins</th><th data-key="people" data-type="num" class="num">Headcount</th><th data-key="who" data-type="text">Who</th>
     <th data-key="notes" data-type="text">Remarks</th><th data-key="first" data-type="date">First</th><th data-key="last" data-type="date">Last</th></tr></thead><tbody>
   {% for b in R.places %}<tr><td class="strong small">{{ b.place }}</td><td>{{ b.main_type }}</td><td class="small muted">{{ b.types }}</td>
     <td class="num">{{ b.count }}</td><td class="num">{{ b.people }}</td><td class="small" data-csv="{{ b.people_names|join('; ') }}">{{ b.people_names[:5]|join(', ') }}{% if b.people_names|length > 5 %} +{{ b.people_names|length - 5 }}{% endif %}</td>
@@ -89,6 +89,6 @@
     <td class="num">{{ p.sign_ins }}</td><td class="num">{{ p.gps }}</td><td class="num">{{ p.places }}</td><td class="num">{{ p.client or '' }}</td><td class="num">{{ p.wfh or '' }}</td>
     <td class="num">{{ p.onduty or '' }}</td><td class="num">{{ p.office_tagged or '' }}</td>
 <td class="num">{{ p.permission or '' }}</td></tr>
-  {% endfor %}</tbody>{% if R.people %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#people">{{ R.people|length }}</span> people</td><td></td><td class="num" data-sum></td><td class="num" data-sum></td><td></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td></tr></tfoot>{% endif %}</table></div></div></div></section>
+  {% endfor %}</tbody>{% if R.people %}<tfoot><tr class="tfoot"><td>Total · <span data-count="#people">{{ R.people|length }}</span> headcount</td><td></td><td class="num" data-sum></td><td class="num" data-sum></td><td></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td><td class="num" data-sum></td></tr></tfoot>{% endif %}</table></div></div></div></section>
 {% endif %}
 {% endblock %}

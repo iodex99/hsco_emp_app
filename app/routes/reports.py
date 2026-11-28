@@ -152,7 +152,7 @@ def template(name: str, c: Ctx = Depends(hr)):
         data = _wb(["Date", "Day", "Holiday", "Category", "Optional"], rows,
                    "Holiday list import — holidays go by category only.\n"
                    "Date: dd-mm-yyyy or an Excel date. Day (optional): checked against the date.\n"
-                   "Holiday: the name. Category: whose list it is (e.g. HSCO (Mum)); several categories separated by commas put the holiday in each of their lists (e.g. a Delhi-only festival); blank = the default list (people whose category has no list of its own).\n"
+                   "Holiday: the name. Category: whose list it is (e.g. HSCO (Mum)); several categories separated by commas put the holiday in each of their lists (e.g. a Delhi-only festival); blank = the default list (headcount whose category has no list of its own).\n"
                    "Optional: Yes = an optional holiday (a working day unless greytHR marks the person's day H), else No.\n"
                    "A full year for a category (5+ holidays) replaces that year of its list, so next year's list is simply this file with next year's dates. Fewer rows are added without removing anything.\n"
                    "This file is pre-filled with the lists in the app from this year on.\n"
